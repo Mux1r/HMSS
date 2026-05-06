@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
 import { 
   Search, 
   Pill, 
@@ -26,7 +26,8 @@ import {
   FlaskConical,
   Wind,
   Sparkles,
-  CircleDot
+  CircleDot,
+  ArrowDown
 } from 'lucide-react';
 
 const getMedicationIcon = (code: string) => {
@@ -97,13 +98,16 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [displayLimit, setDisplayLimit] = useState(40);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [selectedSystem, setSelectedSystem] = useState('全部系統');
   const [selectedClass, setSelectedClass] = useState('全部藥理');
   const [selectedDosageForm, setSelectedDosageForm] = useState('全部劑型');
   const [selectedMed, setSelectedMed] = useState<Medication | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
-  const [gsheetUrl, setGsheetUrl] = useState('https://script.google.com/macros/s/AKfycbyVqpI-w4jh5jO3Jpy9itdYa2oa01_gyQdblO3-FHo7wphSvzyACZ_TCk_LhdGZ73JF/exec');
+  const [gsheetUrl, setGsheetUrl] = useState('https://script.google.com/macros/s/AKfycbxotfbc6-KsIn-_RoltpZl_vQhjUNDN-UrU9pWIARSCnWUCn_9iZ60J46zwr3b6laKBBw/exec');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -161,20 +165,23 @@ export default function App() {
       setMedications(data);
       setLoading(false);
 
-      // 啟動時檢查更新
-      const checkUpdates = async () => {
-        try {
-          const hasUpdate = await localMedicationService.checkForUpdates(gsheetUrl);
-          if (hasUpdate) {
-            setIsUpdateAvailable(true);
+      // 如果資料庫是空的，自動進行首次同步
+      if (data.length === 0) {
+        handleSyncGoogleSheet();
+      } else {
+        // 否則只檢查更新
+        const checkUpdates = async () => {
+          try {
+            const hasUpdate = await localMedicationService.checkForUpdates(gsheetUrl);
+            if (hasUpdate) {
+              setIsUpdateAvailable(true);
+            }
+          } catch (e) {
+            console.warn('Update check failed:', e);
           }
-        } catch (e) {
-          console.warn('Update check failed:', e);
-        }
-      };
-      
-      // 延遲一下再檢查，避免影響首屏加載速度
-      setTimeout(checkUpdates, 2000);
+        };
+        setTimeout(checkUpdates, 2000);
+      }
     };
 
     initData();
@@ -184,7 +191,7 @@ export default function App() {
     setLoading(true);
     const resetData = await localMedicationService.reset();
     setMedications([...resetData]); 
-    setGsheetUrl('https://script.google.com/macros/s/AKfycbyVqpI-w4jh5jO3Jpy9itdYa2oa01_gyQdblO3-FHo7wphSvzyACZ_TCk_LhdGZ73JF/exec');
+    setGsheetUrl('https://script.google.com/macros/s/AKfycbxotfbc6-KsIn-_RoltpZl_vQhjUNDN-UrU9pWIARSCnWUCn_9iZ60J46zwr3b6laKBBw/exec');
     setShowResetConfirm(false);
     setLoading(false);
     setImportStatus('資料庫已重置為預設值');
@@ -211,13 +218,23 @@ export default function App() {
     return ['全部劑型', ...Array.from(forms).sort()];
   }, [medications]);
 
+  // Reset display limit when filters change
+  useEffect(() => {
+    setDisplayLimit(40);
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForm]);
+
   const filteredMedications = useMemo(() => {
+    const query = deferredSearchQuery.toLowerCase().trim();
+    
     return medications.filter(med => {
-      const matchesSearch = 
-        med.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        med.genericName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        med.brandName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        med.searchKeywords.some(k => k.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesSearch = !query || 
+        med.code.toLowerCase().includes(query) ||
+        med.genericName.toLowerCase().includes(query) ||
+        med.brandName.toLowerCase().includes(query) ||
+        med.searchKeywords.some(k => k.toLowerCase().includes(query));
       
       const matchesSystem = 
         selectedSystem === '全部系統' || med.anatomicalSystem === selectedSystem;
@@ -231,7 +248,11 @@ export default function App() {
 
       return matchesSearch && matchesSystem && matchesClass && matchesDosageForm;
     });
-  }, [medications, searchQuery, selectedSystem, selectedClass, selectedDosageForm]);
+  }, [medications, deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForm]);
+
+  const displayedMedications = useMemo(() => {
+    return filteredMedications.slice(0, displayLimit);
+  }, [filteredMedications, displayLimit]);
 
   if (loading) {
     return (
@@ -571,7 +592,18 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex-1 p-3 md:p-5 overflow-y-auto custom-scrollbar">
+          <div 
+            ref={scrollContainerRef}
+            className="flex-1 p-3 md:p-5 overflow-y-auto custom-scrollbar"
+            onScroll={(e) => {
+              const target = e.currentTarget;
+              if (target.scrollHeight - target.scrollTop - target.clientHeight < 200) {
+                if (displayLimit < filteredMedications.length) {
+                  setDisplayLimit(prev => prev + 40);
+                }
+              }
+            }}
+          >
           <div className="flex flex-col md:flex-row md:items-end justify-end gap-3 mb-3 md:mb-4">
               
               {(searchQuery || selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForm !== '全部劑型') && (
@@ -589,10 +621,10 @@ export default function App() {
               )}
             </div>
             
-            {filteredMedications.length > 0 ? (
+            {displayedMedications.length > 0 ? (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <AnimatePresence mode="popLayout">
-                {filteredMedications.map((med) => {
+              <AnimatePresence mode="popLayout" initial={false}>
+                {displayedMedications.map((med) => {
                   const dosageStyle = getDosageColor(med.code);
                   return (
                     <motion.div
@@ -657,6 +689,19 @@ export default function App() {
                   );
                 })}
               </AnimatePresence>
+              
+              {displayLimit < filteredMedications.length && (
+                <div className="col-span-full py-8 flex flex-col items-center gap-4">
+                  <div className="h-px w-24 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                  <button 
+                    onClick={() => setDisplayLimit(prev => prev + 100)}
+                    className="flex items-center gap-2 text-[10px] font-black text-brand-muted hover:text-brand-accent transition-all uppercase tracking-[0.2em] px-6 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/[0.08]"
+                  >
+                    載入更多藥物 ({filteredMedications.length - displayLimit} 筆)
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
             
             ) : (
