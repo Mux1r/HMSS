@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", "Plus Jakarta Sans", "Noto Sans TC", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  
+  --color-brand-bg: #09090B;
+  --color-brand-card: #121214;
+  --color-brand-sidebar: #0C0C0E;
+  --color-brand-header: #09090B;
+  --color-brand-border: #27272A;
+  --color-brand-accent: #10B981;
+  --color-brand-muted: #71717A;
+  --color-brand-secondary: #0F172A;
+
+  --glass-bg: rgba(18, 18, 20, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+}
+
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-brand-border) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #27272A;
+    border-radius: 10px;
+    border: 2px solid transparent;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3F3F46;
+  }
+
+  ::selection {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10B981;
+  }
+}
