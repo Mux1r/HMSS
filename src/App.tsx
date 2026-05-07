@@ -139,14 +139,14 @@ export default function App() {
     setImportStatus('正在連線至雲端資料庫...');
     
     try {
-      const gsheetMeds = await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
-      setImportStatus(`正在存儲 ${gsheetMeds.length} 筆資料至本地庫...`);
+      const { meds, hash } = await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
+      setImportStatus(`正在存儲 ${meds.length} 筆資料至本地庫...`);
       
-      // 直接覆蓋現有清單
-      await localMedicationService.saveAll(gsheetMeds);
-      setMedications(gsheetMeds);
+      // 直接覆蓋現有清單，並儲存原始資料的雜湊以供未來比對
+      await localMedicationService.saveAll(meds, hash);
+      setMedications(meds);
       
-      setImportStatus(`同步成功！已更新 ${gsheetMeds.length} 筆資料`);
+      setImportStatus(`同步成功！已更新 ${meds.length} 筆資料`);
       setIsUpdateAvailable(false);
     } catch (error) {
       setImportStatus('同步失敗，請檢查網路連線或資料格式');
@@ -311,9 +311,13 @@ export default function App() {
           )}
 
           <div className="flex items-center gap-2">
-            <div className="hidden sm:flex flex-col items-end mr-1">
-              <p className="text-[9px] text-brand-accent font-bold uppercase tracking-widest">資料庫狀態: 正常</p>
-              <p className="text-[8px] text-zinc-500 font-medium">Auto-sync active</p>
+            <div className="flex flex-col items-end mr-1">
+              <p className="text-[8px] md:text-[9px] text-brand-accent font-bold uppercase tracking-widest">
+                資料庫: {isSyncing ? '同步中' : isUpdateAvailable ? '有更新可用' : '正常'}
+              </p>
+              <p className="text-[7px] md:text-[8px] text-zinc-500 font-medium">
+                {isSyncing ? 'Cloud connecting' : isUpdateAvailable ? 'Update pending' : 'Auto-sync active'}
+              </p>
             </div>
             
             <button 

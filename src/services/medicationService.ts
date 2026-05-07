@@ -52,10 +52,10 @@ export const localMedicationService = {
   /**
    * 儲存所有藥物資料到 IndexedDB
    */
-  async saveAll(meds: Medication[]) {
+  async saveAll(meds: Medication[], customHash?: string) {
     try {
       await set(STORAGE_KEY, meds);
-      const hash = this.generateHash(meds);
+      const hash = customHash || this.generateHash(meds);
       await set(HASH_KEY, hash);
     } catch (e) {
       console.error('Failed to save medications:', e);
@@ -94,11 +94,12 @@ export const localMedicationService = {
   /**
    * 從 Google Sheets 同步大型資料集
    */
-  async fetchFromGoogleSheet(url: string): Promise<Medication[]> {
+  async fetchFromGoogleSheet(url: string): Promise<{ meds: Medication[], hash: string }> {
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error('雲端連線失敗，請檢查 URL');
       const data = await response.json();
+      const rawHash = this.generateHash(data); // 儲存原始資料的雜湊，用於下次對比
       
       if (!Array.isArray(data)) {
         throw new Error('資料格式錯誤: 預期為陣列');
@@ -156,7 +157,7 @@ export const localMedicationService = {
         }
       }
 
-      return processed;
+      return { meds: processed, hash: rawHash };
     } catch (error) {
       console.error('Sync error:', error);
       throw error;
