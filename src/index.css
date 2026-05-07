@@ -10,9 +10,14 @@
   --color-brand-sidebar: #0C0C0E;
   --color-brand-header: #09090B;
   --color-brand-border: #27272A;
-  --color-brand-accent: #10B981;
+  --color-brand-accent: #3187BD;
+  --color-brand-secondary-accent: #66D99B;
   --color-brand-muted: #71717A;
   --color-brand-secondary: #0F172A;
+
+  --theme-gradient: linear-gradient(135deg, #3187BD 0%, #66D99B 100%);
+  --theme-gradient-to: #66D99B;
+  --theme-gradient-from: #3187BD;
 
   --glass-bg: rgba(18, 18, 20, 0.6);
   --glass-border: rgba(255, 255, 255, 0.08);

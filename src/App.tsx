@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
+import { useState, useEffect, useMemo, useRef, useDeferredValue, FormEvent } from 'react';
+import Fuse from 'fuse.js';
+import { GoogleGenAI } from "@google/genai";
 import { 
   Search, 
   Pill, 
@@ -27,7 +29,10 @@ import {
   Wind,
   Sparkles,
   CircleDot,
-  ArrowDown
+  ArrowDown,
+  ArrowRight,
+  History,
+  User
 } from 'lucide-react';
 
 const getMedicationIcon = (code: string) => {
@@ -115,6 +120,41 @@ export default function App() {
   const [isClassOpen, setIsClassOpen] = useState(false);
   const [isDosageFormOpen, setIsDosageFormOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+
+  // AI Mode States
+  const [isAiMode, setIsAiMode] = useState(false);
+  const [aiQuery, setAiQuery] = useState('');
+  const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiHistory, setAiHistory] = useState<{query: string, response: string, timestamp: number}[]>([]);
+  const [aiVisibleLimits, setAiVisibleLimits] = useState<Record<string, number>>({});
+
+  const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' }), []);
+
+  // Fuse instance for fuzzy search
+  const fuse = useMemo(() => {
+    return new Fuse(medications, {
+      keys: [
+        { name: 'code', weight: 1.0 },
+        { name: 'component', weight: 0.9 },
+        { name: 'genericName', weight: 0.8 },
+        { name: 'brandName', weight: 0.7 },
+        { name: 'chineseName', weight: 0.6 },
+        { name: 'searchKeywords', weight: 0.5 }
+      ],
+      threshold: 0.35, // 調整靈敏度，越低越精準
+      includeScore: true,
+      shouldSort: true
+    });
+  }, [medications]);
+
+  // Suggestions based on search query
+  const suggestions = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    return fuse.search(searchQuery).slice(0, 6).map(result => result.item);
+  }, [fuse, searchQuery]);
 
   // Remove global click listener in favor of local onBlur for better focus management
   useEffect(() => {
@@ -187,6 +227,66 @@ export default function App() {
     initData();
   }, []);
 
+  const handleAiSearch = async (e?: FormEvent) => {
+    if (e) e.preventDefault();
+    if (!aiQuery.trim() || isAiLoading) return;
+
+    setIsAiLoading(true);
+    setAiResponse(null);
+
+    try {
+      // Send the full list of medications to AI for comprehensive analysis
+      const medListSummary = medications.map(m => ({
+        code: m.code,
+        component: m.component,
+        genericName: m.genericName,
+        brandName: m.brandName,
+        indications: m.indications
+      }));
+
+      const currentQuery = aiQuery;
+      const prompt = `你是一個專業的醫藥助理。請根據以下提供的藥物清單，分析並拆解使用者的描述中包含的所有健康問題 (Problems)。
+針對每個識別出的問題，請從清單中提供 5-10 個適合的藥物建議。
+
+使用者問題：${currentQuery}
+
+藥物清單（部分）：
+${JSON.stringify(medListSummary)}
+
+輸出格式請嚴格遵守：
+問題：[問題名稱]
+藥品碼 藥物名稱 藥物功能
+藥品碼 藥物名稱 藥物功能
+...
+
+(每個問題下儘量提供 5-10 個藥物，每行一個藥物，不需要其他解釋)
+例如：
+問題：頭痛
+T123 阿斯匹靈 解熱鎮痛
+T456 普拿疼 緩解疼痛
+...
+
+問題：發燒
+...
+`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: prompt }] }],
+      });
+
+      const resultText = response.text || "未能找到合適的藥物建議。";
+      setAiResponse(resultText);
+      setAiHistory(prev => [{ query: currentQuery, response: resultText, timestamp: Date.now() }, ...prev]);
+      setAiQuery('');
+    } catch (error) {
+      console.error("AI Search Error:", error);
+      setAiResponse("AI 搜尋發生錯誤，請稍後再試。");
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   const handleReset = async () => {
     setLoading(true);
     const resetData = await localMedicationService.reset();
@@ -229,13 +329,14 @@ export default function App() {
   const filteredMedications = useMemo(() => {
     const query = deferredSearchQuery.toLowerCase().trim();
     
-    return medications.filter(med => {
-      const matchesSearch = !query || 
-        med.code.toLowerCase().includes(query) ||
-        med.genericName.toLowerCase().includes(query) ||
-        med.brandName.toLowerCase().includes(query) ||
-        med.searchKeywords.some(k => k.toLowerCase().includes(query));
-      
+    let baseMeds = medications;
+    
+    // Apply fuzzy search if query exists
+    if (query) {
+      baseMeds = fuse.search(query).map(result => result.item);
+    }
+    
+    return baseMeds.filter(med => {
       const matchesSystem = 
         selectedSystem === '全部系統' || med.anatomicalSystem === selectedSystem;
 
@@ -246,7 +347,7 @@ export default function App() {
         selectedDosageForm === '全部劑型' || 
         (med.dosageForm || med.code?.charAt(0)?.toUpperCase() || '?') === selectedDosageForm;
 
-      return matchesSearch && matchesSystem && matchesClass && matchesDosageForm;
+      return matchesSystem && matchesClass && matchesDosageForm;
     });
   }, [medications, deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForm]);
 
@@ -266,7 +367,7 @@ export default function App() {
     <div className="h-screen bg-[#060608] font-sans text-zinc-400 flex flex-col overflow-hidden selection:bg-brand-accent/30 selection:text-brand-accent relative">
       {/* Enhanced Background Glows for Glass Visibility */}
       <div className="absolute top-[-5%] right-[-5%] w-[50%] h-[50%] bg-brand-accent/10 blur-[140px] rounded-full pointer-events-none z-0 animate-pulse"></div>
-      <div className="absolute bottom-[10%] left-[-10%] w-[45%] h-[45%] bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none z-0"></div>
+      <div className="absolute bottom-[10%] left-[-10%] w-[45%] h-[45%] bg-[#66D99B]/5 blur-[120px] rounded-full pointer-events-none z-0"></div>
       <div className="absolute top-[30%] left-[20%] w-[30%] h-[30%] bg-blue-500/5 blur-[100px] rounded-full pointer-events-none z-0"></div>
 
       {/* Decorative Background Lines */}
@@ -279,33 +380,83 @@ export default function App() {
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
           
-          <line x1="10%" y1="0" x2="40%" y2="100%" stroke="rgba(16,185,129,0.05)" strokeWidth="1" />
-          <line x1="60%" y1="0" x2="30%" y2="100%" stroke="rgba(16,185,129,0.03)" strokeWidth="1" />
-          <line x1="0" y1="20%" x2="100%" y2="40%" stroke="rgba(16,185,129,0.02)" strokeWidth="1" />
-          <line x1="0" y1="80%" x2="100%" y2="60%" stroke="rgba(16,185,129,0.04)" strokeWidth="1" />
+          <line x1="10%" y1="0" x2="40%" y2="100%" stroke="rgba(49,135,189,0.08)" strokeWidth="1" />
+          <line x1="60%" y1="0" x2="30%" y2="100%" stroke="rgba(102,217,155,0.05)" strokeWidth="1" />
+          <line x1="0" y1="20%" x2="100%" y2="40%" stroke="rgba(49,135,189,0.04)" strokeWidth="1" />
+          <line x1="0" y1="80%" x2="100%" y2="60%" stroke="rgba(102,217,155,0.06)" strokeWidth="1" />
           
-          <circle cx="20%" cy="15%" r="1" fill="rgba(16,185,129,0.2)" />
-          <circle cx="85%" cy="45%" r="1.5" fill="rgba(16,185,129,0.15)" />
-          <circle cx="45%" cy="75%" r="0.8" fill="rgba(16,185,129,0.25)" />
+          <circle cx="20%" cy="15%" r="1" fill="rgba(49,135,189,0.2)" />
+          <circle cx="85%" cy="45%" r="1.5" fill="rgba(102,217,155,0.15)" />
+          <circle cx="45%" cy="75%" r="0.8" fill="rgba(49,135,189,0.25)" />
         </svg>
       </div>
 
       {/* Header */}
-      <header className="h-16 border-b border-white/5 bg-brand-header/30 backdrop-blur-3xl flex items-center justify-between px-4 md:px-8 shrink-0 z-50 shadow-2xl shadow-black/50">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-br from-brand-accent to-emerald-600 rounded-xl shadow-lg shadow-brand-accent/20">
-            <Pill className="w-5 h-5 text-black" />
+      <header className={cn(
+        "h-16 border-b flex items-center justify-between px-4 md:px-8 shrink-0 z-50 shadow-2xl transition-all duration-500",
+        isAiMode 
+          ? "border-purple-500/20 bg-brand-header/40 backdrop-blur-3xl shadow-purple-500/5" 
+          : "border-white/5 bg-brand-header/30 backdrop-blur-3xl shadow-black/50"
+      )}>
+        <div className="flex items-center gap-6">
+          {/* Segmented Tab Switcher */}
+          <div className="bg-white/5 p-1 rounded-xl flex items-center gap-1 border border-white/10 relative w-48 sm:w-64">
+            {/* Sliding background */}
+            <motion.div
+              layoutId="activeTab"
+              className={cn(
+                "absolute h-[calc(100%-8px)] rounded-lg shadow-lg z-0",
+                isAiMode 
+                  ? "bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500" 
+                  : "bg-gradient-to-r from-[#3187BD] to-[#66D99B]"
+              )}
+              initial={false}
+              animate={{
+                left: isAiMode ? "calc(50% + 2px)" : "4px",
+                width: "calc(50% - 6px)"
+              }}
+              transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+            />
+
+            <button
+              onClick={() => {
+                setIsAiMode(false);
+                setAiResponse(null);
+                setAiQuery('');
+              }}
+              className={cn(
+                "relative z-10 flex-1 py-2 text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2",
+                !isAiMode ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+              )}
+            >
+              <Pill className={cn("w-4 h-4 transition-colors", !isAiMode ? "text-white" : "text-zinc-500")} />
+              <span className="hidden sm:inline whitespace-nowrap">HMSS 查詢</span>
+              <span className="sm:hidden">HMSS</span>
+            </button>
+
+            <button
+              onClick={() => setIsAiMode(true)}
+              className={cn(
+                "relative z-10 flex-1 py-2 text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2",
+                isAiMode ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+              )}
+            >
+              <Sparkles className={cn("w-4 h-4 transition-colors", isAiMode ? "text-white" : "text-zinc-500")} />
+              <span className="hidden sm:inline whitespace-nowrap">AI 助理</span>
+              <span className="sm:hidden">AI</span>
+            </button>
           </div>
-          <h1 className="text-lg md:text-xl font-bold tracking-tight text-white flex items-center gap-2 truncate">
-            HMSS 
-            <span className="h-4 w-px bg-brand-border hidden sm:block mx-1"></span>
-            <span className="text-brand-muted text-sm font-medium hidden sm:inline tracking-wide">院內藥物查詢系統</span>
-          </h1>
+          
+          <div className="hidden lg:flex flex-col">
+            <span className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.2em] leading-tight">
+              {isAiMode ? "Smart Analysis" : "Hospital System"}
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 md:gap-6">
           {importStatus && (
-            <div className="hidden lg:flex items-center gap-2 text-[9px] text-emerald-500 font-bold bg-brand-accent/5 px-3 py-1.5 rounded-full border border-emerald-500/20 animate-pulse">
+            <div className="hidden lg:flex items-center gap-2 text-[9px] text-[#3187BD] font-bold bg-brand-accent/5 px-3 py-1.5 rounded-full border border-[#3187BD]/20 animate-pulse">
               <CheckCircle2 className="w-3 h-3" /> {importStatus}
             </div>
           )}
@@ -329,7 +480,7 @@ export default function App() {
                   ? "bg-brand-secondary text-brand-muted cursor-not-allowed" 
                   : isUpdateAvailable
                     ? "bg-amber-500 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-95"
-                    : "bg-brand-accent text-black hover:bg-emerald-400 hover:scale-[1.02] active:scale-95"
+                    : "bg-brand-accent text-white hover:bg-[#66D99B] hover:scale-[1.02] active:scale-95 shadow-lg shadow-brand-accent/20"
               )}
             >
               {isUpdateAvailable && !isSyncing && (
@@ -345,28 +496,119 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden relative">
         {/* Main Area */}
         <main className="flex-1 flex flex-col bg-brand-bg overflow-hidden relative">
-          {/* Top Search & Filter Toolbar */}
-          <div className="bg-brand-sidebar/20 backdrop-blur-2xl border-b border-brand-border/60 p-3 md:p-4 shrink-0 z-30 shadow-2xl relative">
+          <AnimatePresence mode="popLayout" initial={false}>
+            {!isAiMode ? (
+              <motion.div 
+                key="standard-mode"
+                initial={{ opacity: 0, x: -50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                className="flex-1 flex flex-col overflow-hidden"
+              >
+                {/* Top Search & Filter Toolbar */}
+                <div className="bg-transparent border-b border-brand-border/60 p-3 md:p-4 shrink-0 z-30 relative">
             <div className="flex items-center gap-3">
               {/* Global Search */}
-              <div className="relative flex-1 group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-muted group-focus-within:text-brand-accent transition-colors" />
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setShowSuggestions(false);
+                  const input = e.currentTarget.querySelector('input');
+                  if (input) input.blur();
+                }}
+                className="relative flex-1 group dropdown-container p-[1px] rounded-xl bg-gradient-to-r from-[#3187BD]/30 to-[#66D99B]/30 focus-within:from-[#3187BD]/80 focus-within:to-[#66D99B]/80 transition-all shadow-xl"
+              >
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-muted group-focus-within:text-brand-accent z-10 transition-colors" />
                 <input 
                   type="text" 
+                  enterKeyHint="search"
                   placeholder="搜尋成分、代碼、適應症..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:border-brand-accent/40 focus:ring-1 focus:ring-brand-accent/20 transition-all placeholder:text-zinc-600 text-white shadow-[inset_0_1px_1px_rgba(0,0,0,0.4)] font-medium"
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => {
+                    setSearchFocused(true);
+                    setShowSuggestions(true);
+                  }}
+                  onBlur={() => {
+                    // Small delay to allow clicking suggestions
+                    setTimeout(() => setShowSuggestions(false), 200);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setShowSuggestions(false);
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  className="w-full bg-black/60 backdrop-blur-xl border-none rounded-[11px] pl-11 pr-12 md:pr-4 py-3 text-sm focus:outline-none focus:ring-0 transition-all placeholder:text-zinc-600 text-white shadow-[inset_0_1px_1px_rgba(0,0,0,0.4)] font-medium"
                 />
-                {searchQuery && (
-                  <button 
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-brand-accent p-1"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
+                
+                {/* Search Suggestions Dropdown */}
+                <AnimatePresence>
+                  {showSuggestions && searchQuery.trim() && suggestions.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 5 }}
+                      className="absolute top-full left-0 right-0 mt-2 bg-brand-sidebar border border-white/10 rounded-xl shadow-2xl z-[120] overflow-hidden backdrop-blur-3xl"
+                    >
+                      <div className="p-2 flex flex-col gap-1">
+                        <div className="px-3 py-1 flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-brand-accent uppercase tracking-widest">建議匹配</span>
+                          <span className="text-[9px] text-zinc-500">{suggestions.length} 筆建議</span>
+                        </div>
+                        {suggestions.map((med) => (
+                          <button
+                            key={`suggest-${med.id}`}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMed(med);
+                              setSearchQuery(med.component);
+                              setShowSuggestions(false);
+                            }}
+                            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/5 transition-all group flex items-start gap-3"
+                          >
+                            <div className={cn("mt-0.5 p-1 rounded bg-white/5 group-hover:bg-brand-accent/10 transition-colors", getDosageColor(med.code).text)}>
+                              <Pill className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="flex-1 truncate">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-white group-hover:text-brand-accent transition-colors">{med.component}</span>
+                                <span className={cn("text-[8px] font-black uppercase px-1 rounded border border-white/10", getDosageColor(med.code).text)}>{med.code}</span>
+                              </div>
+                              <div className="text-[10px] text-zinc-500 truncate leading-tight mt-0.5">
+                                {med.brandName} {med.chineseName && `• ${med.chineseName}`}
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {searchQuery && (
+                    <button 
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="p-1.5 text-zinc-500 hover:text-white transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                  {searchQuery && (
+                    <button 
+                      type="submit"
+                      className="md:hidden p-1.5 text-brand-accent hover:text-[#66D99B] transition-colors"
+                    >
+                      <ArrowRight className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+              </form>
 
               {/* Compact Filter Toggle */}
               <div className="relative filter-popover-container">
@@ -385,7 +627,7 @@ export default function App() {
                   <Filter className="w-4 h-4" />
                   <span className="hidden sm:inline">篩選</span>
                   {(selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForm !== '全部劑型') && (
-                    <span className="w-2 h-2 rounded-full bg-brand-accent absolute -top-1 -right-1 shadow-[0_0_10px_rgba(16,185,129,0.5)] border border-brand-bg animate-pulse" />
+                    <span className="w-2 h-2 rounded-full bg-brand-accent absolute -top-1 -right-1 shadow-[0_0_10px_rgba(49,135,189,0.5)] border border-brand-bg animate-pulse" />
                   )}
                 </button>
 
@@ -716,6 +958,234 @@ export default function App() {
               </div>
             )}
           </div>
+              </motion.div>
+            ) : (
+              <motion.div 
+                key="ai-mode"
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 50 }}
+                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                className="flex-1 flex flex-col overflow-hidden p-4 md:p-8"
+              >
+                <div className="max-w-4xl mx-auto w-full flex flex-col h-full gap-6">
+                  <div className="flex items-center gap-2 px-1">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+                    <span className="text-[10px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-[0.3em]">AI 智能諮詢模式</span>
+                  </div>
+
+                  <div className="flex-1 min-h-0 flex flex-col relative">
+                    <div className="flex-1 p-[1px] rounded-[32px] bg-gradient-to-br from-blue-500/15 via-purple-500/15 to-orange-500/15 overflow-hidden shadow-2xl">
+                      <div className="h-full w-full bg-brand-bg/40 backdrop-blur-3xl rounded-[31px] overflow-hidden flex flex-col relative">
+                        
+                        {/* Floating Search Bar Overlay */}
+                        <div className="absolute top-0 left-0 right-0 z-40 p-3 md:p-4 bg-transparent">
+                          <form onSubmit={handleAiSearch} className="relative group p-[1px] rounded-2xl bg-gradient-to-r from-blue-500/40 via-purple-500/40 to-orange-500/40 focus-within:from-blue-500/80 focus-within:via-purple-500/80 focus-within:to-orange-500/80 transition-all shadow-2xl">
+                            <input 
+                              type="text"
+                              placeholder="例如：我有頭痛且發燒的症狀，有哪些適合的藥物？"
+                              value={aiQuery}
+                              onChange={(e) => setAiQuery(e.target.value)}
+                              className="w-full bg-black/60 backdrop-blur-xl border-none rounded-2xl pl-5 pr-14 py-3.5 text-sm md:text-base focus:outline-none focus:ring-0 transition-all placeholder:text-zinc-500 text-white font-medium shadow-2xl"
+                            />
+                            <button 
+                              type="submit"
+                              disabled={isAiLoading || !aiQuery.trim()}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 text-white flex items-center justify-center hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl active:scale-95"
+                            >
+                              {isAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                            </button>
+                          </form>
+                        </div>
+
+                        {/* Content Area */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar pt-20 md:pt-24 pb-8 px-4 md:px-8">
+                          {aiHistory.length === 0 && !isAiLoading && (
+                            <div className="h-full flex flex-col items-center justify-center text-center opacity-30 py-20">
+                              <Database className="w-12 h-12 mb-4 stroke-1" />
+                              <p className="text-zinc-400 font-medium tracking-wide">等待輸入諮詢內容...</p>
+                            </div>
+                          )}
+
+                    <div className="space-y-12">
+                      {/* Loading State with Question Bubble */}
+                      {isAiLoading && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="space-y-4"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0 mt-0.5 border border-white/10 shadow-lg">
+                              <User className="w-3.5 h-3.5 text-zinc-400" />
+                            </div>
+                            <div className="bg-white/5 px-4 py-2 rounded-2xl rounded-tl-none border border-white/5 text-xs md:text-sm text-zinc-300 font-medium shadow-xl max-w-[85%]">
+                              {aiQuery}
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-widest">AI 建議分析中</span>
+                              <div className="h-[1px] flex-1 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
+                            </div>
+                            <div className="flex items-center gap-3 text-brand-accent font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-3 bg-white/[0.03] rounded-xl border border-white/5">
+                              <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                                <motion.div 
+                                  className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500"
+                                  initial={{ width: "0%" }}
+                                  animate={{ width: "100%" }}
+                                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {/* Conversation History (Include current results) */}
+                      {aiHistory.length > 0 && (
+                        <div className="space-y-10">
+                          <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                            <div className="flex items-center gap-2">
+                              <History className="w-4 h-4 text-zinc-500" />
+                              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em]">諮詢對話</span>
+                            </div>
+                            <button 
+                              onClick={() => setAiHistory([])}
+                              className="text-[10px] text-red-400/50 hover:text-red-400 transition-colors uppercase tracking-widest font-bold"
+                            >
+                              清除紀錄
+                            </button>
+                          </div>
+
+                          <div className="space-y-12">
+                            {aiHistory.map((item, hIdx) => (
+                              <motion.div 
+                                key={`history-${item.timestamp}`} 
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="space-y-4"
+                              >
+                                {/* User Question */}
+                                <div className="flex items-start gap-3">
+                                  <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0 mt-0.5 border border-white/10 shadow-lg">
+                                    <User className="w-3.5 h-3.5 text-zinc-400" />
+                                  </div>
+                                  <div className="bg-white/5 px-4 py-2.5 rounded-2xl rounded-tl-none border border-white/5 text-xs md:text-sm text-zinc-300 font-medium shadow-xl max-w-[85%]">
+                                    {item.query}
+                                  </div>
+                                </div>
+
+                                {/* AI Response */}
+                                <div className="flex flex-col gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-black bg-gradient-to-r from-blue-400/60 via-purple-400/60 to-orange-400/60 bg-clip-text text-transparent uppercase tracking-widest">AI 建議</span>
+                                    <div className="h-[1px] flex-1 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
+                                  </div>
+                                  <div className="w-full space-y-8">
+                                    {(() => {
+                                      const lines = item.response.split('\n').filter(line => line.trim());
+                                      const groups: { problem: string, items: string[] }[] = [];
+                                      let currentGroup: { problem: string, items: string[] } | null = null;
+                                      
+                                      lines.forEach(line => {
+                                        const problemMatch = line.match(/^(問題|Problem)[:：]\s*(.*)$/i);
+                                        if (problemMatch) {
+                                          currentGroup = { problem: problemMatch[2].trim(), items: [] };
+                                          groups.push(currentGroup);
+                                        } else if (currentGroup) {
+                                          currentGroup.items.push(line);
+                                        }
+                                      });
+
+                                      return groups.map((group, gIdx) => {
+                                        const limitKey = `${hIdx}-${gIdx}`;
+                                        const limit = aiVisibleLimits[limitKey] || 3;
+                                        const visibleItems = group.items.slice(0, limit);
+                                        const hasMore = group.items.length > limit;
+
+                                        return (
+                                          <div key={`group-${hIdx}-${gIdx}`} className="space-y-3">
+                                            <div className="flex items-center gap-2.5 px-1">
+                                              <div className="w-[3px] h-3 bg-gradient-to-b from-blue-500 via-purple-500 to-orange-500 rounded-full rotate-[15deg] shadow-lg shadow-purple-500/20" />
+                                              <span className="text-[11px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-[0.2em]">{group.problem}</span>
+                                            </div>
+                                            
+                                            <div className="grid gap-2">
+                                              {visibleItems.map((line, lIdx) => {
+                                                // 更加彈性的藥品碼解析，自動跳過編號或點點
+                                                const cleanedLine = line.replace(/^\s*(\d+[\.\、\)]|\*|\-|\•)\s*/, '').trim();
+                                                const parts = cleanedLine.split(/\s+/);
+                                                const code = parts[0]?.toUpperCase();
+                                                const med = medications.find(m => m.code === code);
+                                                
+                                                let name = parts[1] || '';
+                                                let funcPart = parts.slice(2).join(' ');
+
+                                                if (med) {
+                                                  name = med.component;
+                                                  const lineWithoutCode = line.substring(line.indexOf(' ') + 1).trim();
+                                                  if (lineWithoutCode.startsWith(med.component)) {
+                                                    funcPart = lineWithoutCode.replace(med.component, '').trim();
+                                                  }
+                                                }
+
+                                                if (!code || !name) return <div key={lIdx} className="text-xs text-zinc-500 italic px-2">{line}</div>;
+
+                                                return (
+                                                  <button 
+                                                    key={lIdx} 
+                                                    onClick={() => {
+                                                      const medLookup = medications.find(m => m.code === code);
+                                                      if (medLookup) setSelectedMed(medLookup);
+                                                    }}
+                                                    className="w-full flex items-center gap-3 text-xs bg-white/[0.02] p-3 rounded-xl hover:bg-white/[0.05] transition-all group border border-transparent hover:border-white/10 hover:translate-x-1 text-left"
+                                                  >
+                                                    <div className={cn(
+                                                      "font-mono font-bold shrink-0 px-2 py-0.5 rounded bg-white/5",
+                                                      getDosageColor(code).text
+                                                    )}>
+                                                      {code}
+                                                    </div>
+                                                    <span className="text-zinc-200 font-bold truncate">{name}</span>
+                                                    <span className="text-zinc-500 flex-1 truncate text-right group-hover:text-zinc-400 transition-colors uppercase text-[10px] tracking-tight">{funcPart}</span>
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+
+                                            {hasMore && (
+                                              <button 
+                                                onClick={() => setAiVisibleLimits(prev => ({
+                                                  ...prev,
+                                                  [limitKey]: limit + 5
+                                                }))}
+                                                className="w-full mt-2 py-3 text-[10px] font-black text-brand-accent hover:text-white bg-brand-accent/10 hover:bg-brand-accent/20 transition-all uppercase tracking-widest flex items-center justify-center gap-2 rounded-xl border border-brand-accent/20 shadow-lg shadow-brand-accent/5 backdrop-blur-sm"
+                                              >
+                                                查看更多建議 ({group.items.length - limit} 筆)
+                                                <ChevronDown className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        );
+                                      });
+                                    })()}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+            )}
+          </AnimatePresence>
         </main>
       </div>
 
