@@ -541,14 +541,14 @@ T456 普拿疼 緩解疼痛
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-brand-bg flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#1F2232] via-[#0D0E16] to-[#030305] flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-brand-accent animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-[#060608] font-sans text-zinc-400 flex flex-col overflow-hidden selection:bg-brand-accent/30 selection:text-brand-accent relative">
+    <div className="h-screen bg-gradient-to-br from-[#1F2232] via-[#0D0E16] to-[#030305] font-sans text-zinc-400 flex flex-col overflow-hidden selection:bg-brand-accent/30 selection:text-brand-accent relative">
       {/* Enhanced Background Glows for Glass Visibility */}
       <div className="absolute top-[-5%] right-[-5%] w-[50%] h-[50%] bg-brand-accent/10 blur-[140px] rounded-full pointer-events-none z-0 animate-pulse"></div>
       <div className="absolute bottom-[10%] left-[-10%] w-[45%] h-[45%] bg-[#66D99B]/5 blur-[120px] rounded-full pointer-events-none z-0"></div>
@@ -691,8 +691,8 @@ T456 普拿疼 緩解疼痛
                 className="flex-1 flex flex-col overflow-hidden"
               >
                 {/* Top Search & Filter Toolbar */}
-                <div className="bg-transparent border-b border-brand-border/60 p-3 md:p-4 shrink-0 z-30 relative">
-            <div className="flex items-center gap-3">
+                <div className="absolute top-0 left-0 right-0 z-40 bg-transparent p-3 md:p-4 pointer-events-none">
+            <div className="flex items-center gap-3 pointer-events-auto">
               {/* Global Search */}
               <form 
                 onSubmit={(e) => {
@@ -701,9 +701,9 @@ T456 普拿疼 緩解疼痛
                   const input = e.currentTarget.querySelector('input');
                   if (input) input.blur();
                 }}
-                className="relative flex-1 group dropdown-container p-[1px] rounded-xl bg-gradient-to-r from-[#3187BD]/30 to-[#66D99B]/30 focus-within:from-[#3187BD]/80 focus-within:to-[#66D99B]/80 transition-all shadow-xl"
+                className="relative flex-1 group dropdown-container p-[1.5px] rounded-2xl bg-gradient-to-r from-[#3187BD]/60 to-[#66D99B]/60 focus-within:from-[#3187BD] focus-within:to-[#66D99B] transition-all shadow-2xl shadow-brand-accent/20"
               >
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-muted group-focus-within:text-brand-accent z-10 transition-colors" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-brand-accent z-10 transition-colors" />
                 <input 
                   type="text" 
                   enterKeyHint="search"
@@ -727,7 +727,7 @@ T456 普拿疼 緩解疼痛
                       (e.target as HTMLInputElement).blur();
                     }
                   }}
-                  className="w-full bg-black/60 backdrop-blur-xl border-none rounded-[11px] pl-11 pr-24 md:pr-24 py-3 text-sm focus:outline-none focus:ring-0 transition-all placeholder:text-zinc-600 text-white shadow-[inset_0_1px_1px_rgba(0,0,0,0.4)] font-medium"
+                  className="w-full bg-gradient-to-br from-[#3187BD]/10 to-[#66D99B]/10 bg-black/90 backdrop-blur-3xl border-none rounded-[15px] pl-11 pr-24 md:pr-24 py-3 text-sm focus:outline-none focus:ring-0 transition-all placeholder:text-zinc-600 text-white font-medium"
                 />
                 
                 {/* Search Suggestions Dropdown */}
@@ -827,7 +827,7 @@ T456 普拿疼 緩解疼痛
                     "h-[46px] px-4 rounded-xl border transition-all flex items-center justify-center gap-2 shadow-sm font-bold text-xs uppercase tracking-widest",
                     showFilters || selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForm !== '全部劑型'
                       ? "bg-brand-accent/20 border-brand-accent/40 text-brand-accent"
-                      : "bg-white/5 border-white/10 text-brand-muted hover:text-white hover:bg-white/[0.08]"
+                      : "bg-white/[0.03] border-white/10 text-brand-muted hover:text-white hover:bg-white/[0.05]"
                   )}
                 >
                   <Filter className="w-4 h-4" />
@@ -1046,7 +1046,7 @@ T456 普拿疼 緩解疼痛
 
           <div 
             ref={scrollContainerRef}
-            className="flex-1 p-3 md:p-5 overflow-y-auto custom-scrollbar"
+            className="flex-1 pt-20 md:pt-24 p-3 md:p-5 overflow-y-auto custom-scrollbar bg-gradient-to-b from-white/[0.02] to-transparent"
             onScroll={(e) => {
               const target = e.currentTarget;
               if (target.scrollHeight - target.scrollTop - target.clientHeight < 200) {
@@ -1115,8 +1115,8 @@ T456 普拿疼 緩解疼痛
                       {/* Glow Decoration */}
                       <div className={cn("absolute top-0 left-0 bottom-0 w-1 opacity-40 blur-[10px] group-hover:opacity-70 transition-opacity", dosageStyle.glow)} />
                       
-                      <div className="flex gap-3 items-start w-full">
-                        <div className="flex flex-col items-center gap-1 shrink-0 mt-1">
+                      <div className="flex gap-3 items-center w-full">
+                        <div className="flex flex-col items-center gap-1 shrink-0">
                           <div className={cn(
                             "p-1.5 rounded-lg bg-white/5 group-hover:bg-brand-accent/10 transition-colors shrink-0",
                             dosageStyle.text
@@ -1125,15 +1125,23 @@ T456 普拿疼 緩解疼痛
                           </div>
                         </div>
                         <div className="flex-1 min-w-0">
+                          {/* Top Row: Code & Class */}
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={cn(
+                              "inline-flex items-center px-2 py-[1px] rounded text-[8px] font-black tracking-widest uppercase shrink-0 border border-white/20",
+                              dosageStyle.text
+                            )}>
+                              <span>{med.code}</span>
+                            </span>
+                            <div className="w-1 h-1 rounded-full bg-white/10" />
+                            <span className="text-[9px] text-brand-accent/60 font-bold uppercase tracking-wider truncate">
+                              {med.pharmacologicalClass}
+                            </span>
+                          </div>
+
                           <div className="flex items-center justify-between mb-0.5 gap-2">
                             <h3 className="text-sm md:text-base font-bold text-white group-hover:text-brand-accent transition-all truncate leading-tight flex items-center gap-2">
                               <span className="truncate">{med.component}</span>
-                              <span className={cn(
-                                "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-black tracking-tighter uppercase shrink-0 border border-white/20",
-                                dosageStyle.text
-                              )}>
-                                <span>{med.code}</span>
-                              </span>
                               {isAiSemanticEnabled && aiRecommendedCodes.includes(med.code) && (
                                 <span className="flex items-center gap-1 text-[7px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded border border-purple-500/30 font-black animate-pulse">
                                   <Sparkles className="w-1.5 h-1.5" />
@@ -1153,12 +1161,8 @@ T456 普拿疼 緩解疼痛
                             )}
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <div className="flex flex-col gap-1 mt-1">
                             <span className="text-[9px] text-zinc-500 font-medium">{med.genericName}</span>
-                            <span className="w-1 h-1 rounded-full bg-zinc-800" />
-                            <span className="text-[9px] text-brand-accent/70 font-bold uppercase tracking-wider">
-                              {med.pharmacologicalClass}
-                            </span>
                           </div>
                         </div>
                       </div>
@@ -1223,13 +1227,13 @@ T456 普拿疼 緩解疼痛
                         
                         {/* Floating Search Bar Overlay */}
                         <div className="absolute top-0 left-0 right-0 z-40 p-3 md:p-4 bg-transparent">
-                          <form onSubmit={handleAiSearch} className="relative group p-[1px] rounded-2xl bg-gradient-to-r from-blue-500/40 via-purple-500/40 to-orange-500/40 focus-within:from-blue-500/80 focus-within:via-purple-500/80 focus-within:to-orange-500/80 transition-all shadow-2xl">
+                          <form onSubmit={handleAiSearch} className="relative group p-[1.5px] rounded-2xl bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 focus-within:from-blue-500 focus-within:via-purple-500 focus-within:to-orange-500 transition-all shadow-2xl">
                             <input 
                               type="text"
                               placeholder="例如：我有頭痛且發燒的症狀，有哪些適合的藥物？"
                               value={aiQuery}
                               onChange={(e) => setAiQuery(e.target.value)}
-                              className="w-full bg-black/60 backdrop-blur-xl border-none rounded-2xl pl-5 pr-14 py-3.5 text-sm md:text-base focus:outline-none focus:ring-0 transition-all placeholder:text-zinc-500 text-white font-medium shadow-2xl"
+                              className="w-full bg-black/80 backdrop-blur-xl border-none rounded-[15px] pl-5 pr-14 py-3.5 text-sm md:text-base focus:outline-none focus:ring-0 transition-all placeholder:text-zinc-500 text-white font-medium shadow-2xl"
                             />
                             <button 
                               type="submit"
