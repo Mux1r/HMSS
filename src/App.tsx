@@ -32,7 +32,13 @@ import {
   ArrowDown,
   ArrowRight,
   History,
-  User
+  User,
+  Zap,
+  Beaker,
+  Bandage,
+  Gem,
+  ArrowDownToDot,
+  Container
 } from 'lucide-react';
 
 const getMedicationIcon = (code: string) => {
@@ -52,17 +58,17 @@ const getMedicationIcon = (code: string) => {
 
 const getDosageColor = (code: string) => {
   const firstChar = code?.charAt(0)?.toUpperCase();
-  const base = "border-l-2";
+  const base = "border-l";
   switch (firstChar) {
-    case 'E': return { border: `${base} border-l-blue-500`, glow: "bg-blue-500", text: "text-blue-500", accent: "text-blue-400", bg: "bg-blue-500/10", borderMain: "border-blue-500/20" }; // 外用
-    case 'T': return { border: `${base} border-l-orange-500`, glow: "bg-orange-500", text: "text-orange-500", accent: "text-orange-400", bg: "bg-orange-500/10", borderMain: "border-orange-500/20" }; // 錠劑
-    case 'I': return { border: `${base} border-l-red-500`, glow: "bg-red-500", text: "text-red-500", accent: "text-red-400", bg: "bg-red-500/10", borderMain: "border-red-500/20" }; // 針劑
-    case 'L': return { border: `${base} border-l-teal-500`, glow: "bg-teal-500", text: "text-teal-500", accent: "text-teal-400", bg: "bg-teal-500/10", borderMain: "border-teal-500/20" }; // 藥水
-    case 'O': return { border: `${base} border-l-emerald-500`, glow: "bg-emerald-500", text: "text-emerald-500", accent: "text-emerald-400", bg: "bg-emerald-500/10", borderMain: "border-emerald-500/20" }; // 眼用
-    case 'S': return { border: `${base} border-l-amber-500`, glow: "bg-amber-500", text: "text-amber-500", accent: "text-amber-400", bg: "bg-amber-500/10", borderMain: "border-amber-500/20" }; // 噴劑
-    case 'Z': return { border: `${base} border-l-zinc-500`, glow: "bg-zinc-500", text: "text-zinc-500", accent: "text-zinc-400", bg: "bg-zinc-500/10", borderMain: "border-zinc-500/20" }; // 試驗
-    case 'V': return { border: `${base} border-l-violet-500`, glow: "bg-violet-500", text: "text-violet-500", accent: "text-violet-400", bg: "bg-violet-500/10", borderMain: "border-violet-500/20" }; // 塞劑
-    default: return { border: `${base} border-l-brand-accent`, glow: "bg-brand-accent", text: "text-brand-accent", accent: "text-brand-accent/80", bg: "bg-brand-accent/10", borderMain: "border-brand-accent/20" };
+    case 'E': return { border: `${base} border-l-blue-500`, glow: "bg-blue-500", text: "text-blue-500", accent: "text-blue-400", bg: "bg-blue-500/10", borderMain: "border-blue-500/20", icon: Container }; // 外用
+    case 'T': return { border: `${base} border-l-orange-500`, glow: "bg-orange-500", text: "text-orange-500", accent: "text-orange-400", bg: "bg-orange-500/10", borderMain: "border-orange-500/20", icon: Pill }; // 錠劑
+    case 'I': return { border: `${base} border-l-red-500`, glow: "bg-red-500", text: "text-red-500", accent: "text-red-400", bg: "bg-red-500/10", borderMain: "border-red-500/20", icon: Syringe }; // 針劑
+    case 'L': return { border: `${base} border-l-teal-500`, glow: "bg-teal-500", text: "text-teal-500", accent: "text-teal-400", bg: "bg-teal-500/10", borderMain: "border-teal-500/20", icon: FlaskConical }; // 藥水
+    case 'O': return { border: `${base} border-l-emerald-500`, glow: "bg-emerald-500", text: "text-emerald-500", accent: "text-emerald-400", bg: "bg-emerald-500/10", borderMain: "border-emerald-500/20", icon: Eye }; // 眼用
+    case 'S': return { border: `${base} border-l-amber-500`, glow: "bg-amber-500", text: "text-amber-500", accent: "text-amber-400", bg: "bg-amber-500/10", borderMain: "border-amber-500/20", icon: Wind }; // 噴劑
+    case 'Z': return { border: `${base} border-l-zinc-500`, glow: "bg-zinc-500", text: "text-zinc-500", accent: "text-zinc-400", bg: "bg-zinc-500/10", borderMain: "border-zinc-500/20", icon: Beaker }; // 試驗
+    case 'V': return { border: `${base} border-l-violet-500`, glow: "bg-violet-500", text: "text-violet-500", accent: "text-violet-400", bg: "bg-violet-500/10", borderMain: "border-violet-500/20", icon: ArrowDownToDot }; // 塞劑
+    default: return { border: `${base} border-l-brand-accent`, glow: "bg-brand-accent", text: "text-brand-accent", accent: "text-brand-accent/80", bg: "bg-brand-accent/10", borderMain: "border-brand-accent/20", icon: Pill };
   }
 };
 
@@ -130,6 +136,9 @@ export default function App() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiHistory, setAiHistory] = useState<{query: string, response: string, timestamp: number}[]>([]);
   const [aiVisibleLimits, setAiVisibleLimits] = useState<Record<string, number>>({});
+  const [isAiSemanticEnabled, setIsAiSemanticEnabled] = useState(false);
+  const [aiRecommendedCodes, setAiRecommendedCodes] = useState<string[]>([]);
+  const [isAiSemanticLoading, setIsAiSemanticLoading] = useState(false);
 
   const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' }), []);
 
@@ -139,12 +148,15 @@ export default function App() {
       keys: [
         { name: 'code', weight: 1.0 },
         { name: 'component', weight: 0.9 },
-        { name: 'genericName', weight: 0.8 },
-        { name: 'brandName', weight: 0.7 },
+        { name: 'brandName', weight: 0.8 },
+        { name: 'genericName', weight: 0.7 },
         { name: 'chineseName', weight: 0.6 },
-        { name: 'searchKeywords', weight: 0.5 }
+        { name: 'indications', weight: 0.4 },
+        { name: 'searchKeywords', weight: 0.4 }
       ],
-      threshold: 0.35, // 調整靈敏度，越低越精準
+      threshold: 0.4, // 調整基礎靈敏度，由邏輯層決定動態門檻
+      location: 0,    // 優先考慮字串開頭的匹配
+      distance: 50,   // 縮小範圍，讓遠離位點 0 的匹配扣分更高
       includeScore: true,
       shouldSort: true
     });
@@ -226,6 +238,70 @@ export default function App() {
 
     initData();
   }, []);
+
+  const handleAiSemanticSearch = async (query: string) => {
+    if (!query.trim() || isAiSemanticLoading) return;
+    setIsAiSemanticLoading(true);
+    try {
+      // Use a lean version of the data for faster AI processing
+      const medListSummary = medications.map(m => ({
+        c: m.code,
+        n: `${m.component} ${m.brandName}`,
+        i: m.indications
+      }));
+
+      const prompt = `你是一個專業臨床藥學助理。
+任務：將使用者的關鍵詞轉換為相關的藥品。
+當前關鍵詞：「${query}」。
+注意：
+1. 包含常見臨床對應（例如："normal" 對應 "Normal Saline", "NaCl"；"water" 對應 "Distilled Water"；"sugar" 對應 "Dextrose"）。
+2. 分析適應症相關性。
+
+目標：從下方清單中找出相關藥品代碼。
+僅輸出 JSON 陣列（代碼），不要多言。
+格式：["CODE1", "CODE2"]
+
+清單：
+${JSON.stringify(medListSummary)}
+`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: prompt }] }],
+      });
+
+      const rawText = response.text || "[]";
+      const jsonMatch = rawText.match(/\[.*\]/s);
+      if (jsonMatch) {
+        try {
+          const codes = JSON.parse(jsonMatch[0].trim());
+          if (Array.isArray(codes)) {
+            // Mapping back from 'c' to actual code if necessary, 
+            // but since we used 'c' as the property name in prompt, JSON should match
+            setAiRecommendedCodes(codes);
+          }
+        } catch (e) {
+          console.error("Failed to parse AI response as JSON:", e);
+          setAiRecommendedCodes([]);
+        }
+      } else {
+        setAiRecommendedCodes([]);
+      }
+    } catch (error) {
+      console.error("AI Semantic Search Error:", error);
+      setAiRecommendedCodes([]);
+    } finally {
+      setIsAiSemanticLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAiSemanticEnabled && deferredSearchQuery.trim().length >= 2) {
+      handleAiSemanticSearch(deferredSearchQuery);
+    } else {
+      setAiRecommendedCodes([]);
+    }
+  }, [deferredSearchQuery, isAiSemanticEnabled]);
 
   const handleAiSearch = async (e?: FormEvent) => {
     if (e) e.preventDefault();
@@ -331,9 +407,117 @@ T456 普拿疼 緩解疼痛
     
     let baseMeds = medications;
     
-    // Apply fuzzy search if query exists
     if (query) {
-      baseMeds = fuse.search(query).map(result => result.item);
+      const minPrefixLength = 3;
+      const queryLen = query.length;
+
+      // 1. 完全匹配 (最優先)
+      const exactMatches = medications.filter(m => 
+        m.code?.toLowerCase() === query ||
+        m.component?.toLowerCase() === query ||
+        m.brandName?.toLowerCase() === query
+      );
+
+      // 輔助函式：取得從第一個英文字母開始的字串部分
+      const getAlphaStart = (str: string) => {
+        if (!str) return "";
+        const m = str.match(/[a-zA-Z].*/);
+        return m ? m[0].toLowerCase() : str.toLowerCase();
+      };
+
+      // 第二層： 字串絕對開頭匹配 (String Start)
+      const stringStartMatches = medications.filter(m => {
+        if (exactMatches.some(em => em.id === m.id)) return false;
+        const targets = [m.code, m.component, m.brandName, m.genericName];
+        return targets.some(t => t?.toLowerCase().startsWith(query));
+      });
+
+      // 第三層： 第一個「字母」單字開頭匹配 (例如解決 "10% Dextrose" 的 "Dextrose" 開頭)
+      const firstAlphaStartMatches = medications.filter(m => {
+        if (exactMatches.some(em => em.id === m.id)) return false;
+        if (stringStartMatches.some(sm => sm.id === m.id)) return false;
+        const targets = [m.component, m.brandName, m.genericName];
+        return targets.some(t => {
+          if (!t) return false;
+          const alphaT = getAlphaStart(t);
+          return alphaT.startsWith(query);
+        });
+      });
+
+      // 第四層： 其他單字開頭 (Word Boundary Match) - 滿足「每個單字開頭權重都調高」
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const wordBoundaryRegex = new RegExp(`\\b${escapedQuery}`, 'i');
+      const wordBoundaryMatches = medications.filter(m => {
+        if (exactMatches.some(em => em.id === m.id)) return false;
+        if (stringStartMatches.some(sm => sm.id === m.id)) return false;
+        if (firstAlphaStartMatches.some(am => am.id === m.id)) return false;
+        
+        const searchPool = `${m.component} ${m.brandName} ${m.genericName} ${m.chineseName} ${m.searchKeywords || ''}`;
+        return wordBoundaryRegex.test(searchPool);
+      });
+
+      // 第五層： 全域模糊搜尋 (Global Fuzzy Match) - 僅在符合特定條件時顯示
+      const fuzzyResults = fuse.search(query);
+      
+      // 過濾與限制模糊搜尋結果
+      const constrainedFuzzy = fuzzyResults
+        .filter(result => {
+          const item = result.item;
+          if (exactMatches.some(em => em.id === item.id)) return false;
+          if (stringStartMatches.some(sm => sm.id === item.id)) return false;
+          if (firstAlphaStartMatches.some(am => am.id === item.id)) return false;
+          if (wordBoundaryMatches.some(wm => wm.id === item.id)) return false;
+
+          // 核心限制：避免短關鍵字（如 3 碼以下）匹配到單字中間
+          if (queryLen < minPrefixLength) return false;
+
+          // 動態閾值調整：短關鍵字需更精準，長關鍵字容許較多模糊
+          let dynamicThreshold = 0.4;
+          if (queryLen === 3) dynamicThreshold = 0.18;
+          else if (queryLen === 4) dynamicThreshold = 0.25;
+          else if (queryLen <= 6) dynamicThreshold = 0.32;
+
+          if (result.score === undefined || result.score > dynamicThreshold) return false;
+
+          // 避免長度差異過大造成的誤判
+          const primaryName = item.component || item.brandName || "";
+          if (result.score > 0.2 && primaryName.length > queryLen + 10) {
+            return false;
+          }
+
+          return true;
+        })
+        .map(r => r.item);
+
+      // AI 語意推薦 (獨立權重，通常排在精準匹配之後)
+      let aiMeds: typeof medications = [];
+      if (isAiSemanticEnabled && aiRecommendedCodes.length > 0) {
+        aiMeds = medications.filter(m => aiRecommendedCodes.includes(m.code));
+      }
+
+      // 整合與去重，保持嚴格優先順序：完全 > 字串開 > 字母開 > 單字開
+      const combinedMeds: typeof medications = [
+        ...exactMatches, 
+        ...stringStartMatches, 
+        ...firstAlphaStartMatches,
+        ...wordBoundaryMatches
+      ];
+      
+      // 合併 AI 推薦 (去重)
+      aiMeds.forEach(am => {
+        if (!combinedMeds.some(m => m.id === am.id)) {
+          combinedMeds.push(am);
+        }
+      });
+
+      // 合併模糊匹配結果 (去重)
+      constrainedFuzzy.forEach(fm => {
+        if (!combinedMeds.some(m => m.id === fm.id)) {
+          combinedMeds.push(fm);
+        }
+      });
+
+      baseMeds = combinedMeds;
     }
     
     return baseMeds.filter(med => {
@@ -543,7 +727,7 @@ T456 普拿疼 緩解疼痛
                       (e.target as HTMLInputElement).blur();
                     }
                   }}
-                  className="w-full bg-black/60 backdrop-blur-xl border-none rounded-[11px] pl-11 pr-12 md:pr-4 py-3 text-sm focus:outline-none focus:ring-0 transition-all placeholder:text-zinc-600 text-white shadow-[inset_0_1px_1px_rgba(0,0,0,0.4)] font-medium"
+                  className="w-full bg-black/60 backdrop-blur-xl border-none rounded-[11px] pl-11 pr-24 md:pr-24 py-3 text-sm focus:outline-none focus:ring-0 transition-all placeholder:text-zinc-600 text-white shadow-[inset_0_1px_1px_rgba(0,0,0,0.4)] font-medium"
                 />
                 
                 {/* Search Suggestions Dropdown */}
@@ -590,6 +774,28 @@ T456 普拿疼 緩解疼痛
                   )}
                 </AnimatePresence>
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newState = !isAiSemanticEnabled;
+                      setIsAiSemanticEnabled(newState);
+                      if (!newState) setAiRecommendedCodes([]);
+                    }}
+                    className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border",
+                      isAiSemanticEnabled 
+                        ? "bg-purple-500/20 border-purple-500/40 text-purple-400 shadow-lg shadow-purple-500/20" 
+                        : "bg-white/5 border-white/10 text-zinc-500 hover:text-zinc-300"
+                    )}
+                    title="AI 語意智慧搜尋"
+                  >
+                    {isAiSemanticLoading ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Sparkles className={cn("w-3 h-3", isAiSemanticEnabled && "animate-pulse")} />
+                    )}
+                    <span className="hidden xs:inline">智尋</span>
+                  </button>
                   {searchQuery && (
                     <button 
                       type="button"
@@ -867,6 +1073,13 @@ T456 普拿疼 緩解疼痛
               )}
             </div>
             
+            {isAiSemanticLoading && (
+              <div className="flex items-center gap-3 text-purple-400 font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-3 bg-purple-500/5 rounded-xl border border-purple-500/10 mb-4">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                AI 正在進行語意分析與相關性比對中...
+              </div>
+            )}
+            
             {displayedMedications.length > 0 ? (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <AnimatePresence mode="popLayout" initial={false}>
@@ -881,7 +1094,7 @@ T456 普拿疼 緩解疼痛
                       exit={{ opacity: 0, y: -10 }}
                       onClick={() => setSelectedMed(med)}
                       className={cn(
-                        "group bg-white/[0.03] border border-white/[0.05] p-3.5 md:p-4 rounded-xl hover:bg-white/[0.06] hover:shadow-2xl cursor-pointer transition-all flex flex-col gap-3 items-start relative overflow-hidden backdrop-blur-sm",
+                        "group bg-transparent border border-white/[0.05] p-2.5 md:p-3 rounded-lg hover:bg-white/[0.04] hover:shadow-2xl cursor-pointer transition-all flex flex-col gap-1.5 items-start relative overflow-hidden",
                         dosageStyle.border,
                         (() => {
                           const dosageClass = med.code?.charAt(0)?.toUpperCase();
@@ -902,30 +1115,48 @@ T456 普拿疼 緩解疼痛
                       {/* Glow Decoration */}
                       <div className={cn("absolute top-0 left-0 bottom-0 w-1 opacity-40 blur-[10px] group-hover:opacity-70 transition-opacity", dosageStyle.glow)} />
                       
-                      <div className="flex gap-1 items-start w-full">
+                      <div className="flex gap-3 items-start w-full">
+                        <div className="flex flex-col items-center gap-1 shrink-0 mt-1">
+                          <div className={cn(
+                            "p-1.5 rounded-lg bg-white/5 group-hover:bg-brand-accent/10 transition-colors shrink-0",
+                            dosageStyle.text
+                          )}>
+                            <dosageStyle.icon className="w-4 h-4" />
+                          </div>
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between mb-1">
-                            <h3 className="text-base md:text-lg font-bold text-white group-hover:text-brand-accent transition-all truncate leading-snug flex items-center gap-3">
+                          <div className="flex items-center justify-between mb-0.5 gap-2">
+                            <h3 className="text-sm md:text-base font-bold text-white group-hover:text-brand-accent transition-all truncate leading-tight flex items-center gap-2">
+                              <span className="truncate">{med.component}</span>
                               <span className={cn(
-                                "inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest border border-white/10 shadow-sm uppercase shrink-0 relative overflow-hidden",
-                                "bg-white/5",
+                                "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-black tracking-tighter uppercase shrink-0 border border-white/20",
                                 dosageStyle.text
                               )}>
-                                <div className={cn("absolute inset-0 opacity-20 blur-[4px]", dosageStyle.glow)} />
-                                <span className="relative z-10">{med.code}</span>
+                                <span>{med.code}</span>
                               </span>
-                              <span className="truncate">{med.component}</span>
+                              {isAiSemanticEnabled && aiRecommendedCodes.includes(med.code) && (
+                                <span className="flex items-center gap-1 text-[7px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded border border-purple-500/30 font-black animate-pulse">
+                                  <Sparkles className="w-1.5 h-1.5" />
+                                  AI
+                                </span>
+                              )}
                             </h3>
-                            <ChevronRight className="w-4 h-4 text-brand-muted/30 group-hover:text-brand-accent group-hover:translate-x-1 transition-all shrink-0 mt-1" />
+                            <ChevronRight className="w-3.5 h-3.5 text-brand-muted/30 group-hover:text-brand-accent group-hover:translate-x-1 transition-all shrink-0" />
                           </div>
-                          <p className="text-xs md:text-sm text-zinc-400 mb-1 font-medium truncate tracking-tight">{med.genericName}</p>
-                          {med.chineseName && <p className="text-[10px] md:text-[11px] text-brand-muted mb-2.5 font-medium truncate opacity-60 leading-tight">{med.brandName} • {med.chineseName}</p>}
                           
-                          <div className="flex flex-wrap items-center gap-1.5 mt-auto">
-                            <span className="text-[8px] md:text-[9px] bg-white/5 px-2 py-0.5 rounded text-zinc-500 uppercase tracking-wider border border-white/5 font-bold">
-                              {med.anatomicalSystem}
-                            </span>
-                            <span className="text-[8px] md:text-[9px] bg-brand-accent/10 px-2 py-0.5 rounded text-brand-accent uppercase tracking-wider border border-brand-accent/20 font-bold">
+                          <div className="flex items-center gap-2 mb-1.5 overflow-hidden">
+                            <p className="text-[10px] md:text-[11px] text-zinc-400 font-medium truncate shrink-0">{med.brandName}</p>
+                            {med.chineseName && (
+                              <p className="text-[9px] md:text-[10px] text-zinc-500 truncate opacity-60">
+                                • {med.chineseName}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <span className="text-[9px] text-zinc-500 font-medium">{med.genericName}</span>
+                            <span className="w-1 h-1 rounded-full bg-zinc-800" />
+                            <span className="text-[9px] text-brand-accent/70 font-bold uppercase tracking-wider">
                               {med.pharmacologicalClass}
                             </span>
                           </div>
@@ -951,10 +1182,22 @@ T456 普拿疼 緩解疼痛
             </div>
             
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
-                <Search className="w-16 h-16 text-brand-muted mb-4 stroke-1" />
-                <h3 className="text-xl font-medium text-white">查無相關結果</h3>
-                <p className="text-brand-muted text-sm mt-1">請嘗試不同的診斷名、成分或藥品碼</p>
+              <div className="h-full flex flex-col items-center justify-center text-center py-20">
+                <Search className="w-16 h-16 text-brand-muted mb-4 stroke-[0.5]" />
+                <h3 className="text-xl font-medium text-white mb-2">查無相關結果</h3>
+                <p className="text-brand-muted text-sm mb-8">請嘗試不同的診斷名、成分或藥品碼</p>
+                
+                {!isAiSemanticEnabled && (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setIsAiSemanticEnabled(true)}
+                    className="flex items-center gap-3 px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs uppercase tracking-widest shadow-lg shadow-purple-500/20 group transition-all"
+                  >
+                    <Sparkles className="w-4 h-4 group-hover:animate-spin" />
+                    立即試用 AI 語意智尋
+                  </motion.button>
+                )}
               </div>
             )}
           </div>
