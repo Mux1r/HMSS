@@ -1,9 +1,10 @@
 import { get, set, del } from 'idb-keyval';
-import { INITIAL_MEDICATIONS } from '../data/medications';
 
 const STORAGE_KEY = 'hosp_medications_v2';
 const HASH_KEY = 'hosp_medications_hash';
 const SYNC_URL_KEY = 'gsheet_sync_url';
+
+const INITIAL_MEDICATIONS: any[] = [];
 
 export interface Medication {
   id: string;
