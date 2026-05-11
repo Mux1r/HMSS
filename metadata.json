@@ -1,5 +1,5 @@
 {
-  "name": "院內藥物搜尋系統 (Hospital Medication Search)",
+  "name": "HMSS",
   "description": "醫護人員專用的院內藥物查詢平台，支援藥碼、學名、商品名及機轉分類搜尋。",
   "requestFramePermissions": [],
   "majorCapabilities": []

@@ -1093,37 +1093,12 @@ T456 普拿疼 緩解疼痛
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       onClick={() => setSelectedMed(med)}
-                      className={cn(
-                        "group bg-transparent border border-white/[0.05] p-2.5 md:p-3 rounded-lg hover:bg-white/[0.04] hover:shadow-2xl cursor-pointer transition-all flex flex-col gap-1.5 items-start relative overflow-hidden",
-                        dosageStyle.border,
-                        (() => {
-                          const dosageClass = med.code?.charAt(0)?.toUpperCase();
-                          switch(dosageClass) {
-                            case 'E': return "hover:border-blue-500/50 hover:shadow-blue-500/5";
-                            case 'T': return "hover:border-orange-500/50 hover:shadow-orange-500/5";
-                            case 'I': return "hover:border-red-500/50 hover:shadow-red-500/5";
-                            case 'L': return "hover:border-teal-500/50 hover:shadow-teal-500/5";
-                            case 'O': return "hover:border-emerald-500/50 hover:shadow-emerald-500/5";
-                            case 'S': return "hover:border-amber-500/50 hover:shadow-amber-500/5";
-                            case 'Z': return "hover:border-zinc-500/50 hover:shadow-zinc-500/5";
-                            case 'V': return "hover:border-violet-500/50 hover:shadow-violet-500/5";
-                            default: return "hover:border-brand-accent/50 hover:shadow-brand-accent/5";
-                          }
-                        })()
-                      )}
+                      className="group bg-transparent border border-transparent p-3 md:p-3.5 rounded-xl hover:bg-white/[0.05] hover:shadow-2xl cursor-pointer transition-all flex flex-col gap-1.5 items-start relative overflow-hidden"
                     >
-                      {/* Glow Decoration */}
-                      <div className={cn("absolute top-0 left-0 bottom-0 w-1 opacity-40 blur-[10px] group-hover:opacity-70 transition-opacity", dosageStyle.glow)} />
+                      {/* Left Vertical Bar Decoration */}
+                      <div className={cn("absolute top-0 left-0 bottom-0 w-[1.5px] transition-all group-hover:w-[3px]", dosageStyle.glow)} />
                       
-                      <div className="flex gap-3 items-center w-full">
-                        <div className="flex flex-col items-center gap-1 shrink-0">
-                          <div className={cn(
-                            "p-1.5 rounded-lg bg-white/5 group-hover:bg-brand-accent/10 transition-colors shrink-0",
-                            dosageStyle.text
-                          )}>
-                            <dosageStyle.icon className="w-4 h-4" />
-                          </div>
-                        </div>
+                      <div className="flex gap-3 items-center w-full pl-2">
                         <div className="flex-1 min-w-0">
                           {/* Top Row: Code & Class */}
                           <div className="flex items-center gap-2 mb-1">
