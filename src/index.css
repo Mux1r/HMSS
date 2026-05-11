@@ -57,15 +57,41 @@
 
 @layer base {
   body {
-    @apply transition-colors duration-300;
+    @apply transition-[background-color,color,background-image,border-color] duration-500 ease-in-out;
     background-color: var(--bg-primary);
     background-image: var(--bg-gradient);
     color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  .theme-transitioning,
-  .theme-transitioning * {
-    transition: none !important;
+  header, 
+  aside, 
+  main, 
+  .glass-panel,
+  input,
+  button {
+    transition: background-color 500ms cubic-bezier(0.2, 0.8, 0.2, 1), 
+                border-color 500ms cubic-bezier(0.2, 0.8, 0.2, 1), 
+                color 500ms cubic-bezier(0.2, 0.8, 0.2, 1), 
+                box-shadow 500ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: background-color, border-color, color, box-shadow;
+  }
+
+  .medication-card, 
+  [layout],
+  .motion-div {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
+
+  .medication-card:hover,
+  button:hover {
+    transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1), 
+                box-shadow 300ms ease-out, 
+                background-color 300ms ease-out !important;
+    will-change: transform, box-shadow;
   }
 
   * {

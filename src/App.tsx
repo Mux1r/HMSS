@@ -148,6 +148,51 @@ export default function App() {
     return 'dark';
   });
 
+  // --- Browser Back Button & Navigation Sync ---
+  const isNavigatingRef = useRef(false);
+
+  useEffect(() => {
+    const handlePopState = (event: any) => {
+      isNavigatingRef.current = true;
+      // When user goes back, we reset states
+      if (selectedMed) setSelectedMed(null);
+      else if (isAiMode) setIsAiMode(false);
+      
+      // Allow next state change to be tracked
+      setTimeout(() => { isNavigatingRef.current = false; }, 50);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [selectedMed, isAiMode]);
+
+  // Sync state changes to browser history
+  useEffect(() => {
+    if (selectedMed && !isNavigatingRef.current) {
+      window.history.pushState({ type: 'med', id: selectedMed.id }, '');
+    }
+  }, [selectedMed]);
+
+  useEffect(() => {
+    if (isAiMode && !isNavigatingRef.current) {
+      window.history.pushState({ type: 'ai' }, '');
+    }
+  }, [isAiMode]);
+
+  // Manual close handlers that stay in sync with history
+  const closeDetail = () => {
+    if (selectedMed) {
+      window.history.back();
+    }
+  };
+
+  const exitAiMode = () => {
+    if (isAiMode) {
+      window.history.back();
+    }
+  };
+  // -----------------------------------
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
@@ -631,15 +676,11 @@ T456 普拿疼 緩解疼痛
                   left: isAiMode ? "calc(50% + 2px)" : "4px",
                   width: "calc(50% - 6px)"
                 }}
-                transition={{ type: "spring", bounce: 0.1, duration: 0.7 }}
+                transition={{ type: "spring", bounce: 0.1, duration: 0.6 }}
               />
 
             <button
-              onClick={() => {
-                setIsAiMode(false);
-                setAiResponse(null);
-                setAiQuery('');
-              }}
+              onClick={exitAiMode}
               className={cn(
                 "relative z-10 flex-1 py-2 text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2",
                 !isAiMode ? "text-white" : "text-zinc-500 hover:text-zinc-300"
@@ -673,13 +714,7 @@ T456 普拿疼 緩解疼痛
         <div className="flex items-center gap-3 md:gap-4">
           {/* Theme Toggle */}
           <button
-            onClick={() => {
-              document.documentElement.classList.add('theme-transitioning');
-              setTheme(theme === 'dark' ? 'light' : 'dark');
-              setTimeout(() => {
-                document.documentElement.classList.remove('theme-transitioning');
-              }, 10);
-            }}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             className={cn(
               "h-10 w-10 rounded-xl border transition-all duration-300 flex items-center justify-center",
               theme === 'dark'
@@ -739,7 +774,7 @@ T456 普拿疼 緩解疼痛
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.7 }}
+                transition={{ ease: [0.2, 0.8, 0.2, 1], duration: 0.5 }}
                 className="flex-1 flex flex-col overflow-hidden"
               >
                 {/* Top Search & Filter Toolbar */}
@@ -1165,8 +1200,8 @@ T456 普拿疼 緩解疼痛
                       transition={{ 
                         type: "spring", 
                         bounce: 0, 
-                        duration: 0.5,
-                        layout: { type: "spring", bounce: 0.1, duration: 0.7 }
+                        duration: 0.4,
+                        layout: { type: "spring", bounce: 0.1, duration: 0.6 }
                       }}
                       onClick={() => setSelectedMed(med)}
                       className={cn(
@@ -1271,7 +1306,7 @@ T456 普拿疼 緩解疼痛
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
-                transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.7 }}
+                transition={{ ease: [0.2, 0.8, 0.2, 1], duration: 0.5 }}
                 className="flex-1 flex flex-col overflow-hidden p-4 md:p-8"
               >
                 <div className="max-w-4xl mx-auto w-full flex flex-col h-full gap-6">
@@ -1531,7 +1566,7 @@ T456 普拿疼 緩解疼痛
               initial={{ x: '100%', opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 30, stiffness: 250, mass: 1 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 220, mass: 1 }}
               className={cn(
                 "hidden md:flex flex-col border-l relative z-[60] overflow-hidden bg-brand-sidebar shadow-2xl shrink-0 w-[400px] lg:w-[480px]",
                 theme === 'dark' ? "border-white/10" : "border-slate-200"
@@ -1549,7 +1584,7 @@ T456 普拿疼 緩解疼痛
                     Data Sheet <span className={theme === 'dark' ? "text-zinc-700" : "text-slate-300 mx-1 font-normal"}>/</span> <span className={cn("transition-colors", getDosageColor(selectedMed.code).text)}>藥物詳情</span></h2>
                 </div>
                 <button 
-                  onClick={() => setSelectedMed(null)}
+                  onClick={closeDetail}
                   className={cn(
                     "p-1 px-2 rounded-md transition-all border flex items-center gap-2",
                     theme === 'dark' 
@@ -1693,7 +1728,7 @@ T456 普拿疼 緩解疼痛
                 className="fixed inset-0 z-[100]"
               >
                 <div 
-                  onClick={() => setSelectedMed(null)}
+                  onClick={closeDetail}
                   className={cn(
                     "absolute inset-0 backdrop-blur-md bg-black/60"
                   )}
@@ -1714,7 +1749,7 @@ T456 普拿疼 緩解疼痛
                        <div className={cn("px-2 py-0.5 rounded border text-xs font-mono", getDosageColor(selectedMed.code).bg, getDosageColor(selectedMed.code).text, getDosageColor(selectedMed.code).borderMain)}>
                           {selectedMed.code}
                        </div>
-                       <button onClick={() => setSelectedMed(null)} className="p-2 -mr-2"><X className="w-5 h-5 text-zinc-500" /></button>
+                       <button onClick={closeDetail} className="p-2 -mr-2"><X className="w-5 h-5 text-zinc-500" /></button>
                     </div>
                     <div className="space-y-1">
                       <h1 className={cn("text-xl font-bold", theme === 'dark' ? "text-white" : "text-slate-900")}>{selectedMed.component}</h1>
