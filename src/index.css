@@ -35,6 +35,8 @@
   --text-primary: #FFFFFF;
   --text-secondary: #A1A1AA;
   --text-muted: #71717A;
+  --bg-gradient: linear-gradient(135deg, #1F2232 0%, #0D0E16 50%, #030305 100%);
+  --input-bg: rgba(0, 0, 0, 0.9);
 }
 
 [data-theme="light"] {
@@ -49,14 +51,23 @@
   --text-primary: #0F172A;
   --text-secondary: #475569;
   --text-muted: #94A3B8;
+  --bg-gradient: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 50%, #FFFFFF 100%);
+  --input-bg: rgba(255, 255, 255, 0.9);
 }
 
 @layer base {
   body {
     @apply transition-colors duration-300;
-    background-color: var(--color-brand-bg);
+    background-color: var(--bg-primary);
+    background-image: var(--bg-gradient);
     color: var(--text-primary);
   }
+
+  .theme-transitioning,
+  .theme-transitioning * {
+    transition: none !important;
+  }
+
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--color-brand-border) transparent;

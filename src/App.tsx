@@ -112,7 +112,7 @@ export default function App() {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const [displayLimit, setDisplayLimit] = useState(40);
+  const [displayLimit, setDisplayLimit] = useState(100);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [selectedSystem, setSelectedSystem] = useState('全部系統');
   const [selectedClass, setSelectedClass] = useState('全部藥理');
@@ -128,7 +128,6 @@ export default function App() {
   const [isClassOpen, setIsClassOpen] = useState(false);
   const [isDosageFormOpen, setIsDosageFormOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
 
   // AI Mode States
@@ -176,12 +175,6 @@ export default function App() {
       shouldSort: true
     });
   }, [medications]);
-
-  // Suggestions based on search query
-  const suggestions = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    return fuse.search(searchQuery).slice(0, 6).map(result => result.item);
-  }, [fuse, searchQuery]);
 
   // Remove global click listener in favor of local onBlur for better focus management
   useEffect(() => {
@@ -418,7 +411,7 @@ T456 普拿疼 緩解疼痛
 
   // Reset display limit when filters change
   useEffect(() => {
-    setDisplayLimit(40);
+    setDisplayLimit(100);
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
@@ -575,12 +568,7 @@ T456 普拿疼 緩解疼痛
   }
 
   return (
-    <div className={cn(
-      "h-screen font-sans flex flex-col overflow-hidden relative transition-colors duration-500",
-      theme === 'dark' 
-        ? "bg-gradient-to-br from-[#1F2232] via-[#0D0E16] to-[#030305] text-zinc-400" 
-        : "bg-gradient-to-br from-slate-50 via-[#F8FAFC] to-white text-slate-600"
-    )}>
+    <div className="h-screen font-sans flex flex-col overflow-hidden relative">
       {/* Enhanced Background Glows for Glass Visibility */}
       <div className={cn(
         "absolute top-[-5%] right-[-5%] w-[50%] h-[50%] blur-[140px] rounded-full pointer-events-none z-0 animate-pulse",
@@ -618,7 +606,7 @@ T456 普拿疼 緩解疼痛
         isAiMode 
           ? "border-purple-500/20 bg-brand-header/40 backdrop-blur-3xl shadow-purple-500/5" 
           : cn(
-              "backdrop-blur-3xl transition-colors duration-500",
+              "backdrop-blur-3xl",
               theme === 'dark' 
                 ? "border-white/5 bg-brand-header/30 shadow-black/50" 
                 : "border-slate-200 bg-white/70 shadow-slate-200/50"
@@ -631,21 +619,21 @@ T456 普拿疼 緩解疼痛
             theme === 'dark' ? "bg-white/5 border-white/10" : "bg-slate-100 border-slate-200"
           )}>
             {/* Sliding background */}
-            <motion.div
-              layoutId="activeTab"
-              className={cn(
-                "absolute h-[calc(100%-8px)] rounded-lg shadow-lg z-0",
-                isAiMode 
-                  ? "bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500" 
-                  : "bg-gradient-to-r from-[#3187BD] to-[#66D99B]"
-              )}
-              initial={false}
-              animate={{
-                left: isAiMode ? "calc(50% + 2px)" : "4px",
-                width: "calc(50% - 6px)"
-              }}
-              transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-            />
+              <motion.div
+                layoutId="activeTab"
+                className={cn(
+                  "absolute h-[calc(100%-8px)] rounded-lg shadow-lg z-0",
+                  isAiMode 
+                    ? "bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500" 
+                    : "bg-gradient-to-r from-[#3187BD] to-[#66D99B]"
+                )}
+                initial={false}
+                animate={{
+                  left: isAiMode ? "calc(50% + 2px)" : "4px",
+                  width: "calc(50% - 6px)"
+                }}
+                transition={{ type: "spring", bounce: 0.1, duration: 0.7 }}
+              />
 
             <button
               onClick={() => {
@@ -686,7 +674,13 @@ T456 普拿疼 緩解疼痛
         <div className="flex items-center gap-3 md:gap-4">
           {/* Theme Toggle */}
           <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            onClick={() => {
+              document.documentElement.classList.add('theme-transitioning');
+              setTheme(theme === 'dark' ? 'light' : 'dark');
+              setTimeout(() => {
+                document.documentElement.classList.remove('theme-transitioning');
+              }, 10);
+            }}
             className={cn(
               "h-10 w-10 rounded-xl border transition-all duration-300 flex items-center justify-center",
               theme === 'dark'
@@ -743,10 +737,10 @@ T456 普拿疼 緩解疼痛
             {!isAiMode ? (
               <motion.div 
                 key="standard-mode"
-                initial={{ opacity: 0, x: -50 }}
+                initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -50 }}
-                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.7 }}
                 className="flex-1 flex flex-col overflow-hidden"
               >
                 {/* Top Search & Filter Toolbar */}
@@ -756,7 +750,6 @@ T456 普拿疼 緩解疼痛
               <form 
                 onSubmit={(e) => {
                   e.preventDefault();
-                  setShowSuggestions(false);
                   const input = e.currentTarget.querySelector('input');
                   if (input) input.blur();
                 }}
@@ -775,19 +768,12 @@ T456 普拿疼 緩解疼痛
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
-                    setShowSuggestions(true);
                   }}
                   onFocus={() => {
                     setSearchFocused(true);
-                    setShowSuggestions(true);
-                  }}
-                  onBlur={() => {
-                    // Small delay to allow clicking suggestions
-                    setTimeout(() => setShowSuggestions(false), 200);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      setShowSuggestions(false);
                       (e.target as HTMLInputElement).blur();
                     }
                   }}
@@ -799,66 +785,6 @@ T456 普拿疼 緩解疼痛
                   )}
                 />
                 
-                {/* Search Suggestions Dropdown */}
-                <AnimatePresence>
-                  {showSuggestions && searchQuery.trim() && suggestions.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 5 }}
-                      className={cn(
-                        "absolute top-full left-0 right-0 mt-2 border rounded-xl shadow-2xl z-[120] overflow-hidden backdrop-blur-3xl",
-                        theme === 'dark' ? "bg-brand-sidebar border-white/10" : "bg-white border-slate-200"
-                      )}
-                    >
-                      <div className="p-2 flex flex-col gap-1">
-                        <div className="px-3 py-1 flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-brand-accent uppercase tracking-widest">建議匹配</span>
-                          <span className="text-[9px] text-zinc-500">{suggestions.length} 筆建議</span>
-                        </div>
-                        {suggestions.map((med) => (
-                          <button
-                            key={`suggest-${med.id}`}
-                            type="button"
-                            onClick={() => {
-                              setSelectedMed(med);
-                              setSearchQuery(med.component);
-                              setShowSuggestions(false);
-                            }}
-                            className={cn(
-                              "w-full text-left px-3 py-2.5 rounded-lg transition-all group flex items-start gap-3",
-                              theme === 'dark' ? "hover:bg-white/5" : "hover:bg-slate-50"
-                            )}
-                          >
-                            <div className={cn(
-                              "mt-0.5 p-1 rounded transition-colors",
-                              theme === 'dark' ? "bg-white/5 group-hover:bg-brand-accent/10" : "bg-slate-100 group-hover:bg-brand-accent/20",
-                              getDosageColor(med.code).text
-                            )}>
-                              <Pill className="w-3.5 h-3.5" />
-                            </div>
-                            <div className="flex-1 truncate">
-                              <div className="flex items-center gap-2">
-                                <span className={cn(
-                                  "text-xs font-bold transition-colors",
-                                  theme === 'dark' ? "text-white group-hover:text-brand-accent" : "text-slate-800 group-hover:text-brand-accent"
-                                )}>{med.component}</span>
-                                <span className={cn(
-                                  "text-[8px] font-black uppercase px-1 rounded border",
-                                  theme === 'dark' ? "border-white/10" : "border-slate-200",
-                                  getDosageColor(med.code).text
-                                )}>{med.code}</span>
-                              </div>
-                              <div className="text-[10px] text-zinc-500 truncate leading-tight mt-0.5">
-                                {med.brandName} {med.chineseName && `• ${med.chineseName}`}
-                              </div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                   <button
                     type="button"
@@ -935,9 +861,10 @@ T456 普拿疼 緩解疼痛
                   {showFilters && (
                     <motion.div 
                       key="filter-popover"
-                      initial={{ opacity: 0, y: 12, scale: 0.95 }}
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 12, scale: 0.95 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.5 }}
                       className={cn(
                         "absolute top-full right-0 mt-3 w-80 backdrop-blur-3xl border rounded-2xl shadow-2xl z-[100] p-4 flex flex-col gap-4",
                         theme === 'dark' 
@@ -992,9 +919,10 @@ T456 普拿疼 緩解疼痛
                               {isSystemOpen && (
                                 <motion.div 
                                   key="system-dropdown"
-                                  initial={{ opacity: 0, y: 5 }}
+                                  initial={{ opacity: 0, y: 4 }}
                                   animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: 5 }}
+                                  exit={{ opacity: 0, y: 4 }}
+                                  transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.4 }}
                                   className={cn(
                                     "absolute top-full left-0 right-0 mt-1 border rounded-xl shadow-2xl z-[110] max-h-60 overflow-y-auto p-1",
                                     theme === 'dark' ? "bg-brand-header border-white/10" : "bg-white border-slate-200"
@@ -1062,9 +990,10 @@ T456 普拿疼 緩解疼痛
                               {isDosageFormOpen && (
                                 <motion.div 
                                   key="dosage-dropdown"
-                                  initial={{ opacity: 0, y: 5 }}
+                                  initial={{ opacity: 0, y: 4 }}
                                   animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: 5 }}
+                                  exit={{ opacity: 0, y: 4 }}
+                                  transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.4 }}
                                   className={cn(
                                     "absolute top-full left-0 right-0 mt-1 border rounded-xl shadow-2xl z-[110] max-h-60 overflow-y-auto p-1",
                                     theme === 'dark' ? "bg-brand-header border-white/10" : "bg-white border-slate-200"
@@ -1131,9 +1060,10 @@ T456 普拿疼 緩解疼痛
                               {isClassOpen && (
                                 <motion.div 
                                   key="class-dropdown"
-                                  initial={{ opacity: 0, y: 5 }}
+                                  initial={{ opacity: 0, y: 4 }}
                                   animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: 5 }}
+                                  exit={{ opacity: 0, y: 4 }}
+                                  transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.4 }}
                                   className={cn(
                                     "absolute top-full left-0 right-0 mt-1 border rounded-xl shadow-2xl z-[110] max-h-60 overflow-y-auto p-1",
                                     theme === 'dark' ? "bg-brand-header border-white/10" : "bg-white border-slate-200"
@@ -1192,7 +1122,7 @@ T456 普拿疼 緩解疼痛
               const target = e.currentTarget;
               if (target.scrollHeight - target.scrollTop - target.clientHeight < 200) {
                 if (displayLimit < filteredMedications.length) {
-                  setDisplayLimit(prev => prev + 40);
+                  setDisplayLimit(prev => prev + 100);
                 }
               }
             }}
@@ -1222,87 +1152,77 @@ T456 普拿疼 緩解疼痛
             )}
             
             {displayedMedications.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3">
               <AnimatePresence mode="popLayout" initial={false}>
                 {displayedMedications.map((med) => {
                   const dosageStyle = getDosageColor(med.code);
                   return (
                     <motion.div
                       key={med.id}
-                      layout
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
+                      layout="position"
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                      transition={{ 
+                        type: "spring", 
+                        bounce: 0, 
+                        duration: 0.5,
+                        layout: { type: "spring", bounce: 0.1, duration: 0.7 }
+                      }}
                       onClick={() => setSelectedMed(med)}
                       className={cn(
-                        "group bg-transparent border border-transparent p-3 md:p-3.5 rounded-xl transition-all flex flex-col gap-1.5 items-start relative overflow-hidden",
+                        "medication-card group bg-transparent border border-transparent p-2 md:p-2.5 rounded-xl transition-all flex flex-col gap-1 items-start relative overflow-hidden",
                         theme === 'dark' 
                           ? "hover:bg-white/[0.05] hover:shadow-2xl cursor-pointer" 
                           : "hover:bg-white hover:shadow-xl hover:shadow-slate-200/60 cursor-pointer"
                       )}
                     >
                       {/* Left Vertical Bar Decoration */}
-                      <div className={cn("absolute top-0 left-0 bottom-0 w-[1.5px] transition-all group-hover:w-[3px]", dosageStyle.glow)} />
+                      <div className={cn("absolute top-0 left-0 bottom-0 w-[1px] transition-[width] group-hover:w-[2px]", dosageStyle.glow)} />
                       
-                      <div className="flex gap-3 items-center w-full pl-2">
+                      <div className="flex gap-2 items-start w-full pl-1.5">
                         <div className="flex-1 min-w-0">
                           {/* Top Row: Code & Class */}
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 mb-1">
                             <span className={cn(
-                              "inline-flex items-center px-2 py-[1px] rounded text-[8px] font-black tracking-widest uppercase shrink-0 border",
+                              "inline-flex items-center px-1.5 py-[0.5px] rounded text-[7px] font-black tracking-widest uppercase shrink-0 border",
                               theme === 'dark' ? "border-white/20" : "border-slate-200",
                               dosageStyle.text
                             )}>
                               <span>{med.code}</span>
                             </span>
-                            <div className={cn("w-1 h-1 rounded-full", theme === 'dark' ? "bg-white/10" : "bg-slate-200")} />
                             <span className={cn(
-                              "text-[9px] font-bold uppercase tracking-wider truncate",
+                              "text-[8px] font-bold uppercase tracking-wider truncate opacity-60",
                               theme === 'dark' ? "text-brand-accent/60" : "text-brand-accent/80"
                             )}>
                               {med.pharmacologicalClass}
                             </span>
                           </div>
 
-                          <div className="flex items-center justify-between mb-0.5 gap-2">
+                          <div className="flex items-center justify-between mb-0.5 gap-1.5">
                             <h3 className={cn(
-                              "text-sm md:text-base font-bold transition-all truncate leading-tight flex items-center gap-2",
+                              "text-xs md:text-sm font-bold transition-colors truncate leading-tight flex items-center gap-1.5",
                               theme === 'dark' ? "text-white group-hover:text-brand-accent" : "text-slate-800 group-hover:text-brand-accent"
                             )}>
                               <span className="truncate">{med.component}</span>
                               {isAiSemanticEnabled && aiRecommendedCodes.includes(med.code) && (
                                 <span className={cn(
-                                  "flex items-center gap-1 text-[7px] px-1 py-0.5 rounded border font-black animate-pulse",
+                                  "flex items-center gap-0.5 text-[6px] px-1 py-0.5 rounded border font-black animate-pulse",
                                   theme === 'dark' ? "bg-purple-500/20 text-purple-400 border-purple-500/30" : "bg-purple-100 text-purple-600 border-purple-200"
                                 )}>
-                                  <Sparkles className="w-1.5 h-1.5" />
                                   AI
                                 </span>
                               )}
                             </h3>
-                            <ChevronRight className="w-3.5 h-3.5 text-brand-muted/30 group-hover:text-brand-accent group-hover:translate-x-1 transition-all shrink-0" />
                           </div>
                           
-                          <div className="flex items-center gap-2 mb-1.5 overflow-hidden">
-                            <p className={cn(
-                              "text-[10px] md:text-[11px] font-medium truncate shrink-0",
-                              theme === 'dark' ? "text-zinc-400" : "text-slate-600"
-                            )}>{med.brandName}</p>
-                            {med.chineseName && (
-                              <p className={cn(
-                                "text-[9px] md:text-[10px] truncate opacity-60",
-                                theme === 'dark' ? "text-zinc-50" : "text-slate-400"
-                              )}>
-                                • {med.chineseName}
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="flex flex-col gap-1 mt-1">
+                          <div className="flex flex-col gap-0.5">
                             <span className={cn(
-                              "text-[9px] font-medium",
-                              theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                            )}>{med.genericName}</span>
+                              "text-[8px] font-medium truncate opacity-70",
+                              theme === 'dark' ? "text-zinc-500" : "text-slate-500"
+                            )}>
+                              {med.genericName} {med.chineseName && `• ${med.chineseName}`}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -1349,10 +1269,10 @@ T456 普拿疼 緩解疼痛
             ) : (
               <motion.div 
                 key="ai-mode"
-                initial={{ opacity: 0, x: 50 }}
+                initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 50 }}
-                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.7 }}
                 className="flex-1 flex flex-col overflow-hidden p-4 md:p-8"
               >
                 <div className="max-w-4xl mx-auto w-full flex flex-col h-full gap-6">
@@ -1398,8 +1318,9 @@ T456 普拿疼 緩解疼痛
                       {/* Loading State with Question Bubble */}
                       {isAiLoading && (
                         <motion.div 
-                          initial={{ opacity: 0, y: 10 }}
+                          initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
+                          transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.5 }}
                           className="space-y-4"
                         >
                           <div className="flex items-start gap-3">
@@ -1458,8 +1379,9 @@ T456 普拿疼 緩解疼痛
                             {aiHistory.map((item, hIdx) => (
                               <motion.div 
                                 key={`history-${item.timestamp}`} 
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
+                                initial={{ opacity: 0, scale: 0.99 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.6 }}
                                 className="space-y-4"
                               >
                                 {/* User Question */}
@@ -1611,6 +1533,7 @@ T456 普拿疼 緩解疼痛
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: "linear" }}
             className="fixed inset-0 z-[60]"
           >
             <div 
@@ -1620,12 +1543,13 @@ T456 普拿疼 緩解疼痛
                 theme === 'dark' ? "bg-black/80" : "bg-slate-900/40"
               )}
             />
-            <motion.div 
+            <motion.div
+              layoutId="detail-panel"
               key="detail-panel"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              initial={{ x: '100%', opacity: 0.5 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: '100%', opacity: 0.5 }}
+              transition={{ type: 'spring', damping: 35, stiffness: 280, mass: 1 }}
               className={cn(
                 "absolute inset-y-0 right-0 w-full max-w-2xl border-l shadow-[0_0_80px_rgba(0,0,0,0.5)] z-[70] overflow-hidden flex flex-col",
                 theme === 'dark' 
