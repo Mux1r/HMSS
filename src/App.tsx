@@ -1216,7 +1216,10 @@ T456 普拿疼 緩解疼痛
 
           <div 
             ref={scrollContainerRef}
-            className="flex-1 pt-20 md:pt-24 p-3 md:p-5 overflow-y-auto custom-scrollbar bg-gradient-to-b from-white/[0.02] to-transparent"
+            className={cn(
+              "flex-1 pt-20 md:pt-24 p-3 md:p-5 overflow-y-auto custom-scrollbar bg-gradient-to-b from-white/[0.02] to-transparent transition-all duration-500",
+              selectedMed ? "pb-[40vh] md:pb-5" : "pb-5"
+            )}
             onScroll={(e) => {
               const target = e.currentTarget;
               if (target.scrollHeight - target.scrollTop - target.clientHeight < 200) {
@@ -1405,7 +1408,10 @@ T456 普拿疼 緩解疼痛
                         </div>
 
                         {/* Content Area */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar pt-20 md:pt-24 pb-8 px-4 md:px-8">
+                        <div className={cn(
+                          "flex-1 overflow-y-auto custom-scrollbar pt-20 md:pt-24 px-4 md:px-8 transition-all duration-500",
+                          selectedMed ? "pb-[40vh] md:pb-8" : "pb-8"
+                        )}>
                           {aiHistory.length === 0 && !isAiLoading && (
                             <div className="h-full flex flex-col items-center justify-center text-center opacity-30 py-20">
                               <Database className="w-12 h-12 mb-4 stroke-1" />
@@ -1781,67 +1787,68 @@ T456 普拿疼 緩解疼痛
           )}
         </AnimatePresence>
 
-        {/* Mobile Detail Overlay - Keep as modal for mobile */}
+        {/* Mobile Detail Panel - Persistent 1/3 bottom sheet */}
         <AnimatePresence>
           {selectedMed && (
-            <div className="md:hidden">
-               <motion.div
-                key="mobile-modal"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[100]"
-              >
-                <div 
-                  onClick={closeDetail}
-                  className={cn(
-                    "absolute inset-0 backdrop-blur-md bg-black/60"
-                  )}
-                />
-                <motion.div
-                  initial={{ y: '100%' }}
-                  animate={{ y: 0 }}
-                  exit={{ y: '100%' }}
-                  transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                  className={cn(
-                    "absolute inset-x-0 bottom-0 h-[80vh] rounded-t-3xl border-t z-[110] overflow-hidden flex flex-col",
-                    theme === 'dark' ? "bg-brand-sidebar border-white/10" : "bg-white border-slate-200"
-                  )}
-                >
-                  <div className="w-12 h-1 bg-zinc-700 rounded-full mx-auto my-4 opacity-50" />
-                  <div className="flex-1 overflow-y-auto p-6 pt-0 space-y-6">
-                    <div className="flex justify-between items-start">
-                       <div className={cn("px-2 py-0.5 rounded border text-xs font-mono", getDosageColor(selectedMed.code).bg, getDosageColor(selectedMed.code).text, getDosageColor(selectedMed.code).borderMain)}>
-                          {selectedMed.code}
-                       </div>
-                       <button onClick={closeDetail} className="p-2 -mr-2"><X className="w-5 h-5 text-zinc-500" /></button>
-                    </div>
-                    <div className="space-y-1">
-                      <h1 className={cn("text-xl font-bold", theme === 'dark' ? "text-white" : "text-slate-900")}>{selectedMed.component}</h1>
-                      <p className={cn("text-sm", getDosageColor(selectedMed.code).accent)}>{selectedMed.genericName}</p>
-                    </div>
-                    <div className="space-y-4">
-                       <p className={cn("text-sm", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>{selectedMed.brandName}</p>
-                       <div className="grid grid-cols-2 gap-3">
-                          <div className="p-3 rounded-xl bg-white/5 border border-white/5">
-                             <span className="block text-[10px] text-zinc-500 uppercase">系統</span>
-                             <span className="text-xs text-zinc-300">{selectedMed.anatomicalSystem}</span>
-                          </div>
-                          <div className="p-3 rounded-xl bg-white/5 border border-white/5">
-                             <span className="block text-[10px] text-zinc-500 uppercase">藥理</span>
-                             <span className="text-xs text-zinc-300">{selectedMed.pharmacologicalClass}</span>
-                          </div>
-                       </div>
-                       {selectedMed.indications && (
-                         <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-sm text-zinc-400 leading-relaxed">
-                            {selectedMed.indications}
-                         </div>
-                       )}
-                    </div>
-                  </div>
-                </motion.div>
-              </motion.div>
-            </div>
+            <motion.div
+              key="mobile-panel"
+              initial={{ y: '100%', opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+              className={cn(
+                "md:hidden fixed inset-x-0 bottom-0 h-[38vh] border-t z-[100] overflow-hidden flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.3)]",
+                theme === 'dark' ? "bg-brand-sidebar border-white/10" : "bg-white border-slate-200"
+              )}
+            >
+              <div className={cn(
+                "w-12 h-1 rounded-full mx-auto my-3 shrink-0",
+                theme === 'dark' ? "bg-zinc-700/50" : "bg-slate-200"
+              )} />
+              <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-5 scrollbar-none">
+                <div className="flex justify-between items-start sticky top-0 bg-inherit pt-1 pb-2 z-10">
+                   <div className={cn("px-2 py-0.5 rounded border text-[10px] font-mono", getDosageColor(selectedMed.code).bg, getDosageColor(selectedMed.code).text, getDosageColor(selectedMed.code).borderMain)}>
+                      {selectedMed.code}
+                   </div>
+                   <button onClick={closeDetail} className="p-1 -mr-2 opacity-60 hover:opacity-100 transition-opacity"><X className="w-5 h-5 text-zinc-500" /></button>
+                </div>
+                
+                <div className="space-y-1">
+                  <h1 className={cn("text-lg font-bold leading-tight", theme === 'dark' ? "text-white" : "text-slate-900")}>{selectedMed.component}</h1>
+                  <p className={cn("text-xs font-medium", getDosageColor(selectedMed.code).accent)}>{selectedMed.genericName}</p>
+                </div>
+
+                <div className="space-y-4">
+                   <div className="flex flex-col gap-0.5 border-l-2 pl-3" style={{ borderColor: getDosageColor(selectedMed.code).borderMain.split('-').slice(1).join('-') === 'border-white/20' ? 'rgba(255,255,255,0.1)' : undefined }}>
+                      <p className={cn("text-xs", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>{selectedMed.brandName}</p>
+                      {selectedMed.chineseName && <p className={cn("text-[10px]", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>{selectedMed.chineseName}</p>}
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-3">
+                      <div className={cn("p-2.5 rounded-xl border", theme === 'dark' ? "bg-white/[0.02] border-white/5" : "bg-slate-50 border-slate-100")}>
+                         <span className={cn("block text-[8px] uppercase tracking-wider mb-1", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>System</span>
+                         <span className={cn("text-[10px] font-medium block leading-tight", theme === 'dark' ? "text-zinc-300" : "text-slate-700")}>{selectedMed.anatomicalSystem}</span>
+                      </div>
+                      <div className={cn("p-2.5 rounded-xl border", theme === 'dark' ? "bg-white/[0.02] border-white/5" : "bg-slate-50 border-slate-100")}>
+                         <span className={cn("block text-[8px] uppercase tracking-wider mb-1", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>Class</span>
+                         <span className={cn("text-[10px] font-medium block leading-tight", theme === 'dark' ? "text-zinc-300" : "text-slate-700")}>{selectedMed.pharmacologicalClass}</span>
+                      </div>
+                   </div>
+
+                   {selectedMed.indications && (
+                     <div className={cn("p-3 rounded-xl border text-[11px] leading-relaxed", theme === 'dark' ? "bg-white/[0.02] border-white/5 text-zinc-400" : "bg-slate-50 border-slate-100 text-slate-600")}>
+                        {selectedMed.indications}
+                     </div>
+                   )}
+
+                   <div className="flex flex-wrap gap-2 pt-2">
+                     {selectedMed.searchKeywords.slice(0, 5).map((k, i) => (
+                       <button key={i} onClick={() => setSearchQuery(k)} className={cn("px-2 py-1 rounded text-[9px] font-mono border", theme === 'dark' ? "bg-white/5 border-white/10 text-zinc-500" : "bg-slate-50 border-slate-100 text-slate-400")}>{k}</button>
+                     ))}
+                   </div>
+                </div>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
