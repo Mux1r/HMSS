@@ -122,4 +122,8 @@
     background: rgba(16, 185, 129, 0.2);
     color: #10B981;
   }
+
+  .vertical-text {
+    writing-mode: vertical-rl;
+  }
 }

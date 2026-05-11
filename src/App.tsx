@@ -40,7 +40,8 @@ import {
   ArrowDownToDot,
   Container,
   Sun,
-  Moon
+  Moon,
+  Settings
 } from 'lucide-react';
 
 const getMedicationIcon = (code: string) => {
@@ -123,12 +124,12 @@ export default function App() {
   const [gsheetUrl, setGsheetUrl] = useState('https://script.google.com/macros/s/AKfycbxotfbc6-KsIn-_RoltpZl_vQhjUNDN-UrU9pWIARSCnWUCn_9iZ60J46zwr3b6laKBBw/exec');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isSystemOpen, setIsSystemOpen] = useState(false);
   const [isClassOpen, setIsClassOpen] = useState(false);
   const [isDosageFormOpen, setIsDosageFormOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // AI Mode States
   const [isAiMode, setIsAiMode] = useState(false);
@@ -448,17 +449,6 @@ T456 普拿疼 緩解疼痛
     }
   };
 
-  const handleReset = async () => {
-    setLoading(true);
-    const resetData = await localMedicationService.reset();
-    setMedications([...resetData]); 
-    setGsheetUrl('https://script.google.com/macros/s/AKfycbxotfbc6-KsIn-_RoltpZl_vQhjUNDN-UrU9pWIARSCnWUCn_9iZ60J46zwr3b6laKBBw/exec');
-    setShowResetConfirm(false);
-    setLoading(false);
-    setImportStatus('資料庫已重置為預設值');
-    setTimeout(() => setImportStatus(null), 3000);
-  };
-
   const anatomicalSystems = useMemo(() => {
     const systems = new Set(medications.map(m => m.anatomicalSystem));
     return ['全部系統', ...Array.from(systems).sort()];
@@ -678,6 +668,167 @@ T456 普拿疼 緩解疼痛
 
   return (
     <div className="h-screen font-sans flex flex-col overflow-hidden relative">
+      {/* Settings Sidebar Overlay */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+              onClick={() => setIsSettingsOpen(false)}
+              className="fixed inset-0 bg-transparent z-[100]"
+            />
+            <motion.div
+              initial={{ x: '-105%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-105%' }}
+              transition={{ 
+                type: 'spring', 
+                damping: 32, 
+                stiffness: 280,
+                mass: 0.8,
+                restDelta: 0.001
+              }}
+              className={cn(
+                "fixed inset-y-0 left-0 w-40 z-[110] shadow-2xl flex flex-col",
+                theme === 'dark' 
+                  ? "bg-zinc-950/30 border-r border-white/10 text-white backdrop-blur-md" 
+                  : "bg-white/30 border-r border-slate-200 text-slate-900 backdrop-blur-md"
+              )}
+            >
+              {/* Header: Identity */}
+              <div className="p-4 pt-10 pb-6 border-b border-inherit">
+                <div className="flex flex-col items-center gap-4 text-center">
+                  <div>
+                    <h2 className="text-sm font-bold tracking-tight">控制中心</h2>
+                    <p className={cn("text-[8px] font-black uppercase tracking-[0.2em] opacity-60 mt-1", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>Preferences</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8 custom-scrollbar">
+                {/* Section: Mode/Theme - Segmented Switcher */}
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-3">
+                    <div className={cn(
+                      "p-1 rounded-xl flex items-center gap-1 border relative transition-colors h-10",
+                      theme === 'dark' ? "bg-white/5 border-white/10" : "bg-slate-100 border-slate-200"
+                    )}>
+                      <motion.div
+                        className={cn(
+                          "absolute h-[calc(100%-8px)] rounded-lg shadow-md z-0",
+                          theme === 'dark' ? "bg-zinc-800 border border-white/10" : "bg-white border border-slate-200"
+                        )}
+                        initial={false}
+                        animate={{
+                          left: theme === 'dark' ? "calc(50% + 1px)" : "4px",
+                          width: "calc(50% - 5px)"
+                        }}
+                        transition={{ type: "spring", bounce: 0.1, duration: 0.5 }}
+                      />
+                      
+                      <button
+                        onClick={() => setTheme('light')}
+                        className={cn(
+                          "relative z-10 flex-1 h-full rounded-lg transition-all duration-300 flex items-center justify-center",
+                          theme === 'light' ? "text-amber-500" : "text-zinc-500 hover:text-zinc-400"
+                        )}
+                      >
+                        <Sun className="w-4 h-4" />
+                      </button>
+                      
+                      <button
+                        onClick={() => setTheme('dark')}
+                        className={cn(
+                          "relative z-10 flex-1 h-full rounded-lg transition-all duration-300 flex items-center justify-center",
+                          theme === 'dark' ? "text-indigo-400" : "text-zinc-500 hover:text-zinc-400"
+                        )}
+                      >
+                        <Moon className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <span className={cn("text-[9px] font-black uppercase tracking-[0.2em] text-center opacity-60", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>
+                      Theme Mode
+                    </span>
+                  </div>
+                </div>
+
+                {/* Integrated Status & Sync */}
+                <div className="pt-6 border-t border-inherit flex flex-col items-center gap-4">
+                  <div className="relative group">
+                    <button 
+                      onClick={handleSyncGoogleSheet}
+                      disabled={isSyncing}
+                      className={cn(
+                        "w-12 h-12 rounded-full flex items-center justify-center transition-all relative overflow-hidden",
+                        theme === 'dark' 
+                          ? "bg-white/5 hover:bg-brand-accent/20 border border-white/5 text-zinc-400 hover:text-brand-accent" 
+                          : "bg-slate-50 hover:bg-brand-accent/10 border border-slate-100 text-slate-400 hover:text-brand-accent shadow-sm"
+                      )}
+                    >
+                      {isSyncing ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Database className="w-5 h-5" />
+                      )}
+                      {!isSyncing && isUpdateAvailable && (
+                        <div className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border-2 border-inherit animate-pulse" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="text-center space-y-1">
+                    <span className={cn("text-[9px] font-black uppercase tracking-[0.1em] block", 
+                      isSyncing ? "text-amber-500" : "text-emerald-500"
+                    )}>
+                      {isSyncing ? "Syncing..." : "Connected"}
+                    </span>
+                    <span className={cn("text-[8px] font-medium opacity-60 block", theme === 'dark' ? "text-zinc-500" : "text-slate-600")}>
+                      API Status
+                    </span>
+                  </div>
+                </div>
+
+                {/* Build Info */}
+                <div className="pt-6 border-t border-inherit space-y-4">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center",
+                      theme === 'dark' ? "bg-white/5" : "bg-slate-50 border border-slate-100"
+                    )}>
+                      <CheckCircle2 className="w-3.5 h-3.5 opacity-60" />
+                    </div>
+                    <div className="text-center space-y-1">
+                      <span className={cn("text-[10px] font-bold block", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>
+                        Build Ver.
+                      </span>
+                      <span className={cn("text-[9px] font-mono px-2 py-0.5 rounded border border-inherit leading-none block", 
+                        theme === 'dark' ? "bg-zinc-800 text-zinc-300 border-white/10" : "bg-slate-50 text-slate-600 border-slate-200"
+                      )}>
+                        {new Date().toISOString().split('T')[0].replace(/-/g, '')}.{new Date().getHours().toString().padStart(2, '0')}{new Date().getMinutes().toString().padStart(2, '0')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className={cn("p-6 border-t border-inherit", theme === 'dark' ? "bg-black/20" : "bg-slate-50/50")}>
+                 <div className="flex flex-col items-center gap-4">
+                    <div className="flex items-center gap-2 opacity-20">
+                       <span className="text-[9px] font-black tracking-[0.4em] uppercase">HMSS</span>
+                    </div>
+                    <p className={cn("text-[8px] text-center leading-tight opacity-50 font-medium", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>
+                      Professional Ref Only.
+                    </p>
+                 </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Enhanced Background Glows for Glass Visibility */}
       <div className={cn(
         "absolute top-[-5%] right-[-5%] w-[50%] h-[50%] blur-[140px] rounded-full pointer-events-none z-0 animate-pulse",
@@ -711,7 +862,7 @@ T456 普拿疼 緩解疼痛
 
       {/* Header */}
       <header className={cn(
-        "h-16 border-b flex items-center justify-between px-4 md:px-8 shrink-0 z-50 shadow-2xl transition-all duration-500",
+        "h-16 border-b flex items-center justify-between px-4 md:px-6 shrink-0 z-50 shadow-2xl transition-all duration-500",
         isAiMode 
           ? "border-purple-500/20 bg-brand-header/40 backdrop-blur-3xl shadow-purple-500/5" 
           : cn(
@@ -721,8 +872,21 @@ T456 普拿疼 緩解疼痛
                 : "border-slate-200 bg-white/70 shadow-slate-200/50"
             )
       )}>
-        <div className="flex items-center gap-6">
-          {/* Segmented Tab Switcher */}
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setIsSettingsOpen(true)}
+            className={cn(
+              "p-2 rounded-xl border transition-all duration-300",
+              theme === 'dark' 
+                ? "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white"
+                : "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+            )}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          <div className="flex items-center gap-6">
+            {/* Segmented Tab Switcher */}
           <div className={cn(
             "p-1 rounded-xl flex items-center gap-1 border relative w-48 sm:w-64 transition-colors",
             theme === 'dark' ? "bg-white/5 border-white/10" : "bg-slate-100 border-slate-200"
@@ -775,56 +939,19 @@ T456 普拿疼 緩解疼痛
             </span>
           </div>
         </div>
+      </div>
 
-        <div className="flex items-center gap-3 md:gap-4">
-          {/* Theme Toggle */}
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className={cn(
-              "h-10 w-10 rounded-xl border transition-all duration-300 flex items-center justify-center",
-              theme === 'dark'
-                ? "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white"
-                : "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700 shadow-sm"
-            )}
-            title={theme === 'dark' ? "切換至淺色模式" : "切換至深色模式"}
-          >
-            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          </button>
-
+      <div className="flex items-center gap-3">
           {importStatus && (
             <div className="hidden lg:flex items-center gap-2 text-[9px] text-[#3187BD] font-bold bg-brand-accent/5 px-3 py-1.5 rounded-full border border-[#3187BD]/20 animate-pulse">
               <CheckCircle2 className="w-3 h-3" /> {importStatus}
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            <div className="flex flex-col items-end mr-1">
-              <p className="text-[8px] md:text-[9px] text-brand-accent font-bold uppercase tracking-widest">
-                資料庫: {isSyncing ? '同步中' : isUpdateAvailable ? '有更新可用' : '正常'}
-              </p>
-              <p className="text-[7px] md:text-[8px] text-zinc-500 font-medium">
-                {isSyncing ? 'Cloud connecting' : isUpdateAvailable ? 'Update pending' : 'Auto-sync active'}
-              </p>
-            </div>
-            
-            <button 
-              onClick={handleSyncGoogleSheet}
-              disabled={isSyncing}
-              className={cn(
-                "h-10 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg relative overflow-hidden",
-                isSyncing 
-                  ? "bg-brand-secondary text-brand-muted cursor-not-allowed" 
-                  : isUpdateAvailable
-                    ? "bg-amber-500 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-95"
-                    : "bg-brand-accent text-white hover:bg-[#66D99B] hover:scale-[1.02] active:scale-95 shadow-lg shadow-brand-accent/20"
-              )}
-            >
-              {isUpdateAvailable && !isSyncing && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white animate-bounce" />
-              )}
-              {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
-              <span className="hidden md:inline">{isSyncing ? '同步中...' : isUpdateAvailable ? '更新可用' : '雲端同步'}</span>
-            </button>
+          <div className="hidden md:flex flex-col items-end mr-1">
+            <p className="text-[8px] text-brand-accent font-bold uppercase tracking-widest leading-none">
+              {isSyncing ? 'Cloud Syncing' : 'Connected'}
+            </p>
           </div>
         </div>
       </header>
@@ -1217,7 +1344,7 @@ T456 普拿疼 緩解疼痛
           <div 
             ref={scrollContainerRef}
             className={cn(
-              "flex-1 pt-20 md:pt-24 p-3 md:p-5 overflow-y-auto custom-scrollbar bg-gradient-to-b from-white/[0.02] to-transparent transition-all duration-500",
+              "flex-1 pt-[72px] md:pt-[80px] px-3 md:px-5 overflow-y-auto custom-scrollbar bg-gradient-to-b from-white/[0.02] to-transparent transition-all duration-500",
               selectedMed ? "pb-[40vh] md:pb-5" : "pb-5"
             )}
             onScroll={(e) => {
@@ -1229,7 +1356,7 @@ T456 普拿疼 緩解疼痛
               }
             }}
           >
-          <div className="flex flex-col md:flex-row md:items-end justify-end gap-3 mb-3 md:mb-4">
+          <div className="flex flex-col md:flex-row md:items-end justify-end gap-3 mb-2 md:mb-2.5">
               
               {(searchQuery || selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForm !== '全部劑型') && (
                 <button 
@@ -1287,15 +1414,15 @@ T456 普拿疼 緩解疼痛
                           {/* Top Row: Code & Class */}
                           <div className="flex items-center gap-1.5 mb-1">
                             <span className={cn(
-                              "inline-flex items-center px-1.5 py-[0.5px] rounded text-[7px] font-black tracking-widest uppercase shrink-0 border",
+                              "inline-flex items-center px-1.5 py-[0.5px] rounded text-[9px] font-black tracking-widest uppercase shrink-0 border",
                               theme === 'dark' ? "border-white/20" : "border-slate-200",
                               dosageStyle.text
                             )}>
                               <span>{med.code}</span>
                             </span>
                             <span className={cn(
-                              "text-[8px] font-bold uppercase tracking-wider truncate opacity-60",
-                              theme === 'dark' ? "text-brand-accent/60" : "text-brand-accent/80"
+                              "text-[10px] font-bold uppercase tracking-wider truncate",
+                              theme === 'dark' ? "text-brand-accent/90" : "text-brand-accent"
                             )}>
                               {med.pharmacologicalClass}
                             </span>
@@ -1303,13 +1430,13 @@ T456 普拿疼 緩解疼痛
 
                           <div className="flex items-center justify-between mb-0.5 gap-1.5">
                             <h3 className={cn(
-                              "text-xs md:text-sm font-bold transition-colors truncate leading-tight flex items-center gap-1.5",
+                              "text-[13px] md:text-[15px] font-bold transition-colors truncate leading-tight flex items-center gap-1.5",
                               theme === 'dark' ? "text-white group-hover:text-brand-accent" : "text-slate-800 group-hover:text-brand-accent"
                             )}>
                               <span className="truncate">{med.component}</span>
                               {isAiSemanticEnabled && aiRecommendedCodes.includes(med.code) && (
                                 <span className={cn(
-                                  "flex items-center gap-0.5 text-[6px] px-1 py-0.5 rounded border font-black animate-pulse",
+                                  "flex items-center gap-0.5 text-[7px] px-1 py-0.5 rounded border font-black animate-pulse",
                                   theme === 'dark' ? "bg-purple-500/20 text-purple-400 border-purple-500/30" : "bg-purple-100 text-purple-600 border-purple-200"
                                 )}>
                                   AI
@@ -1320,7 +1447,7 @@ T456 普拿疼 緩解疼痛
                           
                           <div className="flex flex-col gap-0.5">
                             <span className={cn(
-                              "text-[8px] font-medium truncate opacity-70",
+                              "text-[10px] font-medium truncate opacity-70",
                               theme === 'dark' ? "text-zinc-500" : "text-slate-500"
                             )}>
                               {med.genericName} {med.chineseName && `• ${med.chineseName}`}
@@ -1388,8 +1515,8 @@ T456 普拿疼 緩解疼痛
                       <div className="h-full w-full bg-brand-bg/40 backdrop-blur-3xl rounded-[31px] overflow-hidden flex flex-col relative">
                         
                         {/* Floating Search Bar Overlay */}
-                        <div className="absolute top-0 left-0 right-0 z-40 p-3 md:p-4 bg-transparent">
-                          <form onSubmit={handleAiSearch} className="relative group p-[1.5px] rounded-2xl bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 focus-within:from-blue-500 focus-within:via-purple-500 focus-within:to-orange-500 transition-all shadow-2xl">
+                        <div className="absolute top-0 left-0 right-0 z-40 p-3 md:p-4 bg-transparent pointer-events-none">
+                          <form onSubmit={handleAiSearch} className="relative group p-[1.5px] rounded-2xl bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 focus-within:from-blue-500 focus-within:via-purple-500 focus-within:to-orange-500 transition-all shadow-2xl pointer-events-auto">
                             <input 
                               type="text"
                               placeholder="例如：我有頭痛且發燒的症狀，有哪些適合的藥物？"
@@ -1409,7 +1536,7 @@ T456 普拿疼 緩解疼痛
 
                         {/* Content Area */}
                         <div className={cn(
-                          "flex-1 overflow-y-auto custom-scrollbar pt-20 md:pt-24 px-4 md:px-8 transition-all duration-500",
+                          "flex-1 overflow-y-auto custom-scrollbar pt-[72px] md:pt-[80px] px-4 md:px-8 transition-all duration-500",
                           selectedMed ? "pb-[40vh] md:pb-8" : "pb-8"
                         )}>
                           {aiHistory.length === 0 && !isAiLoading && (
@@ -1721,7 +1848,7 @@ T456 普拿疼 緩解疼痛
                   </div>
                   <div className="space-y-2">
                     <label className={cn(
-                      "text-[9px] uppercase font-semibold tracking-[0.15em] flex items-center gap-2",
+                      "text-[10px] uppercase font-semibold tracking-[0.15em] flex items-center gap-2",
                       theme === 'dark' ? "text-zinc-500" : "text-slate-400"
                     )}>
                       Pharmacological Class
@@ -1731,8 +1858,8 @@ T456 普拿疼 緩解疼痛
                         setSearchQuery(selectedMed.pharmacologicalClass);
                       }}
                       className={cn(
-                        "font-medium leading-relaxed text-xs md:text-sm pl-2.5 border-l-2 hover:text-brand-accent hover:border-brand-accent transition-all text-left w-full",
-                        theme === 'dark' ? "text-zinc-300 border-zinc-800/60" : "text-slate-600 border-slate-200"
+                        "font-medium leading-relaxed text-sm md:text-base pl-2.5 border-l-2 hover:text-brand-accent hover:border-brand-accent transition-all text-left w-full",
+                        theme === 'dark' ? "text-zinc-200 border-zinc-700" : "text-slate-700 border-slate-200"
                       )}
                     >
                       {selectedMed.pharmacologicalClass}
@@ -1743,14 +1870,14 @@ T456 普拿疼 緩解疼痛
                 {selectedMed.indications && (
                   <section className="space-y-3">
                     <div className={cn(
-                      "flex items-center gap-3 font-semibold text-[9px] uppercase tracking-[0.15em]",
+                      "flex items-center gap-3 font-semibold text-[10px] uppercase tracking-[0.15em]",
                       theme === 'dark' ? "text-zinc-500" : "text-slate-400"
                     )}>
                       ATC Info / Indications
                     </div>
                     <p className={cn(
-                      "leading-relaxed text-xs md:text-sm font-sans backdrop-blur-sm p-4 rounded-lg border shadow-sm break-all",
-                      theme === 'dark' ? "text-zinc-400 bg-white/[0.01] border-white/[0.03]" : "text-slate-600 bg-slate-50 border-slate-100"
+                      "leading-relaxed text-sm md:text-base font-sans backdrop-blur-sm p-4 rounded-lg border shadow-sm break-all",
+                      theme === 'dark' ? "text-zinc-300 bg-white/[0.01] border-white/[0.03]" : "text-slate-700 bg-slate-50 border-slate-100"
                     )}>
                       {selectedMed.indications}
                     </p>
