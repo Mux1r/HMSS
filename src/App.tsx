@@ -105,6 +105,7 @@ const getDosageName = (code: string) => {
 import { motion, AnimatePresence } from 'motion/react';
 import { localMedicationService, Medication } from './services/medicationService';
 import { cn } from './lib/utils';
+import { MEDICAL_ALIASES } from './lib/medicalKeywords';
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -152,45 +153,70 @@ export default function App() {
   const isNavigatingRef = useRef(false);
 
   useEffect(() => {
-    const handlePopState = (event: any) => {
+    const handlePopState = (event: PopStateEvent) => {
       isNavigatingRef.current = true;
-      // When user goes back, we reset states
-      if (selectedMed) setSelectedMed(null);
-      else if (isAiMode) setIsAiMode(false);
+      const state = event.state;
+
+      if (!state) {
+        // Initial state
+        setSelectedMed(null);
+        setIsAiMode(false);
+      } else {
+        // Navigation case
+        if (state.type === 'ai_with_med') {
+          setIsAiMode(true);
+          const med = medications.find(m => m.id === state.medId);
+          if (med) setSelectedMed(med);
+        } else if (state.type === 'ai') {
+          setIsAiMode(true);
+          // If the state says it's just AI, but we came from a med selection, 
+          // we might want to stay in HMSS if that's what's logic dictates, 
+          // or just follow the state exactly.
+          if (state.medId) {
+             const med = medications.find(m => m.id === state.medId);
+             if (med) setSelectedMed(med);
+          } else {
+            setSelectedMed(null);
+          }
+        } else if (state.type === 'med') {
+          setIsAiMode(false);
+          const med = medications.find(m => m.id === state.id);
+          if (med) setSelectedMed(med);
+        } else if (state.type === 'hmss') {
+          setIsAiMode(false);
+          setSelectedMed(null);
+        }
+      }
       
-      // Allow next state change to be tracked
       setTimeout(() => { isNavigatingRef.current = false; }, 50);
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
+  }, [medications, selectedMed, isAiMode]);
+
+  // Sync state changes to browser history with detailed state
+  useEffect(() => {
+    if (isNavigatingRef.current) return;
+
+    const state: any = { isAi: isAiMode };
+    if (selectedMed) state.medId = selectedMed.id;
+
+    if (isAiMode && selectedMed) {
+      window.history.pushState({ type: 'ai_with_med', medId: selectedMed.id }, '');
+    } else if (isAiMode) {
+      window.history.pushState({ type: 'ai' }, '');
+    } else if (selectedMed) {
+      window.history.pushState({ type: 'med', id: selectedMed.id }, '');
+    } else {
+      // Basic HMSS mode
+      window.history.replaceState({ type: 'hmss' }, '');
+    }
   }, [selectedMed, isAiMode]);
 
-  // Sync state changes to browser history
-  useEffect(() => {
-    if (selectedMed && !isNavigatingRef.current) {
-      window.history.pushState({ type: 'med', id: selectedMed.id }, '');
-    }
-  }, [selectedMed]);
-
-  useEffect(() => {
-    if (isAiMode && !isNavigatingRef.current) {
-      window.history.pushState({ type: 'ai' }, '');
-    }
-  }, [isAiMode]);
-
-  // Manual close handlers that stay in sync with history
-  const closeDetail = () => {
-    if (selectedMed) {
-      window.history.back();
-    }
-  };
-
-  const exitAiMode = () => {
-    if (isAiMode) {
-      window.history.back();
-    }
-  };
+  // Manual close handlers
+  const closeDetail = () => setSelectedMed(null);
+  const exitAiMode = () => setIsAiMode(false);
   // -----------------------------------
 
   useEffect(() => {
@@ -463,6 +489,7 @@ T456 普拿疼 緩解疼痛
 
   const filteredMedications = useMemo(() => {
     const query = deferredSearchQuery.toLowerCase().trim();
+    const synonyms = MEDICAL_ALIASES[query] || [];
     
     let baseMeds = medications;
     
@@ -470,12 +497,45 @@ T456 普拿疼 緩解疼痛
       const minPrefixLength = 3;
       const queryLen = query.length;
 
-      // 1. 完全匹配 (最優先)
-      const exactMatches = medications.filter(m => 
-        m.code?.toLowerCase() === query ||
-        m.component?.toLowerCase() === query ||
-        m.brandName?.toLowerCase() === query
-      );
+      // 1. 完全或縮寫匹配 (最優先)
+      const exactMatches = medications.filter(m => {
+        const mCode = m.code?.toLowerCase();
+        const mComp = m.component?.toLowerCase();
+        const mBrand = m.brandName?.toLowerCase();
+        
+        // 直接完全匹配
+        const isExact = mCode === query || mComp === query || mBrand === query;
+        if (isExact) return true;
+
+        // 縮寫/別名匹配 (例如打 NS 找到 Normal Saline)
+        if (synonyms.length > 0) {
+          const searchable = `${mCode} ${mComp} ${mBrand} ${m.genericName?.toLowerCase()} ${m.chineseName?.toLowerCase()} ${m.pharmacologicalClass?.toLowerCase()}`;
+          return synonyms.some(s => searchable.includes(s.toLowerCase()));
+        }
+        return false;
+      });
+
+      // 1.1 醫學屬性匹配 (機轉、分類等)
+      const medicalIntentMatches = medications.filter(m => {
+        if (exactMatches.some(em => em.id === m.id)) return false;
+        
+        const pharmacological = m.pharmacologicalClass?.toLowerCase() || "";
+        const system = m.anatomicalSystem?.toLowerCase() || "";
+        const indications = m.indications?.toLowerCase() || "";
+        
+        // 如果查詢命中分類或機轉關鍵字
+        if (pharmacological.includes(query) || system.includes(query)) return true;
+        
+        // 別名命中機轉 (例如 ACEI 命中藥理分類中含有相關字眼的藥物)
+        if (synonyms.length > 0) {
+          return synonyms.some(s => 
+            pharmacological.includes(s.toLowerCase()) || 
+            system.includes(s.toLowerCase()) ||
+            indications.includes(s.toLowerCase())
+          );
+        }
+        return false;
+      });
 
       // 輔助函式：取得從第一個英文字母開始的字串部分
       const getAlphaStart = (str: string) => {
@@ -487,6 +547,7 @@ T456 普拿疼 緩解疼痛
       // 第二層： 字串絕對開頭匹配 (String Start)
       const stringStartMatches = medications.filter(m => {
         if (exactMatches.some(em => em.id === m.id)) return false;
+        if (medicalIntentMatches.some(mm => mm.id === m.id)) return false;
         const targets = [m.code, m.component, m.brandName, m.genericName];
         return targets.some(t => t?.toLowerCase().startsWith(query));
       });
@@ -494,6 +555,7 @@ T456 普拿疼 緩解疼痛
       // 第三層： 第一個「字母」單字開頭匹配 (例如解決 "10% Dextrose" 的 "Dextrose" 開頭)
       const firstAlphaStartMatches = medications.filter(m => {
         if (exactMatches.some(em => em.id === m.id)) return false;
+        if (medicalIntentMatches.some(mm => mm.id === m.id)) return false;
         if (stringStartMatches.some(sm => sm.id === m.id)) return false;
         const targets = [m.component, m.brandName, m.genericName];
         return targets.some(t => {
@@ -508,6 +570,7 @@ T456 普拿疼 緩解疼痛
       const wordBoundaryRegex = new RegExp(`\\b${escapedQuery}`, 'i');
       const wordBoundaryMatches = medications.filter(m => {
         if (exactMatches.some(em => em.id === m.id)) return false;
+        if (medicalIntentMatches.some(mm => mm.id === m.id)) return false;
         if (stringStartMatches.some(sm => sm.id === m.id)) return false;
         if (firstAlphaStartMatches.some(am => am.id === m.id)) return false;
         
@@ -523,6 +586,7 @@ T456 普拿疼 緩解疼痛
         .filter(result => {
           const item = result.item;
           if (exactMatches.some(em => em.id === item.id)) return false;
+          if (medicalIntentMatches.some(mm => mm.id === item.id)) return false;
           if (stringStartMatches.some(sm => sm.id === item.id)) return false;
           if (firstAlphaStartMatches.some(am => am.id === item.id)) return false;
           if (wordBoundaryMatches.some(wm => wm.id === item.id)) return false;
@@ -554,9 +618,10 @@ T456 普拿疼 緩解疼痛
         aiMeds = medications.filter(m => aiRecommendedCodes.includes(m.code));
       }
 
-      // 整合與去重，保持嚴格優先順序：完全 > 字串開 > 字母開 > 單字開
+      // 整合與去重，保持嚴格優先順序
       const combinedMeds: typeof medications = [
         ...exactMatches, 
+        ...medicalIntentMatches,
         ...stringStartMatches, 
         ...firstAlphaStartMatches,
         ...wordBoundaryMatches
