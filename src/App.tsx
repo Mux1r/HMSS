@@ -243,6 +243,9 @@ export default function App() {
     if (!query.trim() || isAiSemanticLoading) return;
     setIsAiSemanticLoading(true);
     try {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("API Key missing");
+      }
       // Use a lean version of the data for faster AI processing
       const medListSummary = medications.map(m => ({
         c: m.code,
@@ -311,6 +314,10 @@ ${JSON.stringify(medListSummary)}
     setAiResponse(null);
 
     try {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("偵測不到 GEMINI_API_KEY。若您在使用 GitHub Pages，請在專案中設定環境變數。");
+      }
+      
       // Send the full list of medications to AI for comprehensive analysis
       const medListSummary = medications.map(m => ({
         code: m.code,
