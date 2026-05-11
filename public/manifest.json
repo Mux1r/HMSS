@@ -1,17 +1,23 @@
 {
-  "name": "HMS 藥物查詢系統",
-  "short_name": "藥物查詢",
+  "name": "HMSS",
+  "short_name": "HMSS",
   "description": "醫護人員專用的藥物快速查詢與 AI 建議系統",
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#09090B",
   "theme_color": "#3187BD",
   "icons": [
     {
-      "src": "https://img.icons8.com/isometric/512/pill.png",
+      "src": "/logo.svg",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ]
 }
