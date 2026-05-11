@@ -41,7 +41,9 @@ import {
   Container,
   Sun,
   Moon,
-  Settings
+  Settings,
+  Smartphone,
+  Download
 } from 'lucide-react';
 
 const getMedicationIcon = (code: string) => {
@@ -130,6 +132,25 @@ export default function App() {
   const [showFilters, setShowFilters] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   // AI Mode States
   const [isAiMode, setIsAiMode] = useState(false);
@@ -789,6 +810,33 @@ T456 普拿疼 緩解疼痛
                     </span>
                   </div>
                 </div>
+
+                {/* PWA Install */}
+                {deferredPrompt && (
+                  <div className="pt-6 border-t border-inherit">
+                    <button
+                      onClick={handleInstallApp}
+                      className={cn(
+                        "w-full flex flex-col items-center gap-2 p-3 rounded-xl transition-all duration-300 group hover:scale-[1.02] active:scale-95",
+                        theme === 'dark' ? "bg-brand-accent/20 border border-brand-accent/30" : "bg-brand-accent/10 border border-brand-accent/20 shadow-sm"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center bg-brand-accent text-white shadow-lg shadow-brand-accent/20 group-hover:rotate-12 transition-transform",
+                      )}>
+                        <Smartphone className="w-4 h-4" />
+                      </div>
+                      <div className="text-center">
+                        <span className="text-[10px] font-bold text-brand-accent block">
+                          安裝應用程式
+                        </span>
+                        <span className={cn("text-[8px] font-medium opacity-60 block", theme === 'dark' ? "text-zinc-500" : "text-slate-600")}>
+                          Add to Home Screen
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                )}
 
                 {/* Build Info */}
                 <div className="pt-6 border-t border-inherit space-y-4">
