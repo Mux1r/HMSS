@@ -134,6 +134,27 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
+  const isStandalone = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+  }, []);
+
+  const buildVersion = useMemo(() => {
+    try {
+      // @ts-ignore
+      const time = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : new Date().toISOString();
+      const date = new Date(time);
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      const hh = String(date.getHours()).padStart(2, '0');
+      const min = String(date.getMinutes()).padStart(2, '0');
+      return `${yyyy}${mm}${dd}.${hh}${min}`;
+    } catch (e) {
+      return "20240101.0000";
+    }
+  }, []);
+
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
@@ -144,7 +165,16 @@ export default function App() {
   }, []);
 
   const handleInstallApp = async () => {
-    if (!deferredPrompt) return;
+    if (!deferredPrompt) {
+      // If prompt is not available but user clicked, show a guide or toast
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      if (isIOS) {
+        alert("iOS 裝置請點擊瀏覽器下方的『分享』圖示，並選擇『加入主畫面』。");
+      } else {
+        alert("Chrome 瀏覽器請點擊右上角『⋮』選單，選擇『安裝應用程式』或『加入主畫面』。");
+      }
+      return;
+    }
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
@@ -812,7 +842,7 @@ T456 普拿疼 緩解疼痛
                 </div>
 
                 {/* PWA Install */}
-                {deferredPrompt && (
+                {!isStandalone && (
                   <div className="pt-6 border-t border-inherit">
                     <button
                       onClick={handleInstallApp}
@@ -831,7 +861,7 @@ T456 普拿疼 緩解疼痛
                           安裝應用程式
                         </span>
                         <span className={cn("text-[8px] font-medium opacity-60 block", theme === 'dark' ? "text-zinc-500" : "text-slate-600")}>
-                          Add to Home Screen
+                          {deferredPrompt ? "Install Web App" : "Add to Home Screen (Guide)"}
                         </span>
                       </div>
                     </button>
@@ -854,7 +884,7 @@ T456 普拿疼 緩解疼痛
                       <span className={cn("text-[9px] font-mono px-2 py-0.5 rounded border border-inherit leading-none block", 
                         theme === 'dark' ? "bg-zinc-800 text-zinc-300 border-white/10" : "bg-slate-50 text-slate-600 border-slate-200"
                       )}>
-                        {new Date().toISOString().split('T')[0].replace(/-/g, '')}.{new Date().getHours().toString().padStart(2, '0')}{new Date().getMinutes().toString().padStart(2, '0')}
+                        {buildVersion}
                       </span>
                     </div>
                   </div>
