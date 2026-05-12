@@ -155,23 +155,37 @@ export default function App() {
     }
   }, []);
 
+  const isIframe = useMemo(() => {
+    try {
+      return window.self !== window.top;
+    } catch (e) {
+      return true;
+    }
+  }, []);
+
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      console.log('beforeinstallprompt fired');
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
   const handleInstallApp = async () => {
+    if (isIframe) {
+      alert("請點擊右上方『在分頁中開啟』圖示，進入正式網址後即可看到安裝按鈕。");
+      return;
+    }
+    
     if (!deferredPrompt) {
       // If prompt is not available but user clicked, show a guide or toast
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
       if (isIOS) {
         alert("iOS 裝置請點擊瀏覽器下方的『分享』圖示，並選擇『加入主畫面』。");
       } else {
-        alert("Chrome 瀏覽器請點擊右上角『⋮』選單，選擇『安裝應用程式』或『加入主畫面』。");
+        alert("Chrome 瀏覽器請點擊右上角『⋮』選單，選擇『安裝應用程式』或『加入主畫面』。\n\n提示：若您剛開啟網頁，請稍候幾秒或稍微捲動頁面，安裝選項通常會隨即出現。");
       }
       return;
     }
