@@ -1,3 +1,5 @@
+const CACHE_NAME = 'hmss-v1';
+
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
@@ -7,7 +9,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Required for PWA installation
+  // Simple network-first strategy to ensure it works on GitHub Pages subpaths
   event.respondWith(
     fetch(event.request).catch(() => {
       return caches.match(event.request);

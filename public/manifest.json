@@ -1,10 +1,10 @@
 {
-  "id": "/",
+  "id": "./",
   "name": "HMSS",
   "short_name": "HMSS",
   "description": "醫護人員專用的藥物快速查詢與 AI 建議系統",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#09090B",
   "theme_color": "#3187BD",
