@@ -6,6 +6,7 @@
 import { useState, useEffect, useMemo, useRef, useDeferredValue, FormEvent } from 'react';
 import Fuse from 'fuse.js';
 import { GoogleGenAI } from "@google/genai";
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import { 
   Search, 
   Pill, 
@@ -105,7 +106,24 @@ const getDosageName = (code: string) => {
   return char && DOSAGE_FORM_MAP[char] ? `${char} - ${DOSAGE_FORM_MAP[char]}` : char || '?';
 };
 
-import { motion, AnimatePresence } from 'motion/react';
+const SharpStar = ({ className, fill = "none" }: { className?: string, fill?: string }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    width="24" 
+    height="24" 
+    viewBox="0 0 24 24" 
+    fill={fill} 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="square" 
+    strokeLinejoin="miter" 
+    strokeMiterlimit="10"
+    className={className}
+  >
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+);
+
 import { localMedicationService, Medication } from './services/medicationService';
 import { cn } from './lib/utils';
 import { MEDICAL_ALIASES } from './lib/medicalKeywords';
@@ -119,7 +137,7 @@ export default function App() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [selectedSystem, setSelectedSystem] = useState('全部系統');
   const [selectedClass, setSelectedClass] = useState('全部藥理');
-  const [selectedDosageForm, setSelectedDosageForm] = useState('全部劑型');
+  const [selectedDosageForms, setSelectedDosageForms] = useState<string[]>([]);
   const [selectedMed, setSelectedMed] = useState<Medication | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
@@ -129,10 +147,33 @@ export default function App() {
   const [isSystemOpen, setIsSystemOpen] = useState(false);
   const [isClassOpen, setIsClassOpen] = useState(false);
   const [isDosageFormOpen, setIsDosageFormOpen] = useState(false);
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
+  const [favoritesSearchQuery, setFavoritesSearchQuery] = useState('');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('favorites');
+      return saved ? JSON.parse(saved) : [];
+    }
+    return [];
+  });
+  const dragControls = useDragControls();
+
+  useEffect(() => {
+    localStorage.setItem('favorites', JSON.stringify(favorites));
+  }, [favorites]);
+
+  const toggleFavorite = (id: string) => {
+    setFavorites(prev => 
+      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
+    );
+  };
+
+  const isFavorite = (id: string) => favorites.includes(id);
 
   const isStandalone = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -203,9 +244,6 @@ export default function App() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiHistory, setAiHistory] = useState<{query: string, response: string, timestamp: number}[]>([]);
   const [aiVisibleLimits, setAiVisibleLimits] = useState<Record<string, number>>({});
-  const [isAiSemanticEnabled, setIsAiSemanticEnabled] = useState(false);
-  const [aiRecommendedCodes, setAiRecommendedCodes] = useState<string[]>([]);
-  const [isAiSemanticLoading, setIsAiSemanticLoading] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme');
@@ -383,73 +421,6 @@ export default function App() {
     initData();
   }, []);
 
-  const handleAiSemanticSearch = async (query: string) => {
-    if (!query.trim() || isAiSemanticLoading) return;
-    setIsAiSemanticLoading(true);
-    try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("API Key missing");
-      }
-      // Use a lean version of the data for faster AI processing
-      const medListSummary = medications.map(m => ({
-        c: m.code,
-        n: `${m.component} ${m.brandName}`,
-        i: m.indications
-      }));
-
-      const prompt = `你是一個專業臨床藥學助理。
-任務：將使用者的關鍵詞轉換為相關的藥品。
-當前關鍵詞：「${query}」。
-注意：
-1. 包含常見臨床對應（例如："normal" 對應 "Normal Saline", "NaCl"；"water" 對應 "Distilled Water"；"sugar" 對應 "Dextrose"）。
-2. 分析適應症相關性。
-
-目標：從下方清單中找出相關藥品代碼。
-僅輸出 JSON 陣列（代碼），不要多言。
-格式：["CODE1", "CODE2"]
-
-清單：
-${JSON.stringify(medListSummary)}
-`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }],
-      });
-
-      const rawText = response.text || "[]";
-      const jsonMatch = rawText.match(/\[.*\]/s);
-      if (jsonMatch) {
-        try {
-          const codes = JSON.parse(jsonMatch[0].trim());
-          if (Array.isArray(codes)) {
-            // Mapping back from 'c' to actual code if necessary, 
-            // but since we used 'c' as the property name in prompt, JSON should match
-            setAiRecommendedCodes(codes);
-          }
-        } catch (e) {
-          console.error("Failed to parse AI response as JSON:", e);
-          setAiRecommendedCodes([]);
-        }
-      } else {
-        setAiRecommendedCodes([]);
-      }
-    } catch (error) {
-      console.error("AI Semantic Search Error:", error);
-      setAiRecommendedCodes([]);
-    } finally {
-      setIsAiSemanticLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isAiSemanticEnabled && deferredSearchQuery.trim().length >= 2) {
-      handleAiSemanticSearch(deferredSearchQuery);
-    } else {
-      setAiRecommendedCodes([]);
-    }
-  }, [deferredSearchQuery, isAiSemanticEnabled]);
-
   const handleAiSearch = async (e?: FormEvent) => {
     if (e) e.preventDefault();
     if (!aiQuery.trim() || isAiLoading) return;
@@ -540,9 +511,21 @@ T456 普拿疼 緩解疼痛
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
-  }, [deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForm]);
+  }, [deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForms]);
+
+  const isSearchingOrFiltering = useMemo(() => {
+    return deferredSearchQuery.trim() !== '' || 
+           selectedSystem !== '全部系統' || 
+           selectedClass !== '全部藥理' || 
+           selectedDosageForms.length > 0 || 
+           onlyFavorites;
+  }, [deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForms, onlyFavorites]);
 
   const filteredMedications = useMemo(() => {
+    if (!isSearchingOrFiltering) {
+      return [];
+    }
+
     const query = deferredSearchQuery.toLowerCase().trim();
     const synonyms = MEDICAL_ALIASES[query] || [];
     
@@ -667,12 +650,6 @@ T456 普拿疼 緩解疼痛
         })
         .map(r => r.item);
 
-      // AI 語意推薦 (獨立權重，通常排在精準匹配之後)
-      let aiMeds: typeof medications = [];
-      if (isAiSemanticEnabled && aiRecommendedCodes.length > 0) {
-        aiMeds = medications.filter(m => aiRecommendedCodes.includes(m.code));
-      }
-
       // 整合與去重，保持嚴格優先順序
       const combinedMeds: typeof medications = [
         ...exactMatches, 
@@ -681,13 +658,6 @@ T456 普拿疼 緩解疼痛
         ...firstAlphaStartMatches,
         ...wordBoundaryMatches
       ];
-      
-      // 合併 AI 推薦 (去重)
-      aiMeds.forEach(am => {
-        if (!combinedMeds.some(m => m.id === am.id)) {
-          combinedMeds.push(am);
-        }
-      });
 
       // 合併模糊匹配結果 (去重)
       constrainedFuzzy.forEach(fm => {
@@ -700,6 +670,8 @@ T456 普拿疼 緩解疼痛
     }
     
     return baseMeds.filter(med => {
+      const matchesFavorite = !onlyFavorites || isFavorite(med.id);
+
       const matchesSystem = 
         selectedSystem === '全部系統' || med.anatomicalSystem === selectedSystem;
 
@@ -707,12 +679,12 @@ T456 普拿疼 緩解疼痛
         selectedClass === '全部藥理' || med.pharmacologicalClass === selectedClass;
 
       const matchesDosageForm = 
-        selectedDosageForm === '全部劑型' || 
-        (med.dosageForm || med.code?.charAt(0)?.toUpperCase() || '?') === selectedDosageForm;
+        selectedDosageForms.length === 0 || 
+        selectedDosageForms.includes(med.dosageForm || med.code?.charAt(0)?.toUpperCase() || '?');
 
-      return matchesSystem && matchesClass && matchesDosageForm;
+      return matchesFavorite && matchesSystem && matchesClass && matchesDosageForm;
     });
-  }, [medications, deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForm]);
+  }, [medications, deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForms, onlyFavorites, favorites]);
 
   const displayedMedications = useMemo(() => {
     return filteredMedications.slice(0, displayLimit);
@@ -774,6 +746,34 @@ T456 普拿疼 緩解疼痛
               </div>
 
               <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8 custom-scrollbar">
+                {/* Favorites Management Entry - Direct Button */}
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      setIsFavoritesManagerOpen(true);
+                      setIsSettingsOpen(false);
+                    }}
+                    className={cn(
+                      "w-full p-3 rounded-xl border transition-all text-xs flex items-center justify-between group cursor-pointer shadow-sm",
+                      theme === 'dark' 
+                        ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200 hover:border-violet-500/30" 
+                        : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-800 hover:border-violet-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <SharpStar className={cn("w-4 h-4 text-violet-500 group-hover:scale-110 transition-transform duration-300", favorites.length > 0 && "fill-violet-500")} />
+                      <span className="font-bold">我的收藏</span>
+                      <span className={cn(
+                        "px-1.5 py-0.5 rounded-full text-[9px] font-mono leading-none",
+                        theme === 'dark' ? "bg-white/10 text-zinc-400" : "bg-slate-200 text-slate-600"
+                      )}>
+                        {favorites.length}
+                      </span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-violet-400 shrink-0" />
+                  </button>
+                </div>
+
                 {/* Section: Mode/Theme - Segmented Switcher */}
                 <div className="space-y-4">
                   <div className="flex flex-col gap-3">
@@ -1096,7 +1096,8 @@ T456 普拿疼 緩解疼痛
                     }
                   }}
                   className={cn(
-                    "w-full backdrop-blur-3xl border-none rounded-[15px] pl-11 pr-24 md:pr-24 py-3 text-sm focus:outline-none focus:ring-0 transition-all font-medium",
+                    "w-full backdrop-blur-3xl border-none rounded-[15px] pl-11 py-3 text-sm focus:outline-none focus:ring-0 transition-all font-medium",
+                    searchQuery ? "pr-20 md:pr-12" : "pr-4 md:pr-4",
                     theme === 'dark' 
                       ? "bg-black/90 text-white placeholder:text-zinc-600" 
                       : "bg-white/90 text-slate-800 placeholder:text-slate-400"
@@ -1104,28 +1105,6 @@ T456 普拿疼 緩解疼痛
                 />
                 
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newState = !isAiSemanticEnabled;
-                      setIsAiSemanticEnabled(newState);
-                      if (!newState) setAiRecommendedCodes([]);
-                    }}
-                    className={cn(
-                      "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border",
-                      isAiSemanticEnabled 
-                        ? "bg-purple-500/20 border-purple-500/40 text-purple-400 shadow-lg shadow-purple-500/20" 
-                        : "bg-white/5 border-white/10 text-zinc-500 hover:text-zinc-300"
-                    )}
-                    title="AI 語意智慧搜尋"
-                  >
-                    {isAiSemanticLoading ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Sparkles className={cn("w-3 h-3", isAiSemanticEnabled && "animate-pulse")} />
-                    )}
-                    <span className="hidden xs:inline">智尋</span>
-                  </button>
                   {searchQuery && (
                     <button 
                       type="button"
@@ -1155,7 +1134,7 @@ T456 普拿疼 緩解疼痛
                   }}
                   className={cn(
                     "h-[46px] px-4 rounded-xl border transition-all flex items-center justify-center gap-2 shadow-sm font-bold text-xs uppercase tracking-widest",
-                    showFilters || selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForm !== '全部劑型'
+                    showFilters || selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForms.length > 0
                       ? "bg-brand-accent/20 border-brand-accent/40 text-brand-accent"
                       : cn(
                           "transition-colors",
@@ -1167,7 +1146,7 @@ T456 普拿疼 緩解疼痛
                 >
                   <Filter className="w-4 h-4" />
                   <span className="hidden sm:inline">篩選</span>
-                  {(selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForm !== '全部劑型') && (
+                  {(selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForms.length > 0 || onlyFavorites) && (
                     <span className={cn(
                       "w-2 h-2 rounded-full bg-brand-accent absolute -top-1 -right-1 shadow-lg border animate-pulse",
                       theme === 'dark' ? "shadow-brand-accent/50 border-brand-bg" : "shadow-brand-accent/30 border-white"
@@ -1201,216 +1180,211 @@ T456 普拿疼 緩解疼痛
                       </div>
 
                       <div className="space-y-4">
-                        {/* Anatomical System Filter */}
-                        <div className="space-y-1.5 overflow-visible dropdown-container">
-                          <label className={cn(
-                            "text-[10px] font-bold uppercase tracking-widest pl-1",
-                            theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                          )}>系統分組</label>
-                          <div 
-                            className="relative"
-                            onBlur={(e) => {
-                              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                                setIsSystemOpen(false);
-                              }
-                            }}
-                          >
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIsSystemOpen(!isSystemOpen);
-                                setIsClassOpen(false);
-                                setIsDosageFormOpen(false);
-                              }}
-                              className={cn(
-                                "w-full border rounded-xl pl-4 pr-10 py-2.5 text-xs flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all truncate shadow-sm group",
-                                theme === 'dark' 
-                                  ? "bg-white/5 border-white/10 text-zinc-200" 
-                                  : "bg-slate-50 border-slate-200 text-slate-700"
-                              )}
-                            >
-                              <span className="truncate font-medium">{selectedSystem}</span>
-                              <ChevronDown className={cn("w-3.5 h-3.5 text-brand-muted transition-transform duration-300", isSystemOpen && "rotate-180")} />
-                            </button>
-                            
-                            <AnimatePresence>
-                              {isSystemOpen && (
-                                <motion.div 
-                                  key="system-dropdown"
-                                  initial={{ opacity: 0, y: 4 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: 4 }}
-                                  transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.4 }}
-                                  className={cn(
-                                    "absolute top-full left-0 right-0 mt-1 border rounded-xl shadow-2xl z-[110] max-h-60 overflow-y-auto p-1",
-                                    theme === 'dark' ? "bg-brand-header border-white/10" : "bg-white border-slate-200"
-                                  )}
-                                >
-                                  {anatomicalSystems.map(s => (
-                                    <button
-                                      key={s}
-                                      onClick={() => {
-                                        setSelectedSystem(s);
-                                        setSelectedClass('全部藥理');
-                                        setIsSystemOpen(false);
-                                      }}
-                                      className={cn(
-                                        "w-full text-left px-3 py-2 rounded-lg text-xs transition-all flex items-center justify-between",
-                                        selectedSystem === s 
-                                          ? "bg-brand-accent/20 text-brand-accent font-bold" 
-                                          : theme === 'dark' 
-                                            ? "text-zinc-400 hover:bg-white/5 hover:text-white"
-                                            : "text-slate-600 hover:bg-slate-50 hover:text-brand-accent"
-                                      )}
-                                    >
-                                      {s}
-                                    </button>
-                                  ))}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
+                      <div className="space-y-3">
+                        {/* Compact Favorites Toggle */}
+                        <div className="flex items-center justify-between p-2 pl-3 rounded-lg border transition-colors group cursor-pointer" 
+                             onClick={() => setOnlyFavorites(!onlyFavorites)}
+                             style={{ backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)', borderColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}>
+                          <div className="flex items-center gap-2">
+                            <SharpStar className={cn("w-3.5 h-3.5", onlyFavorites ? "fill-yellow-500 text-yellow-500" : (theme === 'dark' ? "text-zinc-600" : "text-slate-300"))} />
+                            <span className={cn("text-[10px] font-bold uppercase tracking-wider", theme === 'dark' ? "text-zinc-300" : "text-slate-700")}>僅顯示收藏</span>
+                          </div>
+                          <div className={cn(
+                            "w-8 h-4 rounded-full relative transition-colors border p-0.5",
+                            onlyFavorites ? "bg-violet-500 border-violet-500" : (theme === 'dark' ? "bg-zinc-800 border-white/10" : "bg-slate-200 border-slate-300")
+                          )}>
+                            <motion.div 
+                              animate={{ x: onlyFavorites ? 16 : 0 }}
+                              className="w-2.5 h-2.5 rounded-full bg-white shadow-sm"
+                            />
                           </div>
                         </div>
 
-                        {/* Dosage Form Filter */}
-                        <div className="space-y-1.5 overflow-visible dropdown-container">
-                          <label className={cn(
-                            "text-[10px] font-bold uppercase tracking-widest pl-1",
-                            theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                          )}>用藥劑型</label>
-                          <div 
-                            className="relative"
-                            onBlur={(e) => {
-                              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                                setIsDosageFormOpen(false);
-                              }
-                            }}
-                          >
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIsDosageFormOpen(!isDosageFormOpen);
-                                setIsSystemOpen(false);
-                                setIsClassOpen(false);
+                        {/* System & Class combined in a grid */}
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* Anatomical System Filter */}
+                          <div className="space-y-1 overflow-visible dropdown-container">
+                            <label className={cn(
+                              "text-[9px] font-bold uppercase tracking-widest pl-1",
+                              theme === 'dark' ? "text-zinc-500" : "text-slate-400"
+                            )}>系統</label>
+                            <div 
+                              className="relative"
+                              onBlur={(e) => {
+                                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                  setIsSystemOpen(false);
+                                }
                               }}
-                              className={cn(
-                                "w-full border rounded-xl pl-4 pr-10 py-2.5 text-xs flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all truncate shadow-sm group",
-                                theme === 'dark' 
-                                  ? "bg-white/5 border-white/10 text-zinc-200" 
-                                  : "bg-slate-50 border-slate-200 text-slate-700"
-                              )}
                             >
-                              <span className="truncate font-medium">{selectedDosageForm === '全部劑型' ? '全部劑型' : getDosageName(selectedDosageForm)}</span>
-                              <ChevronDown className={cn("w-3.5 h-3.5 text-brand-muted transition-transform duration-300", isDosageFormOpen && "rotate-180")} />
-                            </button>
-                            
-                            <AnimatePresence>
-                              {isDosageFormOpen && (
-                                <motion.div 
-                                  key="dosage-dropdown"
-                                  initial={{ opacity: 0, y: 4 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: 4 }}
-                                  transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.4 }}
-                                  className={cn(
-                                    "absolute top-full left-0 right-0 mt-1 border rounded-xl shadow-2xl z-[110] max-h-60 overflow-y-auto p-1",
-                                    theme === 'dark' ? "bg-brand-header border-white/10" : "bg-white border-slate-200"
-                                  )}
-                                >
-                                  {dosageForms.map(f => (
-                                    <button
-                                      key={f}
-                                      onClick={() => {
-                                        setSelectedDosageForm(f);
-                                        setIsDosageFormOpen(false);
-                                      }}
-                                      className={cn(
-                                        "w-full text-left px-3 py-2 rounded-lg text-xs transition-all flex items-center justify-between",
-                                        selectedDosageForm === f 
-                                          ? "bg-brand-accent/20 text-brand-accent font-bold" 
-                                          : theme === 'dark' 
-                                            ? "text-zinc-400 hover:bg-white/5 hover:text-white"
-                                            : "text-slate-600 hover:bg-slate-50 hover:text-brand-accent"
-                                      )}
-                                    >
-                                      {f === '全部劑型' ? f : getDosageName(f)}
-                                    </button>
-                                  ))}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsSystemOpen(!isSystemOpen);
+                                  setIsClassOpen(false);
+                                  setIsDosageFormOpen(false);
+                                }}
+                                className={cn(
+                                  "w-full border rounded-lg pl-3 pr-2 py-2 text-[10px] flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all shadow-sm group",
+                                  theme === 'dark' 
+                                    ? "bg-white/5 border-white/10 text-zinc-200" 
+                                    : "bg-slate-50 border-slate-200 text-slate-700"
+                                )}
+                              >
+                                <span className="truncate font-medium">{selectedSystem === '全部系統' ? '全部系統' : selectedSystem}</span>
+                                <ChevronDown className={cn("w-3 h-3 text-brand-muted shrink-0 transition-transform", isSystemOpen && "rotate-180")} />
+                              </button>
+                              
+                              <AnimatePresence>
+                                {isSystemOpen && (
+                                  <motion.div 
+                                    key="system-dropdown"
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.95 }}
+                                    className={cn(
+                                      "absolute top-full left-0 right-0 mt-1 border rounded-lg shadow-2xl z-[110] max-h-48 overflow-y-auto p-1",
+                                      theme === 'dark' ? "bg-brand-header border-white/10" : "bg-white border-slate-200"
+                                    )}
+                                  >
+                                    {anatomicalSystems.map(s => (
+                                      <button
+                                        key={s}
+                                        onClick={() => {
+                                          setSelectedSystem(s);
+                                          setSelectedClass('全部藥理');
+                                          setIsSystemOpen(false);
+                                        }}
+                                        className={cn(
+                                          "w-full text-left px-2 py-1.5 rounded-md text-[10px] transition-all flex items-center justify-between",
+                                          selectedSystem === s 
+                                            ? "bg-brand-accent/20 text-brand-accent font-bold" 
+                                            : theme === 'dark' 
+                                              ? "text-zinc-400 hover:bg-white/5 hover:text-white"
+                                              : "text-slate-600 hover:bg-slate-50 hover:text-brand-accent"
+                                        )}
+                                      >
+                                        {s}
+                                      </button>
+                                    ))}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          </div>
+
+                          {/* Pharmacological Class Filter */}
+                          <div className="space-y-1 overflow-visible dropdown-container">
+                            <label className={cn(
+                              "text-[9px] font-bold uppercase tracking-widest pl-1",
+                              theme === 'dark' ? "text-zinc-500" : "text-slate-400"
+                            )}>藥理</label>
+                            <div 
+                              className="relative"
+                              onBlur={(e) => {
+                                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                  setIsClassOpen(false);
+                                }
+                              }}
+                            >
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsClassOpen(!isClassOpen);
+                                  setIsSystemOpen(false);
+                                  setIsDosageFormOpen(false);
+                                }}
+                                className={cn(
+                                  "w-full border rounded-lg pl-3 pr-2 py-2 text-[10px] flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all shadow-sm group",
+                                  theme === 'dark' 
+                                    ? "bg-white/5 border-white/10 text-zinc-200" 
+                                    : "bg-slate-50 border-slate-200 text-slate-700"
+                                )}
+                              >
+                                <span className="truncate font-medium">{selectedClass === '全部藥理' ? '全部藥理' : selectedClass}</span>
+                                <ChevronDown className={cn("w-3 h-3 text-brand-muted shrink-0 transition-transform", isClassOpen && "rotate-180")} />
+                              </button>
+                              
+                              <AnimatePresence>
+                                {isClassOpen && (
+                                  <motion.div 
+                                    key="class-dropdown"
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.95 }}
+                                    className={cn(
+                                      "absolute top-full left-0 right-0 mt-1 border rounded-lg shadow-2xl z-[110] max-h-48 overflow-y-auto p-1",
+                                      theme === 'dark' ? "bg-brand-header border-white/10" : "bg-white border-slate-200"
+                                    )}
+                                  >
+                                    {pharmacologicalClasses.map(c => (
+                                      <button
+                                        key={c}
+                                        onClick={() => {
+                                          setSelectedClass(c);
+                                          setIsClassOpen(false);
+                                        }}
+                                        className={cn(
+                                          "w-full text-left px-2 py-1.5 rounded-md text-[10px] transition-all flex items-center justify-between",
+                                          selectedClass === c 
+                                            ? "bg-brand-accent/20 text-brand-accent font-bold" 
+                                            : theme === 'dark' 
+                                              ? "text-zinc-400 hover:bg-white/5 hover:text-white"
+                                              : "text-slate-600 hover:bg-slate-50 hover:text-brand-accent"
+                                        )}
+                                      >
+                                        {c}
+                                      </button>
+                                    ))}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
                           </div>
                         </div>
 
-                        {/* Pharmacological Class Filter */}
-                        <div className="space-y-1.5 overflow-visible dropdown-container">
-                          <label className={cn(
-                            "text-[10px] font-bold uppercase tracking-widest pl-1",
-                            theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                          )}>藥理分類</label>
-                          <div 
-                            className="relative"
-                            onBlur={(e) => {
-                              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                                setIsClassOpen(false);
-                              }
-                            }}
-                          >
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIsClassOpen(!isClassOpen);
-                                setIsSystemOpen(false);
-                                setIsDosageFormOpen(false);
-                              }}
-                              className={cn(
-                                "w-full border rounded-xl pl-4 pr-10 py-2.5 text-xs flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all truncate shadow-sm group",
-                                theme === 'dark' 
-                                  ? "bg-white/5 border-white/10 text-zinc-200" 
-                                  : "bg-slate-50 border-slate-200 text-slate-700"
-                              )}
-                            >
-                              <span className="truncate font-medium">{selectedClass}</span>
-                              <ChevronDown className={cn("w-3.5 h-3.5 text-brand-muted transition-transform duration-300", isClassOpen && "rotate-180")} />
-                            </button>
-                            
-                            <AnimatePresence>
-                              {isClassOpen && (
-                                <motion.div 
-                                  key="class-dropdown"
-                                  initial={{ opacity: 0, y: 4 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: 4 }}
-                                  transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.4 }}
+                        {/* Dosage Form Filter - Multi-select Tags */}
+                        <div className="space-y-2 overflow-visible">
+                          <div className="flex items-center justify-between px-1">
+                            <label className={cn(
+                              "text-[9px] font-bold uppercase tracking-widest",
+                              theme === 'dark' ? "text-zinc-500" : "text-slate-400"
+                            )}>劑型 (多選)</label>
+                            {selectedDosageForms.length > 0 && (
+                              <button 
+                                onClick={() => setSelectedDosageForms([])}
+                                className="text-[9px] text-brand-accent font-bold hover:underline"
+                              >重設</button>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 p-0.5 max-h-32 overflow-y-auto custom-scrollbar">
+                            {dosageForms.filter(f => f !== '全部劑型').map(f => {
+                              const isSelected = selectedDosageForms.includes(f);
+                              const dosageStyle = getDosageColor(f);
+                              return (
+                                <button
+                                  key={f}
+                                  onClick={() => {
+                                    setSelectedDosageForms(prev => 
+                                      prev.includes(f) ? prev.filter(item => item !== f) : [...prev, f]
+                                    );
+                                  }}
                                   className={cn(
-                                    "absolute top-full left-0 right-0 mt-1 border rounded-xl shadow-2xl z-[110] max-h-60 overflow-y-auto p-1",
-                                    theme === 'dark' ? "bg-brand-header border-white/10" : "bg-white border-slate-200"
+                                    "px-2 py-1 rounded-md text-[9px] font-bold transition-all border flex items-center gap-1.5",
+                                    isSelected 
+                                      ? cn(dosageStyle.bg, dosageStyle.text, "border-violet-500/50 shadow-sm shadow-violet-500/20")
+                                      : theme === 'dark' 
+                                        ? "bg-white/5 border-white/5 text-zinc-500 hover:text-zinc-300 hover:bg-white/10" 
+                                        : "bg-slate-100/50 border-slate-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                                   )}
                                 >
-                                  {pharmacologicalClasses.map(c => (
-                                    <button
-                                      key={c}
-                                      onClick={() => {
-                                        setSelectedClass(c);
-                                        setIsClassOpen(false);
-                                      }}
-                                      className={cn(
-                                        "w-full text-left px-3 py-2 rounded-lg text-xs transition-all flex items-center justify-between",
-                                        selectedClass === c 
-                                          ? "bg-brand-accent/20 text-brand-accent font-bold" 
-                                          : theme === 'dark' 
-                                            ? "text-zinc-400 hover:bg-white/5 hover:text-white"
-                                            : "text-slate-600 hover:bg-slate-50 hover:text-brand-accent"
-                                      )}
-                                    >
-                                      {c}
-                                    </button>
-                                  ))}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
+                                  <span className={cn("w-1.5 h-1.5 rounded-full", isSelected ? dosageStyle.glow : "bg-zinc-700")} />
+                                  {getDosageName(f)}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
+                      </div>
                       </div>
 
                       <div className="pt-2 border-t border-white/5">
@@ -1418,7 +1392,7 @@ T456 普拿疼 緩解疼痛
                           onClick={() => {
                             setSelectedSystem('全部系統');
                             setSelectedClass('全部藥理');
-                            setSelectedDosageForm('全部劑型');
+                            setSelectedDosageForms([]);
                             setShowFilters(false);
                           }}
                           className="w-full py-2 text-[10px] text-zinc-500 hover:text-brand-accent font-bold uppercase tracking-[0.2em] transition-all"
@@ -1450,13 +1424,13 @@ T456 普拿疼 緩解疼痛
           >
           <div className="flex flex-col md:flex-row md:items-end justify-end gap-3 mb-2 md:mb-2.5">
               
-              {(searchQuery || selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForm !== '全部劑型') && (
+              {(searchQuery || selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForms.length > 0) && (
                 <button 
                   onClick={() => { 
                     setSearchQuery(''); 
                     setSelectedSystem('全部系統'); 
                     setSelectedClass('全部藥理');
-                    setSelectedDosageForm('全部劑型');
+                    setSelectedDosageForms([]);
                   }}
                   className="flex items-center gap-2 text-[10px] font-black text-brand-muted hover:text-brand-accent transition-all uppercase tracking-[0.2em] self-start px-3 py-1.5 rounded-lg hover:bg-brand-accent/5"
                 >
@@ -1464,13 +1438,6 @@ T456 普拿疼 緩解疼痛
                 </button>
               )}
             </div>
-            
-            {isAiSemanticLoading && (
-              <div className="flex items-center gap-3 text-purple-400 font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-3 bg-purple-500/5 rounded-xl border border-purple-500/10 mb-4">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                AI 正在進行語意分析與相關性比對中...
-              </div>
-            )}
             
             {displayedMedications.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3">
@@ -1504,20 +1471,44 @@ T456 普拿疼 緩解疼痛
                       <div className="flex gap-2 items-start w-full pl-1.5">
                         <div className="flex-1 min-w-0">
                           {/* Top Row: Code & Class */}
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className={cn(
-                              "inline-flex items-center px-1.5 py-[0.5px] rounded text-[9px] font-black tracking-widest uppercase shrink-0 border",
-                              theme === 'dark' ? "border-white/20" : "border-slate-200",
-                              dosageStyle.text
-                            )}>
-                              <span>{med.code}</span>
-                            </span>
-                            <span className={cn(
-                              "text-[10px] font-bold uppercase tracking-wider truncate",
-                              theme === 'dark' ? "text-brand-accent/90" : "text-brand-accent"
-                            )}>
-                              {med.pharmacologicalClass}
-                            </span>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className={cn(
+                                "inline-flex items-center px-1.5 py-[0.5px] rounded text-[9px] font-black tracking-widest uppercase shrink-0 border",
+                                theme === 'dark' ? "border-white/20" : "border-slate-200",
+                                dosageStyle.text
+                              )}>
+                                <span>{med.code}</span>
+                              </span>
+                              <span className={cn(
+                                "text-[10px] font-bold uppercase tracking-wider truncate",
+                                theme === 'dark' ? "text-brand-accent/90" : "text-brand-accent"
+                              )}>
+                                {med.pharmacologicalClass}
+                              </span>
+                            </div>
+                            
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFavorite(med.id);
+                              }}
+                              className="p-1 -mr-1 transition-all active:scale-75 group/fav"
+                            >
+                              <motion.div
+                                animate={isFavorite(med.id) ? { opacity: [0.7, 1, 0.7] } : {}}
+                                transition={isFavorite(med.id) ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
+                              >
+                                <SharpStar 
+                                  className={cn(
+                                    "w-4 h-4 transition-all",
+                                    isFavorite(med.id) 
+                                      ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_6px_rgba(139,92,246,0.4)]" 
+                                      : theme === 'dark' ? "text-zinc-800 group-hover/fav:text-violet-400/50" : "text-slate-200 group-hover/fav:text-violet-400/50"
+                                  )} 
+                                />
+                              </motion.div>
+                            </button>
                           </div>
 
                           <div className="flex items-center justify-between mb-0.5 gap-1.5">
@@ -1526,14 +1517,6 @@ T456 普拿疼 緩解疼痛
                               theme === 'dark' ? "text-white group-hover:text-brand-accent" : "text-slate-800 group-hover:text-brand-accent"
                             )}>
                               <span className="truncate">{med.component}</span>
-                              {isAiSemanticEnabled && aiRecommendedCodes.includes(med.code) && (
-                                <span className={cn(
-                                  "flex items-center gap-0.5 text-[7px] px-1 py-0.5 rounded border font-black animate-pulse",
-                                  theme === 'dark' ? "bg-purple-500/20 text-purple-400 border-purple-500/30" : "bg-purple-100 text-purple-600 border-purple-200"
-                                )}>
-                                  AI
-                                </span>
-                              )}
                             </h3>
                           </div>
                           
@@ -1566,23 +1549,62 @@ T456 普拿疼 緩解疼痛
               )}
             </div>
             
-            ) : (
+            ) : isSearchingOrFiltering ? (
               <div className="h-full flex flex-col items-center justify-center text-center py-20">
                 <Search className="w-16 h-16 text-brand-muted mb-4 stroke-[0.5]" />
-                <h3 className="text-xl font-medium text-white mb-2">查無相關結果</h3>
+                <h3 className={cn("text-xl font-medium mb-2", theme === 'dark' ? "text-white" : "text-slate-700")}>查無相關結果</h3>
                 <p className="text-brand-muted text-sm mb-8">請嘗試不同的診斷名、成分或藥品碼</p>
+              </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center py-12 md:py-20 px-4 max-w-xl mx-auto">
+                <div className={cn(
+                  "w-16 h-16 rounded-3xl flex items-center justify-center border mb-6 shadow-lg",
+                  theme === 'dark' 
+                    ? "bg-white/5 border-white/10 text-purple-400 shadow-purple-500/5" 
+                    : "bg-slate-50 border-slate-200 text-purple-500 shadow-slate-100"
+                )}>
+                  <Pill className="w-8 h-8 stroke-[1.25]" />
+                </div>
+                <h3 className={cn(
+                  "text-lg md:text-xl font-bold tracking-tight mb-2.5",
+                  theme === 'dark' ? "text-white" : "text-slate-800"
+                )}>
+                  專科臨床藥物查詢系統
+                </h3>
+                <p className={cn(
+                  "text-xs md:text-sm max-w-sm mb-8 leading-relaxed",
+                  theme === 'dark' ? "text-zinc-500" : "text-slate-500"
+                )}>
+                  請在上方輸入關鍵字開始搜尋，或使用篩選按鈕依據系統、藥理分類、劑型進行篩選。
+                </p>
                 
-                {!isAiSemanticEnabled && (
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setIsAiSemanticEnabled(true)}
-                    className="flex items-center gap-3 px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs uppercase tracking-widest shadow-lg shadow-purple-500/20 group transition-all"
-                  >
-                    <Sparkles className="w-4 h-4 group-hover:animate-spin" />
-                    立即試用 AI 語意智尋
-                  </motion.button>
-                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
+                  <div className={cn(
+                    "p-4 rounded-2xl border transition-all hover:scale-[1.01]",
+                    theme === 'dark' ? "bg-white/[0.02] border-white/5" : "bg-slate-50/50 border-slate-200/60"
+                  )}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Search className="w-4 h-4 text-purple-500" />
+                      <h4 className={cn("text-xs font-bold", theme === 'dark' ? "text-zinc-300" : "text-slate-700")}>快速關鍵字搜尋</h4>
+                    </div>
+                    <p className={cn("text-[11px] leading-relaxed", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>
+                      支援輸入藥品成分（如 Dextrose）、商品名、英文簡寫（如 NS）、中文名或特定適應症群。
+                    </p>
+                  </div>
+                  
+                  <div className={cn(
+                    "p-4 rounded-2xl border transition-all hover:scale-[1.01]",
+                    theme === 'dark' ? "bg-white/[0.02] border-white/5" : "bg-slate-50/50 border-slate-200/60"
+                  )}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Filter className="w-4 h-4 text-purple-500" />
+                      <h4 className={cn("text-xs font-bold", theme === 'dark' ? "text-zinc-300" : "text-slate-700")}>進階屬性篩選</h4>
+                    </div>
+                    <p className={cn("text-[11px] leading-relaxed", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>
+                      點擊搜尋框右側的「篩選」按鈕，即可選取特定生理系統、特定藥理分類或給藥劑型進行組合檢驗。
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1611,10 +1633,15 @@ T456 普拿疼 緩解疼痛
                           <form onSubmit={handleAiSearch} className="relative group p-[1.5px] rounded-2xl bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 focus-within:from-blue-500 focus-within:via-purple-500 focus-within:to-orange-500 transition-all shadow-2xl pointer-events-auto">
                             <input 
                               type="text"
-                              placeholder="例如：我有頭痛且發燒的症狀，有哪些適合的藥物？"
+                              placeholder="例如：病患 58 歲女性，主訴飯後血糖偏高且有糖尿病腎病變，請分析適合的處方藥物..."
                               value={aiQuery}
                               onChange={(e) => setAiQuery(e.target.value)}
-                              className="w-full bg-black/80 backdrop-blur-xl border-none rounded-[15px] pl-5 pr-14 py-3.5 text-sm md:text-base focus:outline-none focus:ring-0 transition-all placeholder:text-zinc-500 text-white font-medium shadow-2xl"
+                              className={cn(
+                                "w-full backdrop-blur-xl border-none rounded-[15px] pl-5 pr-14 py-3.5 text-sm md:text-base focus:outline-none focus:ring-0 transition-all font-medium shadow-2xl",
+                                theme === 'dark' 
+                                  ? "bg-black/80 text-white placeholder:text-zinc-500" 
+                                  : "bg-white/95 text-slate-800 placeholder:text-slate-400"
+                              )}
                             />
                             <button 
                               type="submit"
@@ -1873,18 +1900,51 @@ T456 普拿疼 緩解疼痛
                   )}>
                     Data Sheet <span className={theme === 'dark' ? "text-zinc-700" : "text-slate-300 mx-1 font-normal"}>/</span> <span className={cn("transition-colors", getDosageColor(selectedMed.code).text)}>藥物詳情</span></h2>
                 </div>
-                <button 
-                  onClick={closeDetail}
-                  className={cn(
-                    "p-1 px-2 rounded-md transition-all border flex items-center gap-2",
-                    theme === 'dark' 
-                      ? "hover:bg-white/5 text-brand-muted hover:text-white border-transparent hover:border-white/10" 
-                      : "hover:bg-slate-100 text-slate-400 hover:text-slate-700 border-transparent hover:border-slate-200"
-                  )}
-                >
-                  <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Close</span>
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleFavorite(selectedMed.id)}
+                    className={cn(
+                      "p-1.5 rounded-full transition-all duration-300 group relative"
+                    )}
+                    title={isFavorite(selectedMed.id) ? "移除收藏" : "加入收藏"}
+                  >
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={isFavorite(selectedMed.id) ? "fav" : "not-fav"}
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ 
+                          scale: [1, 1.1, 1],
+                          opacity: 1
+                        }}
+                        transition={{ 
+                          scale: { duration: 2, repeat: Infinity, ease: "easeInOut" },
+                          opacity: { type: "spring", stiffness: 400, damping: 15 }
+                        }}
+                      >
+                        <SharpStar 
+                          className={cn(
+                            "w-5 h-5 transition-colors",
+                            isFavorite(selectedMed.id) 
+                              ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_8px_rgba(139,92,246,0.5)]" 
+                              : theme === 'dark' ? "text-zinc-600 group-hover:text-violet-400" : "text-slate-300 group-hover:text-violet-400"
+                          )} 
+                        />
+                      </motion.div>
+                    </AnimatePresence>
+                  </button>
+                  <button 
+                    onClick={closeDetail}
+                    className={cn(
+                      "p-1 px-2 rounded-md transition-all border flex items-center gap-2",
+                      theme === 'dark' 
+                        ? "hover:bg-white/5 text-brand-muted hover:text-white border-transparent hover:border-white/10" 
+                        : "hover:bg-slate-100 text-slate-400 hover:text-slate-700 border-transparent hover:border-slate-200"
+                    )}
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Close</span>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <div className={cn(
@@ -1895,7 +1955,7 @@ T456 普拿疼 緩解疼痛
               )}>
                 <div className="space-y-4">
                   <div className={cn("inline-flex items-center px-2.5 py-0.5 rounded-md border", getDosageColor(selectedMed.code).bg, getDosageColor(selectedMed.code).borderMain)}>
-                    <span className={cn("font-mono font-medium text-sm md:text-base tracking-widest", getDosageColor(selectedMed.code).text)}>{selectedMed.code}</span>
+                    <span className={cn("font-mono font-black text-[15px] tracking-widest", getDosageColor(selectedMed.code).text)}>{selectedMed.code}</span>
                   </div>
 
                   <div className="space-y-1">
@@ -2011,23 +2071,58 @@ T456 普拿疼 緩解疼痛
           {selectedMed && (
             <motion.div
               key="mobile-panel"
+              drag="y"
+              dragControls={dragControls}
+              dragListener={false}
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.8 }}
+              onDragEnd={(_e, info) => {
+                if (info.offset.y > 100 || info.velocity.y > 500) {
+                  closeDetail();
+                }
+              }}
               initial={{ y: '100%', opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+              transition={{ type: 'spring', damping: 32, stiffness: 300 }}
               className={cn(
                 "md:hidden fixed inset-x-0 bottom-0 h-[38vh] border-t z-[100] overflow-hidden flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.3)]",
                 theme === 'dark' ? "bg-brand-sidebar border-white/10" : "bg-white border-slate-200"
               )}
             >
-              <div className={cn(
-                "w-12 h-1 rounded-full mx-auto my-3 shrink-0",
-                theme === 'dark' ? "bg-zinc-700/50" : "bg-slate-200"
-              )} />
+              <div 
+                onPointerDown={(e) => dragControls.start(e)}
+                className="w-full pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0"
+              >
+                <div className={cn(
+                  "w-12 h-1.5 rounded-full mx-auto shadow-sm",
+                  theme === 'dark' ? "bg-zinc-700" : "bg-slate-300"
+                )} />
+              </div>
               <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-5 scrollbar-none">
                 <div className="flex justify-between items-start sticky top-0 bg-inherit pt-1 pb-2 z-10">
-                   <div className={cn("px-2 py-0.5 rounded border text-[10px] font-mono", getDosageColor(selectedMed.code).bg, getDosageColor(selectedMed.code).text, getDosageColor(selectedMed.code).borderMain)}>
-                      {selectedMed.code}
+                   <div className="flex items-center gap-2">
+                     <div className={cn("px-2 py-0.5 rounded border text-[15px] font-mono font-black tracking-widest", getDosageColor(selectedMed.code).bg, getDosageColor(selectedMed.code).text, getDosageColor(selectedMed.code).borderMain)}>
+                        {selectedMed.code}
+                     </div>
+                      <button
+                        onClick={() => toggleFavorite(selectedMed.id)}
+                        className="p-2 rounded-full transition-all active:scale-90"
+                      >
+                        <motion.div
+                          animate={isFavorite(selectedMed.id) ? { scale: [1, 1.05, 1] } : {}}
+                          transition={isFavorite(selectedMed.id) ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
+                        >
+                          <SharpStar 
+                            className={cn(
+                              "w-6 h-6 transition-colors",
+                              isFavorite(selectedMed.id) 
+                                ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_10px_rgba(139,92,246,0.3)]" 
+                                : theme === 'dark' ? "text-zinc-700" : "text-slate-200"
+                            )} 
+                          />
+                        </motion.div>
+                      </button>
                    </div>
                    <button onClick={closeDetail} className="p-1 -mr-2 opacity-60 hover:opacity-100 transition-opacity"><X className="w-5 h-5 text-zinc-500" /></button>
                 </div>
@@ -2071,6 +2166,214 @@ T456 普拿疼 緩解疼痛
           )}
         </AnimatePresence>
       </div>
+
+      {/* Favorites Management Modal */}
+      <AnimatePresence>
+        {isFavoritesManagerOpen && (
+          <>
+            {/* Backdrop overlay */}
+            <motion.div
+              key="favorites-manager-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setIsFavoritesManagerOpen(false);
+                setFavoritesSearchQuery('');
+              }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150]"
+            />
+            
+            {/* Modal Dialog */}
+            <motion.div
+              key="favorites-manager-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", duration: 0.5, bounce: 0.15 }}
+              className={cn(
+                "fixed inset-x-4 top-[10%] bottom-[10%] md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[600px] md:h-[550px] rounded-3xl border shadow-2xl flex flex-col overflow-hidden z-[160]",
+                theme === 'dark' 
+                  ? "bg-zinc-900/95 border-white/10 text-white shadow-black/80" 
+                  : "bg-white border-slate-200 text-slate-900 shadow-slate-900/20"
+              )}
+            >
+              {/* Header */}
+              <div className={cn(
+                "p-5 border-b shrink-0 flex items-center justify-between",
+                theme === 'dark' ? "border-white/5 bg-white/[0.02]" : "border-slate-100 bg-slate-50"
+              )}>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <SharpStar className="w-4 h-4 text-violet-500 fill-violet-500" />
+                    <h3 className="text-sm font-bold tracking-tight">我的收藏藥物管理</h3>
+                  </div>
+                  <p className={cn("text-[10px] mt-0.5", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>
+                    在此檢視、搜尋，或編輯收藏項目。點擊項目直接查看詳情。
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsFavoritesManagerOpen(false);
+                    setFavoritesSearchQuery('');
+                  }}
+                  className={cn(
+                    "p-1.5 rounded-full transition-colors",
+                    theme === 'dark' ? "hover:bg-white/10 text-zinc-400 hover:text-white" : "hover:bg-slate-100 text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Search input inside favorites */}
+              {favorites.length > 0 && (
+                <div className={cn(
+                  "p-3 px-5 border-b shrink-0 flex items-center gap-2",
+                  theme === 'dark' ? "bg-zinc-950/40 border-white/5" : "bg-slate-50/50 border-slate-100"
+                )}>
+                  <Search className="w-3.5 h-3.5 opacity-40 shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="搜尋我的收藏 (成分、名稱、藥碼、適應症)..."
+                    value={favoritesSearchQuery}
+                    onChange={(e) => setFavoritesSearchQuery(e.target.value)}
+                    className="flex-1 bg-transparent border-none text-[11px] focus:outline-none focus:ring-0 placeholder:opacity-50"
+                  />
+                  {favoritesSearchQuery && (
+                    <button
+                      onClick={() => setFavoritesSearchQuery('')}
+                      className="px-2 py-1 rounded-md text-[9px] font-bold bg-zinc-500/10 hover:bg-zinc-500/20"
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Scrollable list of favorites */}
+              <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+                {favorites.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center py-12">
+                    <div className={cn(
+                      "p-4 rounded-full border mb-3",
+                      theme === 'dark' ? "bg-white/[0.02] border-white/5 text-zinc-700" : "bg-slate-50 border-slate-100 text-slate-300"
+                    )}>
+                      <SharpStar className="w-8 h-8" />
+                    </div>
+                    <h4 className={cn("text-xs font-bold", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>目前無任何收藏藥物</h4>
+                    <p className="text-[10px] opacity-40 mt-1 max-w-xs">
+                      在主畫面點擊藥物卡片旁的星星，即可將其加入此清單中。
+                    </p>
+                  </div>
+                ) : (() => {
+                  const favoritedMeds = medications.filter(m => isFavorite(m.id));
+                  const query = favoritesSearchQuery.toLowerCase().trim();
+                  const filtered = favoritedMeds.filter(m => 
+                    m.component.toLowerCase().includes(query) ||
+                    m.code.toLowerCase().includes(query) ||
+                    m.brandName.toLowerCase().includes(query) ||
+                    (m.chineseName && m.chineseName.toLowerCase().includes(query)) ||
+                    (m.genericName && m.genericName.toLowerCase().includes(query)) ||
+                    (m.indications && m.indications.toLowerCase().includes(query))
+                  );
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="h-full flex flex-col items-center justify-center text-center py-12">
+                        <p className="text-xs font-medium opacity-50">查無符合關鍵字的收藏項目</p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-[9px] font-mono opacity-50 px-1 mb-2">
+                        <span>顯示 {filtered.length} / 共 {favoritedMeds.length} 個收藏項目</span>
+                        {favoritesSearchQuery && <span className="text-violet-500 font-bold animate-pulse">搜尋中</span>}
+                      </div>
+
+                      <AnimatePresence mode="popLayout">
+                        {filtered.map(med => {
+                          const dosageStyle = getDosageColor(med.code);
+                          return (
+                            <motion.div
+                              key={`manage-fav-${med.id}`}
+                              layout
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.95 }}
+                              transition={{ duration: 0.2 }}
+                              onClick={() => {
+                                setSelectedMed(med);
+                                setIsFavoritesManagerOpen(false);
+                                setFavoritesSearchQuery('');
+                              }}
+                              className={cn(
+                                "w-full text-left p-3.5 rounded-2xl border transition-all text-xs flex items-center justify-between group cursor-pointer",
+                                theme === 'dark' 
+                                  ? "bg-white/5 border-white/5 hover:bg-white/10 hover:border-violet-500/30" 
+                                  : "bg-slate-50 border-slate-100 hover:bg-slate-100 hover:border-violet-300"
+                              )}
+                            >
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className={cn(
+                                  "px-2 py-[2px] rounded-lg text-[9px] font-black tracking-widest uppercase shrink-0 border",
+                                  theme === 'dark' ? "border-white/20" : "border-slate-200",
+                                  dosageStyle.text, 
+                                  dosageStyle.bg
+                                )}>
+                                  {med.code}
+                                </div>
+                                
+                                <div className="min-w-0">
+                                  <p className={cn("font-bold truncate text-xs", theme === 'dark' ? "text-zinc-100" : "text-slate-800")}>
+                                    {med.component}
+                                  </p>
+                                  <p className="text-[10px] opacity-60 truncate mt-0.5">
+                                    {med.brandName} {med.chineseName ? `(${med.chineseName})` : ''}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0 ml-3">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleFavorite(med.id);
+                                  }}
+                                  className={cn(
+                                    "p-2 rounded-xl border transition-all active:scale-75 hover:bg-red-500/15 hover:border-red-500/30 text-zinc-500 hover:text-red-500",
+                                    theme === 'dark' ? "border-white/5 bg-white/[0.02]" : "border-slate-200 bg-white"
+                                  )}
+                                  title="移出收藏"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                                <ChevronRight className="w-4 h-4 opacity-30 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-violet-400" />
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Footer */}
+              {favorites.length > 0 && (
+                <div className={cn(
+                  "p-4 border-t font-mono text-[9px] opacity-40 text-center shrink-0",
+                  theme === 'dark' ? "border-white/5" : "border-slate-100"
+                )}>
+                  Total {favorites.length} medicines pinned in local preferences
+                </div>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Detail Overlay Removed */}
     </div>
