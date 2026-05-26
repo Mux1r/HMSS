@@ -3,16 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useMemo, useRef, useDeferredValue, FormEvent } from 'react';
-import Fuse from 'fuse.js';
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useDeferredValue,
+  FormEvent,
+} from "react";
+import Fuse from "fuse.js";
 import { GoogleGenAI } from "@google/genai";
-import { motion, AnimatePresence, useDragControls } from 'motion/react';
-import { 
-  Search, 
-  Pill, 
-  Filter, 
-  Plus, 
-  ChevronRight, 
+import { motion, AnimatePresence, useDragControls } from "motion/react";
+import {
+  Search,
+  Pill,
+  Filter,
+  Plus,
+  ChevronRight,
   ChevronDown,
   Info,
   Clock,
@@ -44,21 +51,30 @@ import {
   Moon,
   Settings,
   Smartphone,
-  Download
-} from 'lucide-react';
+  Download,
+} from "lucide-react";
 
 const getMedicationIcon = (code: string) => {
   const firstChar = code?.charAt(0)?.toUpperCase();
   switch (firstChar) {
-    case 'E': return Sparkles;
-    case 'T': return Pill;
-    case 'I': return Syringe;
-    case 'L': return Droplets;
-    case 'O': return Eye;
-    case 'S': return Wind;
-    case 'Z': return FlaskConical;
-    case 'V': return CircleDot;
-    default: return Pill;
+    case "E":
+      return Sparkles;
+    case "T":
+      return Pill;
+    case "I":
+      return Syringe;
+    case "L":
+      return Droplets;
+    case "O":
+      return Eye;
+    case "S":
+      return Wind;
+    case "Z":
+      return FlaskConical;
+    case "V":
+      return CircleDot;
+    default:
+      return Pill;
   }
 };
 
@@ -66,57 +82,146 @@ const getDosageColor = (code: string) => {
   const firstChar = code?.charAt(0)?.toUpperCase();
   const base = "border-l";
   switch (firstChar) {
-    case 'E': return { border: `${base} border-l-blue-500`, glow: "bg-blue-500", text: "text-blue-500", accent: "text-blue-400", bg: "bg-blue-500/10", borderMain: "border-blue-500/20", icon: Container }; // 外用
-    case 'T': return { border: `${base} border-l-orange-500`, glow: "bg-orange-500", text: "text-orange-500", accent: "text-orange-400", bg: "bg-orange-500/10", borderMain: "border-orange-500/20", icon: Pill }; // 錠劑
-    case 'I': return { border: `${base} border-l-red-500`, glow: "bg-red-500", text: "text-red-500", accent: "text-red-400", bg: "bg-red-500/10", borderMain: "border-red-500/20", icon: Syringe }; // 針劑
-    case 'L': return { border: `${base} border-l-teal-500`, glow: "bg-teal-500", text: "text-teal-500", accent: "text-teal-400", bg: "bg-teal-500/10", borderMain: "border-teal-500/20", icon: FlaskConical }; // 藥水
-    case 'O': return { border: `${base} border-l-emerald-500`, glow: "bg-emerald-500", text: "text-emerald-500", accent: "text-emerald-400", bg: "bg-emerald-500/10", borderMain: "border-emerald-500/20", icon: Eye }; // 眼用
-    case 'S': return { border: `${base} border-l-amber-500`, glow: "bg-amber-500", text: "text-amber-500", accent: "text-amber-400", bg: "bg-amber-500/10", borderMain: "border-amber-500/20", icon: Wind }; // 噴劑
-    case 'Z': return { border: `${base} border-l-zinc-500`, glow: "bg-zinc-500", text: "text-zinc-500", accent: "text-zinc-400", bg: "bg-zinc-500/10", borderMain: "border-zinc-500/20", icon: Beaker }; // 試驗
-    case 'V': return { border: `${base} border-l-violet-500`, glow: "bg-violet-500", text: "text-violet-500", accent: "text-violet-400", bg: "bg-violet-500/10", borderMain: "border-violet-500/20", icon: ArrowDownToDot }; // 塞劑
-    default: return { border: `${base} border-l-brand-accent`, glow: "bg-brand-accent", text: "text-brand-accent", accent: "text-brand-accent/80", bg: "bg-brand-accent/10", borderMain: "border-brand-accent/20", icon: Pill };
+    case "E":
+      return {
+        border: `${base} border-l-blue-500`,
+        glow: "bg-blue-500",
+        text: "text-blue-500",
+        accent: "text-blue-400",
+        bg: "bg-blue-500/10",
+        borderMain: "border-blue-500/20",
+        icon: Container,
+      }; // 外用
+    case "T":
+      return {
+        border: `${base} border-l-orange-500`,
+        glow: "bg-orange-500",
+        text: "text-orange-500",
+        accent: "text-orange-400",
+        bg: "bg-orange-500/10",
+        borderMain: "border-orange-500/20",
+        icon: Pill,
+      }; // 錠劑
+    case "I":
+      return {
+        border: `${base} border-l-red-500`,
+        glow: "bg-red-500",
+        text: "text-red-500",
+        accent: "text-red-400",
+        bg: "bg-red-500/10",
+        borderMain: "border-red-500/20",
+        icon: Syringe,
+      }; // 針劑
+    case "L":
+      return {
+        border: `${base} border-l-teal-500`,
+        glow: "bg-teal-500",
+        text: "text-teal-500",
+        accent: "text-teal-400",
+        bg: "bg-teal-500/10",
+        borderMain: "border-teal-500/20",
+        icon: FlaskConical,
+      }; // 藥水
+    case "O":
+      return {
+        border: `${base} border-l-emerald-500`,
+        glow: "bg-emerald-500",
+        text: "text-emerald-500",
+        accent: "text-emerald-400",
+        bg: "bg-emerald-500/10",
+        borderMain: "border-emerald-500/20",
+        icon: Eye,
+      }; // 眼用
+    case "S":
+      return {
+        border: `${base} border-l-amber-500`,
+        glow: "bg-amber-500",
+        text: "text-amber-500",
+        accent: "text-amber-400",
+        bg: "bg-amber-500/10",
+        borderMain: "border-amber-500/20",
+        icon: Wind,
+      }; // 噴劑
+    case "Z":
+      return {
+        border: `${base} border-l-zinc-500`,
+        glow: "bg-zinc-500",
+        text: "text-zinc-500",
+        accent: "text-zinc-400",
+        bg: "bg-zinc-500/10",
+        borderMain: "border-zinc-500/20",
+        icon: Beaker,
+      }; // 試驗
+    case "V":
+      return {
+        border: `${base} border-l-violet-500`,
+        glow: "bg-violet-500",
+        text: "text-violet-500",
+        accent: "text-violet-400",
+        bg: "bg-violet-500/10",
+        borderMain: "border-violet-500/20",
+        icon: ArrowDownToDot,
+      }; // 塞劑
+    default:
+      return {
+        border: `${base} border-l-brand-accent`,
+        glow: "bg-brand-accent",
+        text: "text-brand-accent",
+        accent: "text-brand-accent/80",
+        bg: "bg-brand-accent/10",
+        borderMain: "border-brand-accent/20",
+        icon: Pill,
+      };
   }
 };
 
 const DOSAGE_FORM_MAP: Record<string, string> = {
-  'T': '錠劑',
-  'B': '膠囊',
-  'C': '顆粒',
-  'D': '粉末',
-  'E': '外用藥',
-  'F': '膜衣錠',
-  'G': '腸溶錠',
-  'H': '軟膠囊',
-  'I': '針劑',
-  'K': '膏劑/乳膏',
-  'L': '內服液/藥水',
-  'O': '眼用藥',
-  'P': '貼片',
-  'R': '栓劑',
-  'S': '噴劑/吸入',
-  'V': '塞劑',
-  'W': '洗劑',
-  'Y': '糖漿',
-  'Z': '其他/試驗',
-  'A': '錠劑'
+  T: "錠劑",
+  B: "膠囊",
+  C: "顆粒",
+  D: "粉末",
+  E: "外用藥",
+  F: "膜衣錠",
+  G: "腸溶錠",
+  H: "軟膠囊",
+  I: "針劑",
+  K: "膏劑/乳膏",
+  L: "內服液/藥水",
+  O: "眼用藥",
+  P: "貼片",
+  R: "栓劑",
+  S: "噴劑/吸入",
+  V: "塞劑",
+  W: "洗劑",
+  Y: "糖漿",
+  Z: "其他/試驗",
+  A: "錠劑",
 };
 
 const getDosageName = (code: string) => {
   const char = code?.charAt(0)?.toUpperCase();
-  return char && DOSAGE_FORM_MAP[char] ? `${char} - ${DOSAGE_FORM_MAP[char]}` : char || '?';
+  return char && DOSAGE_FORM_MAP[char]
+    ? `${char} - ${DOSAGE_FORM_MAP[char]}`
+    : char || "?";
 };
 
-const SharpStar = ({ className, fill = "none" }: { className?: string, fill?: string }) => (
-  <svg 
-    xmlns="http://www.w3.org/2000/svg" 
-    width="24" 
-    height="24" 
-    viewBox="0 0 24 24" 
-    fill={fill} 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="square" 
-    strokeLinejoin="miter" 
+const SharpStar = ({
+  className,
+  fill = "none",
+}: {
+  className?: string;
+  fill?: string;
+}) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill={fill}
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="square"
+    strokeLinejoin="miter"
     strokeMiterlimit="10"
     className={className}
   >
@@ -124,24 +229,29 @@ const SharpStar = ({ className, fill = "none" }: { className?: string, fill?: st
   </svg>
 );
 
-import { localMedicationService, Medication } from './services/medicationService';
-import { cn } from './lib/utils';
-import { MEDICAL_ALIASES } from './lib/medicalKeywords';
+import {
+  localMedicationService,
+  Medication,
+} from "./services/medicationService";
+import { cn } from "./lib/utils";
+import { MEDICAL_ALIASES } from "./lib/medicalKeywords";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [medications, setMedications] = useState<Medication[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [displayLimit, setDisplayLimit] = useState(100);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [selectedSystem, setSelectedSystem] = useState('全部系統');
-  const [selectedClass, setSelectedClass] = useState('全部藥理');
+  const [selectedSystem, setSelectedSystem] = useState("全部系統");
+  const [selectedClass, setSelectedClass] = useState("全部藥理");
   const [selectedDosageForms, setSelectedDosageForms] = useState<string[]>([]);
   const [selectedMed, setSelectedMed] = useState<Medication | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
-  const [gsheetUrl, setGsheetUrl] = useState('https://script.google.com/macros/s/AKfycbxotfbc6-KsIn-_RoltpZl_vQhjUNDN-UrU9pWIARSCnWUCn_9iZ60J46zwr3b6laKBBw/exec');
+  const [gsheetUrl, setGsheetUrl] = useState(
+    "https://script.google.com/macros/s/AKfycbxotfbc6-KsIn-_RoltpZl_vQhjUNDN-UrU9pWIARSCnWUCn_9iZ60J46zwr3b6laKBBw/exec",
+  );
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [isSystemOpen, setIsSystemOpen] = useState(false);
@@ -152,11 +262,11 @@ export default function App() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
-  const [favoritesSearchQuery, setFavoritesSearchQuery] = useState('');
+  const [favoritesSearchQuery, setFavoritesSearchQuery] = useState("");
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [favorites, setFavorites] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('favorites');
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("favorites");
       return saved ? JSON.parse(saved) : [];
     }
     return [];
@@ -164,32 +274,38 @@ export default function App() {
   const dragControls = useDragControls();
 
   useEffect(() => {
-    localStorage.setItem('favorites', JSON.stringify(favorites));
+    localStorage.setItem("favorites", JSON.stringify(favorites));
   }, [favorites]);
 
   const toggleFavorite = (id: string) => {
-    setFavorites(prev => 
-      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
+    setFavorites((prev) =>
+      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
     );
   };
 
   const isFavorite = (id: string) => favorites.includes(id);
 
   const isStandalone = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+    if (typeof window === "undefined") return false;
+    return (
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as any).standalone === true
+    );
   }, []);
 
   const buildVersion = useMemo(() => {
     try {
       // @ts-ignore
-      const time = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : new Date().toISOString();
+      const time =
+        typeof __BUILD_TIME__ !== "undefined"
+          ? __BUILD_TIME__
+          : new Date().toISOString();
       const date = new Date(time);
       const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, '0');
-      const dd = String(date.getDate()).padStart(2, '0');
-      const hh = String(date.getHours()).padStart(2, '0');
-      const min = String(date.getMinutes()).padStart(2, '0');
+      const mm = String(date.getMonth() + 1).padStart(2, "0");
+      const dd = String(date.getDate()).padStart(2, "0");
+      const hh = String(date.getHours()).padStart(2, "0");
+      const min = String(date.getMinutes()).padStart(2, "0");
       return `${yyyy}${mm}${dd}.${hh}${min}`;
     } catch (e) {
       return "20240101.0000";
@@ -208,49 +324,68 @@ export default function App() {
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      console.log('beforeinstallprompt fired');
+      console.log("beforeinstallprompt fired");
     };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () =>
+      window.removeEventListener(
+        "beforeinstallprompt",
+        handleBeforeInstallPrompt,
+      );
   }, []);
 
   const handleInstallApp = async () => {
     if (isIframe) {
-      alert("請點擊右上方『在分頁中開啟』圖示，進入正式網址後即可看到安裝按鈕。");
+      alert(
+        "請點擊右上方『在分頁中開啟』圖示，進入正式網址後即可看到安裝按鈕。",
+      );
       return;
     }
-    
+
     if (!deferredPrompt) {
       // If prompt is not available but user clicked, show a guide or toast
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      const isIOS =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+        !(window as any).MSStream;
       if (isIOS) {
         alert("iOS 裝置請點擊瀏覽器下方的『分享』圖示，並選擇『加入主畫面』。");
       } else {
-        alert("Chrome 瀏覽器請點擊右上角『⋮』選單，選擇『安裝應用程式』或『加入主畫面』。\n\n提示：若您剛開啟網頁，請稍候幾秒或稍微捲動頁面，安裝選項通常會隨即出現。");
+        alert(
+          "Chrome 瀏覽器請點擊右上角『⋮』選單，選擇『安裝應用程式』或『加入主畫面』。\n\n提示：若您剛開啟網頁，請稍候幾秒或稍微捲動頁面，安裝選項通常會隨即出現。",
+        );
       }
       return;
     }
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
+    if (outcome === "accepted") {
       setDeferredPrompt(null);
     }
   };
 
   // AI Mode States
   const [isAiMode, setIsAiMode] = useState(false);
-  const [aiQuery, setAiQuery] = useState('');
+  const [aiQuery, setAiQuery] = useState("");
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
-  const [aiHistory, setAiHistory] = useState<{query: string, response: string, timestamp: number}[]>([]);
-  const [aiVisibleLimits, setAiVisibleLimits] = useState<Record<string, number>>({});
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('theme');
-      if (saved === 'light' || saved === 'dark') return saved;
-      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  const [aiHistory, setAiHistory] = useState<
+    { query: string; response: string; timestamp: number }[]
+  >([]);
+  const [aiVisibleLimits, setAiVisibleLimits] = useState<
+    Record<string, number>
+  >({});
+  const [aiExpandedMeds, setAiExpandedMeds] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("theme");
+      if (saved === "light" || saved === "dark") return saved;
+      return window.matchMedia("(prefers-color-scheme: light)").matches
+        ? "light"
+        : "dark";
     }
-    return 'dark';
+    return "dark";
   });
 
   // --- Browser Back Button & Navigation Sync ---
@@ -267,36 +402,38 @@ export default function App() {
         setIsAiMode(false);
       } else {
         // Navigation case
-        if (state.type === 'ai_with_med') {
+        if (state.type === "ai_with_med") {
           setIsAiMode(true);
-          const med = medications.find(m => m.id === state.medId);
+          const med = medications.find((m) => m.id === state.medId);
           if (med) setSelectedMed(med);
-        } else if (state.type === 'ai') {
+        } else if (state.type === "ai") {
           setIsAiMode(true);
-          // If the state says it's just AI, but we came from a med selection, 
-          // we might want to stay in HMSS if that's what's logic dictates, 
+          // If the state says it's just AI, but we came from a med selection,
+          // we might want to stay in HMSS if that's what's logic dictates,
           // or just follow the state exactly.
           if (state.medId) {
-             const med = medications.find(m => m.id === state.medId);
-             if (med) setSelectedMed(med);
+            const med = medications.find((m) => m.id === state.medId);
+            if (med) setSelectedMed(med);
           } else {
             setSelectedMed(null);
           }
-        } else if (state.type === 'med') {
+        } else if (state.type === "med") {
           setIsAiMode(false);
-          const med = medications.find(m => m.id === state.id);
+          const med = medications.find((m) => m.id === state.id);
           if (med) setSelectedMed(med);
-        } else if (state.type === 'hmss') {
+        } else if (state.type === "hmss") {
           setIsAiMode(false);
           setSelectedMed(null);
         }
       }
-      
-      setTimeout(() => { isNavigatingRef.current = false; }, 50);
+
+      setTimeout(() => {
+        isNavigatingRef.current = false;
+      }, 50);
     };
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, [medications, selectedMed, isAiMode]);
 
   // Sync state changes to browser history with detailed state
@@ -307,14 +444,17 @@ export default function App() {
     if (selectedMed) state.medId = selectedMed.id;
 
     if (isAiMode && selectedMed) {
-      window.history.pushState({ type: 'ai_with_med', medId: selectedMed.id }, '');
+      window.history.pushState(
+        { type: "ai_with_med", medId: selectedMed.id },
+        "",
+      );
     } else if (isAiMode) {
-      window.history.pushState({ type: 'ai' }, '');
+      window.history.pushState({ type: "ai" }, "");
     } else if (selectedMed) {
-      window.history.pushState({ type: 'med', id: selectedMed.id }, '');
+      window.history.pushState({ type: "med", id: selectedMed.id }, "");
     } else {
       // Basic HMSS mode
-      window.history.replaceState({ type: 'hmss' }, '');
+      window.history.replaceState({ type: "hmss" }, "");
     }
   }, [selectedMed, isAiMode]);
 
@@ -324,29 +464,32 @@ export default function App() {
   // -----------------------------------
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
   }, [theme]);
 
-  const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' }), []);
+  const ai = useMemo(
+    () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" }),
+    [],
+  );
 
   // Fuse instance for fuzzy search
   const fuse = useMemo(() => {
     return new Fuse(medications, {
       keys: [
-        { name: 'code', weight: 1.0 },
-        { name: 'component', weight: 0.9 },
-        { name: 'brandName', weight: 0.8 },
-        { name: 'genericName', weight: 0.7 },
-        { name: 'chineseName', weight: 0.6 },
-        { name: 'indications', weight: 0.4 },
-        { name: 'searchKeywords', weight: 0.4 }
+        { name: "code", weight: 1.0 },
+        { name: "component", weight: 0.9 },
+        { name: "brandName", weight: 0.8 },
+        { name: "genericName", weight: 0.7 },
+        { name: "chineseName", weight: 0.6 },
+        { name: "indications", weight: 0.4 },
+        { name: "searchKeywords", weight: 0.4 },
       ],
       threshold: 0.4, // 調整基礎靈敏度，由邏輯層決定動態門檻
-      location: 0,    // 優先考慮字串開頭的匹配
-      distance: 50,   // 縮小範圍，讓遠離位點 0 的匹配扣分更高
+      location: 0, // 優先考慮字串開頭的匹配
+      distance: 50, // 縮小範圍，讓遠離位點 0 的匹配扣分更高
       includeScore: true,
-      shouldSort: true
+      shouldSort: true,
     });
   }, [medications]);
 
@@ -357,33 +500,37 @@ export default function App() {
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       // If click is not inside a dropdown or filter area, close them
-      if (!target.closest('.dropdown-container') && !target.closest('.filter-popover-container')) {
+      if (
+        !target.closest(".dropdown-container") &&
+        !target.closest(".filter-popover-container")
+      ) {
         setIsSystemOpen(false);
         setIsClassOpen(false);
         setIsDosageFormOpen(false);
         setShowFilters(false);
       }
     };
-    window.addEventListener('click', handleClick);
-    return () => window.removeEventListener('click', handleClick);
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
   }, []);
 
   const handleSyncGoogleSheet = async () => {
     setIsSyncing(true);
-    setImportStatus('正在連線至雲端資料庫...');
-    
+    setImportStatus("正在連線至雲端資料庫...");
+
     try {
-      const { meds, hash } = await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
+      const { meds, hash } =
+        await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
       setImportStatus(`正在存儲 ${meds.length} 筆資料至本地庫...`);
-      
+
       // 直接覆蓋現有清單，並儲存原始資料的雜湊以供未來比對
       await localMedicationService.saveAll(meds, hash);
       setMedications(meds);
-      
+
       setImportStatus(`同步成功！已更新 ${meds.length} 筆資料`);
       setIsUpdateAvailable(false);
     } catch (error) {
-      setImportStatus('同步失敗，請檢查網路連線或資料格式');
+      setImportStatus("同步失敗，請檢查網路連線或資料格式");
       console.error(error);
     } finally {
       setIsSyncing(false);
@@ -406,12 +553,13 @@ export default function App() {
         // 否則只檢查更新
         const checkUpdates = async () => {
           try {
-            const hasUpdate = await localMedicationService.checkForUpdates(gsheetUrl);
+            const hasUpdate =
+              await localMedicationService.checkForUpdates(gsheetUrl);
             if (hasUpdate) {
               setIsUpdateAvailable(true);
             }
           } catch (e) {
-            console.warn('Update check failed:', e);
+            console.warn("Update check failed:", e);
           }
         };
         setTimeout(checkUpdates, 2000);
@@ -430,42 +578,67 @@ export default function App() {
 
     try {
       if (!process.env.GEMINI_API_KEY) {
-        throw new Error("偵測不到 GEMINI_API_KEY。若您在使用 GitHub Pages，請在專案中設定環境變數。");
+        throw new Error(
+          "偵測不到 GEMINI_API_KEY。若您在使用 GitHub Pages，請在專案中設定環境變數。",
+        );
       }
-      
+
       // Send the full list of medications to AI for comprehensive analysis
-      const medListSummary = medications.map(m => ({
+      const medListSummary = medications.map((m) => ({
         code: m.code,
         component: m.component,
         genericName: m.genericName,
         brandName: m.brandName,
-        indications: m.indications
+        indications: m.indications,
       }));
 
       const currentQuery = aiQuery;
-      const prompt = `你是一個專業的醫藥助理。請根據以下提供的藥物清單，分析並拆解使用者的描述中包含的所有健康問題 (Problems)。
-針對每個識別出的問題，請從清單中提供 5-10 個適合的藥物建議。
+      const prompt = `# Role
+你是一位全能且精通臨床藥理學的主治醫師，具備嚴謹的臨床推理能力與多重用藥（Polypharmacy）審視經驗。
 
-使用者問題：${currentQuery}
+# Context
+用戶將會提供一段關於病患的健康狀況描述（包含主訴、病史或症狀），以及一份特定的可用藥物清單。多病共存的病人往往面臨用藥複雜度高及潛在藥物交互作用的風險，需要精準的藥物整合。
 
-藥物清單（部分）：
+# Task
+請依據用戶提供的病患描述與藥物資訊，進行以下三步驟的臨床分析：
+1. 臨床問題拆解：分析並識別出描述中健康問題（Problems），並區分為active 與 underlying problems。
+2. 藥理決策與建議：綜合評估識別出的健康問題，針對每個使用者需要解決的問題(active problems)，從可用藥物中篩選出 5-10 個臨床上最適切的藥物建議，並提供藥物功能（或簡述選擇理由）。underlying disease 僅用來與active problems綜合評估病患情況，不需呈現underlying problems的藥物建議。
+3. 處方總結：撰寫一份 50-200 字的整體用藥策略總結(重點式、邏輯清晰、可使用條列式)。
+
+# Constraints
+- 藥物審視（Medication Review）：挑選藥物時，必須嚴格審視藥物交互作用（DDI）、重複用藥及潛在的副作用。
+- 實證醫學：所有藥物建議必須符合現行臨床指引。
+- 資訊邊界：若病患描述之資訊不足以確立診斷，應明確指出需進一步評估的臨床指標（如肝腎功能、實驗室數據），不可憑空猜測。
+
+# Output Format (強制嚴格執行，以利系統解析)
+請務必嚴格遵守以下結構輸出，且「絕對不要」輸出「【第一部分：整體用藥策略與總結建議】」、「第一部分」、「【第二部分：臨床問題與建議藥物清單】」、「第二部分」等標題：
+
+[整體用藥策略與臨床總結段落]
+請直接在此第一段輸出 50-200 字的整體臨床分析、用藥策略總結以及任何需要進一步評估的臨床指標（說明請精準扼要，重點式、邏輯清晰、可使用條列式，在此段中絕對不可包含「問題：」或「Problem:」字樣）。
+
+問題：[主動健康問題名稱]
+[藥品碼] [藥物名稱] [該藥之臨床選擇理由與主要功能]
+[藥品碼] [藥物名稱] [該藥之臨床選擇理由與主要功能]
+... （針對此問題建議 5-10 個藥物，每行一藥）
+
+問題：[下一個主動健康問題名稱]
+...
+
+(每個「問題：」區段下方，每行只能包含一個藥物建議。格式範例如下：
+直接以臨床總結開頭：
+病患有高血糖與輕度糖尿病腎病變，建議使用 SGLT2 抑制劑以達降糖與心腎保護效果...
+
+問題：高血糖伴隨糖尿病腎病變
+T101 二甲雙胍 一線口服降血糖藥，具有心血管保護作用
+T102 恩格列淨 SGLT2抑制劑，能有效降低心血管及腎病變惡化風險
+)
+
+---
+病患狀況描述：
+${currentQuery}
+
+可用藥物清單：
 ${JSON.stringify(medListSummary)}
-
-輸出格式請嚴格遵守：
-問題：[問題名稱]
-藥品碼 藥物名稱 藥物功能
-藥品碼 藥物名稱 藥物功能
-...
-
-(每個問題下儘量提供 5-10 個藥物，每行一個藥物，不需要其他解釋)
-例如：
-問題：頭痛
-T123 阿斯匹靈 解熱鎮痛
-T456 普拿疼 緩解疼痛
-...
-
-問題：發燒
-...
 `;
 
       const response = await ai.models.generateContent({
@@ -475,8 +648,11 @@ T456 普拿疼 緩解疼痛
 
       const resultText = response.text || "未能找到合適的藥物建議。";
       setAiResponse(resultText);
-      setAiHistory(prev => [{ query: currentQuery, response: resultText, timestamp: Date.now() }, ...prev]);
-      setAiQuery('');
+      setAiHistory((prev) => [
+        { query: currentQuery, response: resultText, timestamp: Date.now() },
+        ...prev,
+      ]);
+      setAiQuery("");
     } catch (error) {
       console.error("AI Search Error:", error);
       setAiResponse("AI 搜尋發生錯誤，請稍後再試。");
@@ -486,23 +662,28 @@ T456 普拿疼 緩解疼痛
   };
 
   const anatomicalSystems = useMemo(() => {
-    const systems = new Set(medications.map(m => m.anatomicalSystem));
-    return ['全部系統', ...Array.from(systems).sort()];
+    const systems = new Set(medications.map((m) => m.anatomicalSystem));
+    return ["全部系統", ...Array.from(systems).sort()];
   }, [medications]);
 
   const pharmacologicalClasses = useMemo(() => {
     // 根據選取的系統過濾藥理分類
-    const filteredMeds = selectedSystem === '全部系統' 
-      ? medications 
-      : medications.filter(m => m.anatomicalSystem === selectedSystem);
-    
-    const classes = new Set(filteredMeds.map(m => m.pharmacologicalClass));
-    return ['全部藥理', ...Array.from(classes).sort()];
+    const filteredMeds =
+      selectedSystem === "全部系統"
+        ? medications
+        : medications.filter((m) => m.anatomicalSystem === selectedSystem);
+
+    const classes = new Set(filteredMeds.map((m) => m.pharmacologicalClass));
+    return ["全部藥理", ...Array.from(classes).sort()];
   }, [medications, selectedSystem]);
 
   const dosageForms = useMemo(() => {
-    const forms = new Set(medications.map(m => m.dosageForm || (m.code?.charAt(0)?.toUpperCase() || '?')).filter(f => f && f !== '?'));
-    return ['全部劑型', ...Array.from(forms).sort()];
+    const forms = new Set(
+      medications
+        .map((m) => m.dosageForm || m.code?.charAt(0)?.toUpperCase() || "?")
+        .filter((f) => f && f !== "?"),
+    );
+    return ["全部劑型", ...Array.from(forms).sort()];
   }, [medications]);
 
   // Reset display limit when filters change
@@ -514,12 +695,20 @@ T456 普拿疼 緩解疼痛
   }, [deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForms]);
 
   const isSearchingOrFiltering = useMemo(() => {
-    return deferredSearchQuery.trim() !== '' || 
-           selectedSystem !== '全部系統' || 
-           selectedClass !== '全部藥理' || 
-           selectedDosageForms.length > 0 || 
-           onlyFavorites;
-  }, [deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForms, onlyFavorites]);
+    return (
+      deferredSearchQuery.trim() !== "" ||
+      selectedSystem !== "全部系統" ||
+      selectedClass !== "全部藥理" ||
+      selectedDosageForms.length > 0 ||
+      onlyFavorites
+    );
+  }, [
+    deferredSearchQuery,
+    selectedSystem,
+    selectedClass,
+    selectedDosageForms,
+    onlyFavorites,
+  ]);
 
   const filteredMedications = useMemo(() => {
     if (!isSearchingOrFiltering) {
@@ -528,19 +717,19 @@ T456 普拿疼 緩解疼痛
 
     const query = deferredSearchQuery.toLowerCase().trim();
     const synonyms = MEDICAL_ALIASES[query] || [];
-    
+
     let baseMeds = medications;
-    
+
     if (query) {
       const minPrefixLength = 3;
       const queryLen = query.length;
 
       // 1. 完全或縮寫匹配 (最優先)
-      const exactMatches = medications.filter(m => {
+      const exactMatches = medications.filter((m) => {
         const mCode = m.code?.toLowerCase();
         const mComp = m.component?.toLowerCase();
         const mBrand = m.brandName?.toLowerCase();
-        
+
         // 直接完全匹配
         const isExact = mCode === query || mComp === query || mBrand === query;
         if (isExact) return true;
@@ -548,28 +737,30 @@ T456 普拿疼 緩解疼痛
         // 縮寫/別名匹配 (例如打 NS 找到 Normal Saline)
         if (synonyms.length > 0) {
           const searchable = `${mCode} ${mComp} ${mBrand} ${m.genericName?.toLowerCase()} ${m.chineseName?.toLowerCase()} ${m.pharmacologicalClass?.toLowerCase()}`;
-          return synonyms.some(s => searchable.includes(s.toLowerCase()));
+          return synonyms.some((s) => searchable.includes(s.toLowerCase()));
         }
         return false;
       });
 
       // 1.1 醫學屬性匹配 (機轉、分類等)
-      const medicalIntentMatches = medications.filter(m => {
-        if (exactMatches.some(em => em.id === m.id)) return false;
-        
+      const medicalIntentMatches = medications.filter((m) => {
+        if (exactMatches.some((em) => em.id === m.id)) return false;
+
         const pharmacological = m.pharmacologicalClass?.toLowerCase() || "";
         const system = m.anatomicalSystem?.toLowerCase() || "";
         const indications = m.indications?.toLowerCase() || "";
-        
+
         // 如果查詢命中分類或機轉關鍵字
-        if (pharmacological.includes(query) || system.includes(query)) return true;
-        
+        if (pharmacological.includes(query) || system.includes(query))
+          return true;
+
         // 別名命中機轉 (例如 ACEI 命中藥理分類中含有相關字眼的藥物)
         if (synonyms.length > 0) {
-          return synonyms.some(s => 
-            pharmacological.includes(s.toLowerCase()) || 
-            system.includes(s.toLowerCase()) ||
-            indications.includes(s.toLowerCase())
+          return synonyms.some(
+            (s) =>
+              pharmacological.includes(s.toLowerCase()) ||
+              system.includes(s.toLowerCase()) ||
+              indications.includes(s.toLowerCase()),
           );
         }
         return false;
@@ -583,20 +774,20 @@ T456 普拿疼 緩解疼痛
       };
 
       // 第二層： 字串絕對開頭匹配 (String Start)
-      const stringStartMatches = medications.filter(m => {
-        if (exactMatches.some(em => em.id === m.id)) return false;
-        if (medicalIntentMatches.some(mm => mm.id === m.id)) return false;
+      const stringStartMatches = medications.filter((m) => {
+        if (exactMatches.some((em) => em.id === m.id)) return false;
+        if (medicalIntentMatches.some((mm) => mm.id === m.id)) return false;
         const targets = [m.code, m.component, m.brandName, m.genericName];
-        return targets.some(t => t?.toLowerCase().startsWith(query));
+        return targets.some((t) => t?.toLowerCase().startsWith(query));
       });
 
       // 第三層： 第一個「字母」單字開頭匹配 (例如解決 "10% Dextrose" 的 "Dextrose" 開頭)
-      const firstAlphaStartMatches = medications.filter(m => {
-        if (exactMatches.some(em => em.id === m.id)) return false;
-        if (medicalIntentMatches.some(mm => mm.id === m.id)) return false;
-        if (stringStartMatches.some(sm => sm.id === m.id)) return false;
+      const firstAlphaStartMatches = medications.filter((m) => {
+        if (exactMatches.some((em) => em.id === m.id)) return false;
+        if (medicalIntentMatches.some((mm) => mm.id === m.id)) return false;
+        if (stringStartMatches.some((sm) => sm.id === m.id)) return false;
         const targets = [m.component, m.brandName, m.genericName];
-        return targets.some(t => {
+        return targets.some((t) => {
           if (!t) return false;
           const alphaT = getAlphaStart(t);
           return alphaT.startsWith(query);
@@ -604,30 +795,32 @@ T456 普拿疼 緩解疼痛
       });
 
       // 第四層： 其他單字開頭 (Word Boundary Match) - 滿足「每個單字開頭權重都調高」
-      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const wordBoundaryRegex = new RegExp(`\\b${escapedQuery}`, 'i');
-      const wordBoundaryMatches = medications.filter(m => {
-        if (exactMatches.some(em => em.id === m.id)) return false;
-        if (medicalIntentMatches.some(mm => mm.id === m.id)) return false;
-        if (stringStartMatches.some(sm => sm.id === m.id)) return false;
-        if (firstAlphaStartMatches.some(am => am.id === m.id)) return false;
-        
-        const searchPool = `${m.component} ${m.brandName} ${m.genericName} ${m.chineseName} ${m.searchKeywords || ''}`;
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const wordBoundaryRegex = new RegExp(`\\b${escapedQuery}`, "i");
+      const wordBoundaryMatches = medications.filter((m) => {
+        if (exactMatches.some((em) => em.id === m.id)) return false;
+        if (medicalIntentMatches.some((mm) => mm.id === m.id)) return false;
+        if (stringStartMatches.some((sm) => sm.id === m.id)) return false;
+        if (firstAlphaStartMatches.some((am) => am.id === m.id)) return false;
+
+        const searchPool = `${m.component} ${m.brandName} ${m.genericName} ${m.chineseName} ${m.searchKeywords || ""}`;
         return wordBoundaryRegex.test(searchPool);
       });
 
       // 第五層： 全域模糊搜尋 (Global Fuzzy Match) - 僅在符合特定條件時顯示
       const fuzzyResults = fuse.search(query);
-      
+
       // 過濾與限制模糊搜尋結果
       const constrainedFuzzy = fuzzyResults
-        .filter(result => {
+        .filter((result) => {
           const item = result.item;
-          if (exactMatches.some(em => em.id === item.id)) return false;
-          if (medicalIntentMatches.some(mm => mm.id === item.id)) return false;
-          if (stringStartMatches.some(sm => sm.id === item.id)) return false;
-          if (firstAlphaStartMatches.some(am => am.id === item.id)) return false;
-          if (wordBoundaryMatches.some(wm => wm.id === item.id)) return false;
+          if (exactMatches.some((em) => em.id === item.id)) return false;
+          if (medicalIntentMatches.some((mm) => mm.id === item.id))
+            return false;
+          if (stringStartMatches.some((sm) => sm.id === item.id)) return false;
+          if (firstAlphaStartMatches.some((am) => am.id === item.id))
+            return false;
+          if (wordBoundaryMatches.some((wm) => wm.id === item.id)) return false;
 
           // 核心限制：避免短關鍵字（如 3 碼以下）匹配到單字中間
           if (queryLen < minPrefixLength) return false;
@@ -638,7 +831,8 @@ T456 普拿疼 緩解疼痛
           else if (queryLen === 4) dynamicThreshold = 0.25;
           else if (queryLen <= 6) dynamicThreshold = 0.32;
 
-          if (result.score === undefined || result.score > dynamicThreshold) return false;
+          if (result.score === undefined || result.score > dynamicThreshold)
+            return false;
 
           // 避免長度差異過大造成的誤判
           const primaryName = item.component || item.brandName || "";
@@ -648,43 +842,57 @@ T456 普拿疼 緩解疼痛
 
           return true;
         })
-        .map(r => r.item);
+        .map((r) => r.item);
 
       // 整合與去重，保持嚴格優先順序
       const combinedMeds: typeof medications = [
-        ...exactMatches, 
+        ...exactMatches,
         ...medicalIntentMatches,
-        ...stringStartMatches, 
+        ...stringStartMatches,
         ...firstAlphaStartMatches,
-        ...wordBoundaryMatches
+        ...wordBoundaryMatches,
       ];
 
       // 合併模糊匹配結果 (去重)
-      constrainedFuzzy.forEach(fm => {
-        if (!combinedMeds.some(m => m.id === fm.id)) {
+      constrainedFuzzy.forEach((fm) => {
+        if (!combinedMeds.some((m) => m.id === fm.id)) {
           combinedMeds.push(fm);
         }
       });
 
       baseMeds = combinedMeds;
     }
-    
-    return baseMeds.filter(med => {
+
+    return baseMeds.filter((med) => {
       const matchesFavorite = !onlyFavorites || isFavorite(med.id);
 
-      const matchesSystem = 
-        selectedSystem === '全部系統' || med.anatomicalSystem === selectedSystem;
+      const matchesSystem =
+        selectedSystem === "全部系統" ||
+        med.anatomicalSystem === selectedSystem;
 
-      const matchesClass = 
-        selectedClass === '全部藥理' || med.pharmacologicalClass === selectedClass;
+      const matchesClass =
+        selectedClass === "全部藥理" ||
+        med.pharmacologicalClass === selectedClass;
 
-      const matchesDosageForm = 
-        selectedDosageForms.length === 0 || 
-        selectedDosageForms.includes(med.dosageForm || med.code?.charAt(0)?.toUpperCase() || '?');
+      const matchesDosageForm =
+        selectedDosageForms.length === 0 ||
+        selectedDosageForms.includes(
+          med.dosageForm || med.code?.charAt(0)?.toUpperCase() || "?",
+        );
 
-      return matchesFavorite && matchesSystem && matchesClass && matchesDosageForm;
+      return (
+        matchesFavorite && matchesSystem && matchesClass && matchesDosageForm
+      );
     });
-  }, [medications, deferredSearchQuery, selectedSystem, selectedClass, selectedDosageForms, onlyFavorites, favorites]);
+  }, [
+    medications,
+    deferredSearchQuery,
+    selectedSystem,
+    selectedClass,
+    selectedDosageForms,
+    onlyFavorites,
+    favorites,
+  ]);
 
   const displayedMedications = useMemo(() => {
     return filteredMedications.slice(0, displayLimit);
@@ -692,12 +900,14 @@ T456 普拿疼 緩解疼痛
 
   if (loading) {
     return (
-      <div className={cn(
-        "min-h-screen flex items-center justify-center transition-colors duration-500",
-        theme === 'dark' 
-          ? "bg-gradient-to-br from-[#1F2232] via-[#0D0E16] to-[#030305]" 
-          : "bg-gradient-to-br from-slate-50 via-slate-100 to-white"
-      )}>
+      <div
+        className={cn(
+          "min-h-screen flex items-center justify-center transition-colors duration-500",
+          theme === "dark"
+            ? "bg-gradient-to-br from-[#1F2232] via-[#0D0E16] to-[#030305]"
+            : "bg-gradient-to-br from-slate-50 via-slate-100 to-white",
+        )}
+      >
         <Loader2 className="w-8 h-8 text-brand-accent animate-spin" />
       </div>
     );
@@ -718,29 +928,38 @@ T456 普拿疼 緩解疼痛
               className="fixed inset-0 bg-transparent z-[100]"
             />
             <motion.div
-              initial={{ x: '-105%' }}
+              initial={{ x: "-105%" }}
               animate={{ x: 0 }}
-              exit={{ x: '-105%' }}
-              transition={{ 
-                type: 'spring', 
-                damping: 32, 
+              exit={{ x: "-105%" }}
+              transition={{
+                type: "spring",
+                damping: 32,
                 stiffness: 280,
                 mass: 0.8,
-                restDelta: 0.001
+                restDelta: 0.001,
               }}
               className={cn(
                 "fixed inset-y-0 left-0 w-40 z-[110] shadow-2xl flex flex-col",
-                theme === 'dark' 
-                  ? "bg-zinc-950/30 border-r border-white/10 text-white backdrop-blur-md" 
-                  : "bg-white/30 border-r border-slate-200 text-slate-900 backdrop-blur-md"
+                theme === "dark"
+                  ? "bg-zinc-950/30 border-r border-white/10 text-white backdrop-blur-md"
+                  : "bg-white/30 border-r border-slate-200 text-slate-900 backdrop-blur-md",
               )}
             >
               {/* Header: Identity */}
               <div className="p-4 pt-10 pb-6 border-b border-inherit">
                 <div className="flex flex-col items-center gap-4 text-center">
                   <div>
-                    <h2 className="text-sm font-bold tracking-tight">控制中心</h2>
-                    <p className={cn("text-[8px] font-black uppercase tracking-[0.2em] opacity-60 mt-1", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>Preferences</p>
+                    <h2 className="text-sm font-bold tracking-tight">
+                      控制中心
+                    </h2>
+                    <p
+                      className={cn(
+                        "text-[8px] font-black uppercase tracking-[0.2em] opacity-60 mt-1",
+                        theme === "dark" ? "text-zinc-400" : "text-slate-600",
+                      )}
+                    >
+                      Preferences
+                    </p>
                   </div>
                 </div>
               </div>
@@ -755,18 +974,27 @@ T456 普拿疼 緩解疼痛
                     }}
                     className={cn(
                       "w-full p-3 rounded-xl border transition-all text-xs flex items-center justify-between group cursor-pointer shadow-sm",
-                      theme === 'dark' 
-                        ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200 hover:border-violet-500/30" 
-                        : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-800 hover:border-violet-300"
+                      theme === "dark"
+                        ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200 hover:border-violet-500/30"
+                        : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-800 hover:border-violet-300",
                     )}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <SharpStar className={cn("w-4 h-4 text-violet-500 group-hover:scale-110 transition-transform duration-300", favorites.length > 0 && "fill-violet-500")} />
+                      <SharpStar
+                        className={cn(
+                          "w-4 h-4 text-violet-500 group-hover:scale-110 transition-transform duration-300",
+                          favorites.length > 0 && "fill-violet-500",
+                        )}
+                      />
                       <span className="font-bold">我的收藏</span>
-                      <span className={cn(
-                        "px-1.5 py-0.5 rounded-full text-[9px] font-mono leading-none",
-                        theme === 'dark' ? "bg-white/10 text-zinc-400" : "bg-slate-200 text-slate-600"
-                      )}>
+                      <span
+                        className={cn(
+                          "px-1.5 py-0.5 rounded-full text-[9px] font-mono leading-none",
+                          theme === "dark"
+                            ? "bg-white/10 text-zinc-400"
+                            : "bg-slate-200 text-slate-600",
+                        )}
+                      >
                         {favorites.length}
                       </span>
                     </div>
@@ -777,44 +1005,63 @@ T456 普拿疼 緩解疼痛
                 {/* Section: Mode/Theme - Segmented Switcher */}
                 <div className="space-y-4">
                   <div className="flex flex-col gap-3">
-                    <div className={cn(
-                      "p-1 rounded-xl flex items-center gap-1 border relative transition-colors h-10",
-                      theme === 'dark' ? "bg-white/5 border-white/10" : "bg-slate-100 border-slate-200"
-                    )}>
+                    <div
+                      className={cn(
+                        "p-1 rounded-xl flex items-center gap-1 border relative transition-colors h-10",
+                        theme === "dark"
+                          ? "bg-white/5 border-white/10"
+                          : "bg-slate-100 border-slate-200",
+                      )}
+                    >
                       <motion.div
                         className={cn(
                           "absolute h-[calc(100%-8px)] rounded-lg shadow-md z-0",
-                          theme === 'dark' ? "bg-zinc-800 border border-white/10" : "bg-white border border-slate-200"
+                          theme === "dark"
+                            ? "bg-zinc-800 border border-white/10"
+                            : "bg-white border border-slate-200",
                         )}
                         initial={false}
                         animate={{
-                          left: theme === 'dark' ? "calc(50% + 1px)" : "4px",
-                          width: "calc(50% - 5px)"
+                          left: theme === "dark" ? "calc(50% + 1px)" : "4px",
+                          width: "calc(50% - 5px)",
                         }}
-                        transition={{ type: "spring", bounce: 0.1, duration: 0.5 }}
+                        transition={{
+                          type: "spring",
+                          bounce: 0.1,
+                          duration: 0.5,
+                        }}
                       />
-                      
+
                       <button
-                        onClick={() => setTheme('light')}
+                        onClick={() => setTheme("light")}
                         className={cn(
                           "relative z-10 flex-1 h-full rounded-lg transition-all duration-300 flex items-center justify-center",
-                          theme === 'light' ? "text-amber-500" : "text-zinc-500 hover:text-zinc-400"
+                          theme === "light"
+                            ? "text-amber-500"
+                            : "text-zinc-500 hover:text-zinc-400",
                         )}
                       >
                         <Sun className="w-4 h-4" />
                       </button>
-                      
+
                       <button
-                        onClick={() => setTheme('dark')}
+                        onClick={() => setTheme("dark")}
                         className={cn(
                           "relative z-10 flex-1 h-full rounded-lg transition-all duration-300 flex items-center justify-center",
-                          theme === 'dark' ? "text-indigo-400" : "text-zinc-500 hover:text-zinc-400"
+                          theme === "dark"
+                            ? "text-indigo-400"
+                            : "text-zinc-500 hover:text-zinc-400",
                         )}
                       >
                         <Moon className="w-4 h-4" />
                       </button>
                     </div>
-                    <span className={cn("text-[9px] font-black uppercase tracking-[0.2em] text-center opacity-60", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>
+                    <span
+                      className={cn(
+                        "text-[9px] font-black uppercase tracking-[0.2em] text-center opacity-60",
+                        theme === "dark" ? "text-zinc-400" : "text-slate-600",
+                      )}
+                    >
                       Theme Mode
                     </span>
                   </div>
@@ -823,14 +1070,14 @@ T456 普拿疼 緩解疼痛
                 {/* Integrated Status & Sync */}
                 <div className="pt-6 border-t border-inherit flex flex-col items-center gap-4">
                   <div className="relative group">
-                    <button 
+                    <button
                       onClick={handleSyncGoogleSheet}
                       disabled={isSyncing}
                       className={cn(
                         "w-12 h-12 rounded-full flex items-center justify-center transition-all relative overflow-hidden",
-                        theme === 'dark' 
-                          ? "bg-white/5 hover:bg-brand-accent/20 border border-white/5 text-zinc-400 hover:text-brand-accent" 
-                          : "bg-slate-50 hover:bg-brand-accent/10 border border-slate-100 text-slate-400 hover:text-brand-accent shadow-sm"
+                        theme === "dark"
+                          ? "bg-white/5 hover:bg-brand-accent/20 border border-white/5 text-zinc-400 hover:text-brand-accent"
+                          : "bg-slate-50 hover:bg-brand-accent/10 border border-slate-100 text-slate-400 hover:text-brand-accent shadow-sm",
                       )}
                     >
                       {isSyncing ? (
@@ -844,12 +1091,20 @@ T456 普拿疼 緩解疼痛
                     </button>
                   </div>
                   <div className="text-center space-y-1">
-                    <span className={cn("text-[9px] font-black uppercase tracking-[0.1em] block", 
-                      isSyncing ? "text-amber-500" : "text-emerald-500"
-                    )}>
+                    <span
+                      className={cn(
+                        "text-[9px] font-black uppercase tracking-[0.1em] block",
+                        isSyncing ? "text-amber-500" : "text-emerald-500",
+                      )}
+                    >
                       {isSyncing ? "Syncing..." : "Connected"}
                     </span>
-                    <span className={cn("text-[8px] font-medium opacity-60 block", theme === 'dark' ? "text-zinc-500" : "text-slate-600")}>
+                    <span
+                      className={cn(
+                        "text-[8px] font-medium opacity-60 block",
+                        theme === "dark" ? "text-zinc-500" : "text-slate-600",
+                      )}
+                    >
                       API Status
                     </span>
                   </div>
@@ -862,20 +1117,33 @@ T456 普拿疼 緩解疼痛
                       onClick={handleInstallApp}
                       className={cn(
                         "w-full flex flex-col items-center gap-2 p-3 rounded-xl transition-all duration-300 group hover:scale-[1.02] active:scale-95",
-                        theme === 'dark' ? "bg-brand-accent/20 border border-brand-accent/30" : "bg-brand-accent/10 border border-brand-accent/20 shadow-sm"
+                        theme === "dark"
+                          ? "bg-brand-accent/20 border border-brand-accent/30"
+                          : "bg-brand-accent/10 border border-brand-accent/20 shadow-sm",
                       )}
                     >
-                      <div className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center bg-brand-accent text-white shadow-lg shadow-brand-accent/20 group-hover:rotate-12 transition-transform",
-                      )}>
+                      <div
+                        className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center bg-brand-accent text-white shadow-lg shadow-brand-accent/20 group-hover:rotate-12 transition-transform",
+                        )}
+                      >
                         <Smartphone className="w-4 h-4" />
                       </div>
                       <div className="text-center">
                         <span className="text-[10px] font-bold text-brand-accent block">
                           安裝應用程式
                         </span>
-                        <span className={cn("text-[8px] font-medium opacity-60 block", theme === 'dark' ? "text-zinc-500" : "text-slate-600")}>
-                          {deferredPrompt ? "Install Web App" : "Add to Home Screen (Guide)"}
+                        <span
+                          className={cn(
+                            "text-[8px] font-medium opacity-60 block",
+                            theme === "dark"
+                              ? "text-zinc-500"
+                              : "text-slate-600",
+                          )}
+                        >
+                          {deferredPrompt
+                            ? "Install Web App"
+                            : "Add to Home Screen (Guide)"}
                         </span>
                       </div>
                     </button>
@@ -885,19 +1153,33 @@ T456 普拿疼 緩解疼痛
                 {/* Build Info */}
                 <div className="pt-6 border-t border-inherit space-y-4">
                   <div className="flex flex-col items-center gap-2">
-                    <div className={cn(
-                      "w-8 h-8 rounded-lg flex items-center justify-center",
-                      theme === 'dark' ? "bg-white/5" : "bg-slate-50 border border-slate-100"
-                    )}>
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center",
+                        theme === "dark"
+                          ? "bg-white/5"
+                          : "bg-slate-50 border border-slate-100",
+                      )}
+                    >
                       <CheckCircle2 className="w-3.5 h-3.5 opacity-60" />
                     </div>
                     <div className="text-center space-y-1">
-                      <span className={cn("text-[10px] font-bold block", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>
+                      <span
+                        className={cn(
+                          "text-[10px] font-bold block",
+                          theme === "dark" ? "text-zinc-400" : "text-slate-600",
+                        )}
+                      >
                         Build Ver.
                       </span>
-                      <span className={cn("text-[9px] font-mono px-2 py-0.5 rounded border border-inherit leading-none block", 
-                        theme === 'dark' ? "bg-zinc-800 text-zinc-300 border-white/10" : "bg-slate-50 text-slate-600 border-slate-200"
-                      )}>
+                      <span
+                        className={cn(
+                          "text-[9px] font-mono px-2 py-0.5 rounded border border-inherit leading-none block",
+                          theme === "dark"
+                            ? "bg-zinc-800 text-zinc-300 border-white/10"
+                            : "bg-slate-50 text-slate-600 border-slate-200",
+                        )}
+                      >
                         {buildVersion}
                       </span>
                     </div>
@@ -906,15 +1188,27 @@ T456 普拿疼 緩解疼痛
               </div>
 
               {/* Footer */}
-              <div className={cn("p-6 border-t border-inherit", theme === 'dark' ? "bg-black/20" : "bg-slate-50/50")}>
-                 <div className="flex flex-col items-center gap-4">
-                    <div className="flex items-center gap-2 opacity-20">
-                       <span className="text-[9px] font-black tracking-[0.4em] uppercase">HMSS</span>
-                    </div>
-                    <p className={cn("text-[8px] text-center leading-tight opacity-50 font-medium", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>
-                      Professional Ref Only.
-                    </p>
-                 </div>
+              <div
+                className={cn(
+                  "p-6 border-t border-inherit",
+                  theme === "dark" ? "bg-black/20" : "bg-slate-50/50",
+                )}
+              >
+                <div className="flex flex-col items-center gap-4">
+                  <div className="flex items-center gap-2 opacity-20">
+                    <span className="text-[9px] font-black tracking-[0.4em] uppercase">
+                      HMSS
+                    </span>
+                  </div>
+                  <p
+                    className={cn(
+                      "text-[8px] text-center leading-tight opacity-50 font-medium",
+                      theme === "dark" ? "text-zinc-400" : "text-slate-600",
+                    )}
+                  >
+                    Professional Ref Only.
+                  </p>
+                </div>
               </div>
             </motion.div>
           </>
@@ -922,56 +1216,122 @@ T456 普拿疼 緩解疼痛
       </AnimatePresence>
 
       {/* Enhanced Background Glows for Glass Visibility */}
-      <div className={cn(
-        "absolute top-[-5%] right-[-5%] w-[50%] h-[50%] blur-[140px] rounded-full pointer-events-none z-0 animate-pulse",
-        theme === 'dark' ? "bg-brand-accent/10" : "bg-brand-accent/5"
-      )}></div>
-      <div className={cn(
-        "absolute bottom-[10%] left-[-10%] w-[45%] h-[45%] blur-[120px] rounded-full pointer-events-none z-0",
-        theme === 'dark' ? "bg-[#66D99B]/5" : "bg-[#66D99B]/3"
-      )}></div>
-      <div className={cn(
-        "absolute top-[30%] left-[20%] w-[30%] h-[30%] blur-[100px] rounded-full pointer-events-none z-0",
-        theme === 'dark' ? "bg-blue-500/5" : "bg-blue-500/3"
-      )}></div>
+      <div
+        className={cn(
+          "absolute top-[-5%] right-[-5%] w-[50%] h-[50%] blur-[140px] rounded-full pointer-events-none z-0 animate-pulse",
+          theme === "dark" ? "bg-brand-accent/10" : "bg-brand-accent/5",
+        )}
+      ></div>
+      <div
+        className={cn(
+          "absolute bottom-[10%] left-[-10%] w-[45%] h-[45%] blur-[120px] rounded-full pointer-events-none z-0",
+          theme === "dark" ? "bg-[#66D99B]/5" : "bg-[#66D99B]/3",
+        )}
+      ></div>
+      <div
+        className={cn(
+          "absolute top-[30%] left-[20%] w-[30%] h-[30%] blur-[100px] rounded-full pointer-events-none z-0",
+          theme === "dark" ? "bg-blue-500/5" : "bg-blue-500/3",
+        )}
+      ></div>
 
       {/* Decorative Background Lines */}
       <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-20">
         <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
-              <path d="M 60 0 L 0 0 0 60" fill="none" stroke={theme === 'dark' ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)"} strokeWidth="0.5"/>
+            <pattern
+              id="grid"
+              width="60"
+              height="60"
+              patternUnits="userSpaceOnUse"
+            >
+              <path
+                d="M 60 0 L 0 0 0 60"
+                fill="none"
+                stroke={
+                  theme === "dark"
+                    ? "rgba(255,255,255,0.03)"
+                    : "rgba(0,0,0,0.03)"
+                }
+                strokeWidth="0.5"
+              />
             </pattern>
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
-          
-          <line x1="10%" y1="0" x2="40%" y2="100%" stroke={theme === 'dark' ? "rgba(49,135,189,0.08)" : "rgba(49,135,189,0.12)"} strokeWidth="1" />
-          <line x1="60%" y1="0" x2="30%" y2="100%" stroke={theme === 'dark' ? "rgba(102,217,155,0.05)" : "rgba(102,217,155,0.08)"} strokeWidth="1" />
-          <line x1="0" y1="20%" x2="100%" y2="40%" stroke={theme === 'dark' ? "rgba(49,135,189,0.04)" : "rgba(49,135,189,0.06)"} strokeWidth="1" />
-          <line x1="0" y1="80%" x2="100%" y2="60%" stroke={theme === 'dark' ? "rgba(102,217,155,0.06)" : "rgba(102,217,155,0.1)"} strokeWidth="1" />
+
+          <line
+            x1="10%"
+            y1="0"
+            x2="40%"
+            y2="100%"
+            stroke={
+              theme === "dark"
+                ? "rgba(49,135,189,0.08)"
+                : "rgba(49,135,189,0.12)"
+            }
+            strokeWidth="1"
+          />
+          <line
+            x1="60%"
+            y1="0"
+            x2="30%"
+            y2="100%"
+            stroke={
+              theme === "dark"
+                ? "rgba(102,217,155,0.05)"
+                : "rgba(102,217,155,0.08)"
+            }
+            strokeWidth="1"
+          />
+          <line
+            x1="0"
+            y1="20%"
+            x2="100%"
+            y2="40%"
+            stroke={
+              theme === "dark"
+                ? "rgba(49,135,189,0.04)"
+                : "rgba(49,135,189,0.06)"
+            }
+            strokeWidth="1"
+          />
+          <line
+            x1="0"
+            y1="80%"
+            x2="100%"
+            y2="60%"
+            stroke={
+              theme === "dark"
+                ? "rgba(102,217,155,0.06)"
+                : "rgba(102,217,155,0.1)"
+            }
+            strokeWidth="1"
+          />
         </svg>
       </div>
 
       {/* Header */}
-      <header className={cn(
-        "h-16 border-b flex items-center justify-between px-4 md:px-6 shrink-0 z-50 shadow-2xl transition-all duration-500",
-        isAiMode 
-          ? "border-purple-500/20 bg-brand-header/40 backdrop-blur-3xl shadow-purple-500/5" 
-          : cn(
-              "backdrop-blur-3xl",
-              theme === 'dark' 
-                ? "border-white/5 bg-brand-header/30 shadow-black/50" 
-                : "border-slate-200 bg-white/70 shadow-slate-200/50"
-            )
-      )}>
+      <header
+        className={cn(
+          "h-16 border-b flex items-center justify-between px-4 md:px-6 shrink-0 z-50 shadow-2xl transition-all duration-500",
+          isAiMode
+            ? "border-purple-500/20 bg-brand-header/40 backdrop-blur-3xl shadow-purple-500/5"
+            : cn(
+                "backdrop-blur-3xl",
+                theme === "dark"
+                  ? "border-white/5 bg-brand-header/30 shadow-black/50"
+                  : "border-slate-200 bg-white/70 shadow-slate-200/50",
+              ),
+        )}
+      >
         <div className="flex items-center gap-4">
-          <button 
+          <button
             onClick={() => setIsSettingsOpen(true)}
             className={cn(
               "p-2 rounded-xl border transition-all duration-300",
-              theme === 'dark' 
+              theme === "dark"
                 ? "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white"
-                : "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                : "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700",
             )}
           >
             <Menu className="w-5 h-5" />
@@ -979,61 +1339,81 @@ T456 普拿疼 緩解疼痛
 
           <div className="flex items-center gap-6">
             {/* Segmented Tab Switcher */}
-          <div className={cn(
-            "p-1 rounded-xl flex items-center gap-1 border relative w-48 sm:w-64 transition-colors",
-            theme === 'dark' ? "bg-white/5 border-white/10" : "bg-slate-100 border-slate-200"
-          )}>
-            {/* Sliding background */}
+            <div
+              className={cn(
+                "p-1 rounded-xl flex items-center gap-1 border relative w-48 sm:w-64 transition-colors",
+                theme === "dark"
+                  ? "bg-white/5 border-white/10"
+                  : "bg-slate-100 border-slate-200",
+              )}
+            >
+              {/* Sliding background */}
               <motion.div
                 layoutId="activeTab"
                 className={cn(
                   "absolute h-[calc(100%-8px)] rounded-lg shadow-lg z-0",
-                  isAiMode 
-                    ? "bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500" 
-                    : "bg-gradient-to-r from-[#3187BD] to-[#66D99B]"
+                  isAiMode
+                    ? "bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500"
+                    : "bg-gradient-to-r from-[#3187BD] to-[#66D99B]",
                 )}
                 initial={false}
                 animate={{
                   left: isAiMode ? "calc(50% + 2px)" : "4px",
-                  width: "calc(50% - 6px)"
+                  width: "calc(50% - 6px)",
                 }}
                 transition={{ type: "spring", bounce: 0.1, duration: 0.6 }}
               />
 
-            <button
-              onClick={exitAiMode}
-              className={cn(
-                "relative z-10 flex-1 py-2 text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2",
-                !isAiMode ? "text-white" : "text-zinc-500 hover:text-zinc-300"
-              )}
-            >
-              <Pill className={cn("w-4 h-4 transition-colors", !isAiMode ? "text-white" : "text-zinc-500")} />
-              <span className="hidden sm:inline whitespace-nowrap">HMSS 查詢</span>
-              <span className="sm:hidden">HMSS</span>
-            </button>
+              <button
+                onClick={exitAiMode}
+                className={cn(
+                  "relative z-10 flex-1 py-2 text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2",
+                  !isAiMode
+                    ? "text-white"
+                    : "text-zinc-500 hover:text-zinc-300",
+                )}
+              >
+                <Pill
+                  className={cn(
+                    "w-4 h-4 transition-colors",
+                    !isAiMode ? "text-white" : "text-zinc-500",
+                  )}
+                />
+                <span className="hidden sm:inline whitespace-nowrap">
+                  HMSS 查詢
+                </span>
+                <span className="sm:hidden">HMSS</span>
+              </button>
 
-            <button
-              onClick={() => setIsAiMode(true)}
-              className={cn(
-                "relative z-10 flex-1 py-2 text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2",
-                isAiMode ? "text-white" : "text-zinc-500 hover:text-zinc-300"
-              )}
-            >
-              <Sparkles className={cn("w-4 h-4 transition-colors", isAiMode ? "text-white" : "text-zinc-500")} />
-              <span className="hidden sm:inline whitespace-nowrap">AI 助理</span>
-              <span className="sm:hidden">AI</span>
-            </button>
-          </div>
-          
-          <div className="hidden lg:flex flex-col">
-            <span className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.2em] leading-tight">
-              {isAiMode ? "Smart Analysis" : "Hospital System"}
-            </span>
+              <button
+                onClick={() => setIsAiMode(true)}
+                className={cn(
+                  "relative z-10 flex-1 py-2 text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2",
+                  isAiMode ? "text-white" : "text-zinc-500 hover:text-zinc-300",
+                )}
+              >
+                <Sparkles
+                  className={cn(
+                    "w-4 h-4 transition-colors",
+                    isAiMode ? "text-white" : "text-zinc-500",
+                  )}
+                />
+                <span className="hidden sm:inline whitespace-nowrap">
+                  AI 助理
+                </span>
+                <span className="sm:hidden">AI</span>
+              </button>
+            </div>
+
+            <div className="hidden lg:flex flex-col">
+              <span className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.2em] leading-tight">
+                {isAiMode ? "Smart Analysis" : "Hospital System"}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3">
           {importStatus && (
             <div className="hidden lg:flex items-center gap-2 text-[9px] text-[#3187BD] font-bold bg-brand-accent/5 px-3 py-1.5 rounded-full border border-[#3187BD]/20 animate-pulse">
               <CheckCircle2 className="w-3 h-3" /> {importStatus}
@@ -1042,7 +1422,7 @@ T456 普拿疼 緩解疼痛
 
           <div className="hidden md:flex flex-col items-end mr-1">
             <p className="text-[8px] text-brand-accent font-bold uppercase tracking-widest leading-none">
-              {isSyncing ? 'Cloud Syncing' : 'Connected'}
+              {isSyncing ? "Cloud Syncing" : "Connected"}
             </p>
           </div>
         </div>
@@ -1053,7 +1433,7 @@ T456 普拿疼 緩解疼痛
         <main className="flex-1 flex flex-col bg-transparent overflow-hidden relative">
           <AnimatePresence mode="popLayout" initial={false}>
             {!isAiMode ? (
-              <motion.div 
+              <motion.div
                 key="standard-mode"
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -1063,554 +1443,803 @@ T456 普拿疼 緩解疼痛
               >
                 {/* Top Search & Filter Toolbar */}
                 <div className="absolute top-0 left-0 right-0 z-40 bg-transparent p-3 md:p-4 pointer-events-none">
-            <div className="flex items-center gap-3 pointer-events-auto">
-              {/* Global Search */}
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const input = e.currentTarget.querySelector('input');
-                  if (input) input.blur();
-                }}
-                className={cn(
-                  "relative flex-1 group dropdown-container p-[1.5px] rounded-2xl transition-all shadow-2xl",
-                  theme === 'dark' 
-                    ? "bg-gradient-to-r from-[#3187BD]/60 to-[#66D99B]/60 focus-within:from-[#3187BD] focus-within:to-[#66D99B] shadow-brand-accent/20"
-                    : "bg-gradient-to-r from-[#3187BD]/40 to-[#66D99B]/40 focus-within:from-[#3187BD]/70 focus-within:to-[#66D99B]/70 shadow-slate-200"
-                )}
-              >
-                <Search className={cn("absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 z-10 transition-colors", theme === 'dark' ? "text-zinc-500 group-focus-within:text-brand-accent" : "text-slate-400 group-focus-within:text-brand-accent")} />
-                <input 
-                  type="text" 
-                  enterKeyHint="search"
-                  placeholder="搜尋成分、代碼、適應症..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                  }}
-                  onFocus={() => {
-                    setSearchFocused(true);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      (e.target as HTMLInputElement).blur();
+                  <div className="flex items-center gap-3 pointer-events-auto">
+                    {/* Global Search */}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const input = e.currentTarget.querySelector("input");
+                        if (input) input.blur();
+                      }}
+                      className={cn(
+                        "relative flex-1 group dropdown-container p-[1.5px] rounded-2xl transition-all shadow-2xl",
+                        theme === "dark"
+                          ? "bg-gradient-to-r from-[#3187BD]/60 to-[#66D99B]/60 focus-within:from-[#3187BD] focus-within:to-[#66D99B] shadow-brand-accent/20"
+                          : "bg-gradient-to-r from-[#3187BD]/40 to-[#66D99B]/40 focus-within:from-[#3187BD]/70 focus-within:to-[#66D99B]/70 shadow-slate-200",
+                      )}
+                    >
+                      <Search
+                        className={cn(
+                          "absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 z-10 transition-colors",
+                          theme === "dark"
+                            ? "text-zinc-500 group-focus-within:text-brand-accent"
+                            : "text-slate-400 group-focus-within:text-brand-accent",
+                        )}
+                      />
+                      <input
+                        type="text"
+                        enterKeyHint="search"
+                        placeholder="搜尋成分、代碼、適應症..."
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                        }}
+                        onFocus={() => {
+                          setSearchFocused(true);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        className={cn(
+                          "w-full backdrop-blur-3xl border-none rounded-[15px] pl-11 py-3 text-sm focus:outline-none focus:ring-0 transition-all font-medium",
+                          searchQuery ? "pr-20 md:pr-12" : "pr-4 md:pr-4",
+                          theme === "dark"
+                            ? "bg-black/90 text-white placeholder:text-zinc-600"
+                            : "bg-white/90 text-slate-800 placeholder:text-slate-400",
+                        )}
+                      />
+
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                        {searchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setSearchQuery("")}
+                            className="p-1.5 text-zinc-500 hover:text-white transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                        {searchQuery && (
+                          <button
+                            type="submit"
+                            className="md:hidden p-1.5 text-brand-accent hover:text-[#66D99B] transition-colors"
+                          >
+                            <ArrowRight className="w-5 h-5" />
+                          </button>
+                        )}
+                      </div>
+                    </form>
+
+                    {/* Compact Filter Toggle */}
+                    <div className="relative filter-popover-container">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowFilters(!showFilters);
+                        }}
+                        className={cn(
+                          "h-[46px] px-4 rounded-xl border transition-all flex items-center justify-center gap-2 shadow-sm font-bold text-xs uppercase tracking-widest",
+                          showFilters ||
+                            selectedSystem !== "全部系統" ||
+                            selectedClass !== "全部藥理" ||
+                            selectedDosageForms.length > 0
+                            ? "bg-brand-accent/20 border-brand-accent/40 text-brand-accent"
+                            : cn(
+                                "transition-colors",
+                                theme === "dark"
+                                  ? "bg-white/[0.03] border-white/10 text-brand-muted hover:text-white hover:bg-white/[0.05]"
+                                  : "bg-white border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 shadow-sm shadow-slate-200",
+                              ),
+                        )}
+                      >
+                        <Filter className="w-4 h-4" />
+                        <span className="hidden sm:inline">篩選</span>
+                        {(selectedSystem !== "全部系統" ||
+                          selectedClass !== "全部藥理" ||
+                          selectedDosageForms.length > 0 ||
+                          onlyFavorites) && (
+                          <span
+                            className={cn(
+                              "w-2 h-2 rounded-full bg-brand-accent absolute -top-1 -right-1 shadow-lg border animate-pulse",
+                              theme === "dark"
+                                ? "shadow-brand-accent/50 border-brand-bg"
+                                : "shadow-brand-accent/30 border-white",
+                            )}
+                          />
+                        )}
+                      </button>
+
+                      <AnimatePresence>
+                        {showFilters && (
+                          <motion.div
+                            key="filter-popover"
+                            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                            transition={{
+                              ease: [0.22, 1, 0.36, 1],
+                              duration: 0.5,
+                            }}
+                            className={cn(
+                              "absolute top-full right-0 mt-3 w-80 backdrop-blur-3xl border rounded-2xl shadow-2xl z-[100] p-4 flex flex-col gap-4",
+                              theme === "dark"
+                                ? "bg-brand-sidebar/95 border-white/10 shadow-black/50"
+                                : "bg-white border-slate-200 shadow-slate-200/60",
+                            )}
+                          >
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-[10px] font-bold text-brand-accent uppercase tracking-[0.2em]">
+                                分類篩選
+                              </span>
+                              <button
+                                onClick={() => setShowFilters(false)}
+                                className={cn(
+                                  "transition-colors",
+                                  theme === "dark"
+                                    ? "text-zinc-500 hover:text-white"
+                                    : "text-slate-400 hover:text-slate-600",
+                                )}
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            <div className="space-y-4">
+                              <div className="space-y-3">
+                                {/* Compact Favorites Toggle */}
+                                <div
+                                  className="flex items-center justify-between p-2 pl-3 rounded-lg border transition-colors group cursor-pointer"
+                                  onClick={() =>
+                                    setOnlyFavorites(!onlyFavorites)
+                                  }
+                                  style={{
+                                    backgroundColor:
+                                      theme === "dark"
+                                        ? "rgba(255,255,255,0.02)"
+                                        : "rgba(0,0,0,0.01)",
+                                    borderColor:
+                                      theme === "dark"
+                                        ? "rgba(255,255,255,0.08)"
+                                        : "rgba(0,0,0,0.05)",
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <SharpStar
+                                      className={cn(
+                                        "w-3.5 h-3.5",
+                                        onlyFavorites
+                                          ? "fill-yellow-500 text-yellow-500"
+                                          : theme === "dark"
+                                            ? "text-zinc-600"
+                                            : "text-slate-300",
+                                      )}
+                                    />
+                                    <span
+                                      className={cn(
+                                        "text-[10px] font-bold uppercase tracking-wider",
+                                        theme === "dark"
+                                          ? "text-zinc-300"
+                                          : "text-slate-700",
+                                      )}
+                                    >
+                                      僅顯示收藏
+                                    </span>
+                                  </div>
+                                  <div
+                                    className={cn(
+                                      "w-8 h-4 rounded-full relative transition-colors border p-0.5",
+                                      onlyFavorites
+                                        ? "bg-violet-500 border-violet-500"
+                                        : theme === "dark"
+                                          ? "bg-zinc-800 border-white/10"
+                                          : "bg-slate-200 border-slate-300",
+                                    )}
+                                  >
+                                    <motion.div
+                                      animate={{ x: onlyFavorites ? 16 : 0 }}
+                                      className="w-2.5 h-2.5 rounded-full bg-white shadow-sm"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* System & Class combined in a grid */}
+                                <div className="grid grid-cols-2 gap-2">
+                                  {/* Anatomical System Filter */}
+                                  <div className="space-y-1 overflow-visible dropdown-container">
+                                    <label
+                                      className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest pl-1",
+                                        theme === "dark"
+                                          ? "text-zinc-500"
+                                          : "text-slate-400",
+                                      )}
+                                    >
+                                      系統
+                                    </label>
+                                    <div
+                                      className="relative"
+                                      onBlur={(e) => {
+                                        if (
+                                          !e.currentTarget.contains(
+                                            e.relatedTarget as Node,
+                                          )
+                                        ) {
+                                          setIsSystemOpen(false);
+                                        }
+                                      }}
+                                    >
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setIsSystemOpen(!isSystemOpen);
+                                          setIsClassOpen(false);
+                                          setIsDosageFormOpen(false);
+                                        }}
+                                        className={cn(
+                                          "w-full border rounded-lg pl-3 pr-2 py-2 text-[10px] flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all shadow-sm group",
+                                          theme === "dark"
+                                            ? "bg-white/5 border-white/10 text-zinc-200"
+                                            : "bg-slate-50 border-slate-200 text-slate-700",
+                                        )}
+                                      >
+                                        <span className="truncate font-medium">
+                                          {selectedSystem === "全部系統"
+                                            ? "全部系統"
+                                            : selectedSystem}
+                                        </span>
+                                        <ChevronDown
+                                          className={cn(
+                                            "w-3 h-3 text-brand-muted shrink-0 transition-transform",
+                                            isSystemOpen && "rotate-180",
+                                          )}
+                                        />
+                                      </button>
+
+                                      <AnimatePresence>
+                                        {isSystemOpen && (
+                                          <motion.div
+                                            key="system-dropdown"
+                                            initial={{
+                                              opacity: 0,
+                                              scale: 0.95,
+                                            }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.95 }}
+                                            className={cn(
+                                              "absolute top-full left-0 right-0 mt-1 border rounded-lg shadow-2xl z-[110] max-h-48 overflow-y-auto p-1",
+                                              theme === "dark"
+                                                ? "bg-brand-header border-white/10"
+                                                : "bg-white border-slate-200",
+                                            )}
+                                          >
+                                            {anatomicalSystems.map((s) => (
+                                              <button
+                                                key={s}
+                                                onClick={() => {
+                                                  setSelectedSystem(s);
+                                                  setSelectedClass("全部藥理");
+                                                  setIsSystemOpen(false);
+                                                }}
+                                                className={cn(
+                                                  "w-full text-left px-2 py-1.5 rounded-md text-[10px] transition-all flex items-center justify-between",
+                                                  selectedSystem === s
+                                                    ? "bg-brand-accent/20 text-brand-accent font-bold"
+                                                    : theme === "dark"
+                                                      ? "text-zinc-400 hover:bg-white/5 hover:text-white"
+                                                      : "text-slate-600 hover:bg-slate-50 hover:text-brand-accent",
+                                                )}
+                                              >
+                                                {s}
+                                              </button>
+                                            ))}
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
+                                  </div>
+
+                                  {/* Pharmacological Class Filter */}
+                                  <div className="space-y-1 overflow-visible dropdown-container">
+                                    <label
+                                      className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest pl-1",
+                                        theme === "dark"
+                                          ? "text-zinc-500"
+                                          : "text-slate-400",
+                                      )}
+                                    >
+                                      藥理
+                                    </label>
+                                    <div
+                                      className="relative"
+                                      onBlur={(e) => {
+                                        if (
+                                          !e.currentTarget.contains(
+                                            e.relatedTarget as Node,
+                                          )
+                                        ) {
+                                          setIsClassOpen(false);
+                                        }
+                                      }}
+                                    >
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setIsClassOpen(!isClassOpen);
+                                          setIsSystemOpen(false);
+                                          setIsDosageFormOpen(false);
+                                        }}
+                                        className={cn(
+                                          "w-full border rounded-lg pl-3 pr-2 py-2 text-[10px] flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all shadow-sm group",
+                                          theme === "dark"
+                                            ? "bg-white/5 border-white/10 text-zinc-200"
+                                            : "bg-slate-50 border-slate-200 text-slate-700",
+                                        )}
+                                      >
+                                        <span className="truncate font-medium">
+                                          {selectedClass === "全部藥理"
+                                            ? "全部藥理"
+                                            : selectedClass}
+                                        </span>
+                                        <ChevronDown
+                                          className={cn(
+                                            "w-3 h-3 text-brand-muted shrink-0 transition-transform",
+                                            isClassOpen && "rotate-180",
+                                          )}
+                                        />
+                                      </button>
+
+                                      <AnimatePresence>
+                                        {isClassOpen && (
+                                          <motion.div
+                                            key="class-dropdown"
+                                            initial={{
+                                              opacity: 0,
+                                              scale: 0.95,
+                                            }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.95 }}
+                                            className={cn(
+                                              "absolute top-full left-0 right-0 mt-1 border rounded-lg shadow-2xl z-[110] max-h-48 overflow-y-auto p-1",
+                                              theme === "dark"
+                                                ? "bg-brand-header border-white/10"
+                                                : "bg-white border-slate-200",
+                                            )}
+                                          >
+                                            {pharmacologicalClasses.map((c) => (
+                                              <button
+                                                key={c}
+                                                onClick={() => {
+                                                  setSelectedClass(c);
+                                                  setIsClassOpen(false);
+                                                }}
+                                                className={cn(
+                                                  "w-full text-left px-2 py-1.5 rounded-md text-[10px] transition-all flex items-center justify-between",
+                                                  selectedClass === c
+                                                    ? "bg-brand-accent/20 text-brand-accent font-bold"
+                                                    : theme === "dark"
+                                                      ? "text-zinc-400 hover:bg-white/5 hover:text-white"
+                                                      : "text-slate-600 hover:bg-slate-50 hover:text-brand-accent",
+                                                )}
+                                              >
+                                                {c}
+                                              </button>
+                                            ))}
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Dosage Form Filter - Multi-select Tags */}
+                                <div className="space-y-2 overflow-visible">
+                                  <div className="flex items-center justify-between px-1">
+                                    <label
+                                      className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        theme === "dark"
+                                          ? "text-zinc-500"
+                                          : "text-slate-400",
+                                      )}
+                                    >
+                                      劑型 (多選)
+                                    </label>
+                                    {selectedDosageForms.length > 0 && (
+                                      <button
+                                        onClick={() =>
+                                          setSelectedDosageForms([])
+                                        }
+                                        className="text-[9px] text-brand-accent font-bold hover:underline"
+                                      >
+                                        重設
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5 p-0.5 max-h-32 overflow-y-auto custom-scrollbar">
+                                    {dosageForms
+                                      .filter((f) => f !== "全部劑型")
+                                      .map((f) => {
+                                        const isSelected =
+                                          selectedDosageForms.includes(f);
+                                        const dosageStyle = getDosageColor(f);
+                                        return (
+                                          <button
+                                            key={f}
+                                            onClick={() => {
+                                              setSelectedDosageForms((prev) =>
+                                                prev.includes(f)
+                                                  ? prev.filter(
+                                                      (item) => item !== f,
+                                                    )
+                                                  : [...prev, f],
+                                              );
+                                            }}
+                                            className={cn(
+                                              "px-2 py-1 rounded-md text-[9px] font-bold transition-all border flex items-center gap-1.5",
+                                              isSelected
+                                                ? cn(
+                                                    dosageStyle.bg,
+                                                    dosageStyle.text,
+                                                    "border-violet-500/50 shadow-sm shadow-violet-500/20",
+                                                  )
+                                                : theme === "dark"
+                                                  ? "bg-white/5 border-white/5 text-zinc-500 hover:text-zinc-300 hover:bg-white/10"
+                                                  : "bg-slate-100/50 border-slate-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100",
+                                            )}
+                                          >
+                                            <span
+                                              className={cn(
+                                                "w-1.5 h-1.5 rounded-full",
+                                                isSelected
+                                                  ? dosageStyle.glow
+                                                  : "bg-zinc-700",
+                                              )}
+                                            />
+                                            {getDosageName(f)}
+                                          </button>
+                                        );
+                                      })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-white/5">
+                              <button
+                                onClick={() => {
+                                  setSelectedSystem("全部系統");
+                                  setSelectedClass("全部藥理");
+                                  setSelectedDosageForms([]);
+                                  setShowFilters(false);
+                                }}
+                                className="w-full py-2 text-[10px] text-zinc-500 hover:text-brand-accent font-bold uppercase tracking-[0.2em] transition-all"
+                              >
+                                重設篩選條件
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  ref={scrollContainerRef}
+                  className={cn(
+                    "flex-1 pt-[72px] md:pt-[80px] px-3 md:px-5 overflow-y-auto custom-scrollbar bg-gradient-to-b from-white/[0.02] to-transparent transition-all duration-500",
+                    selectedMed ? "pb-[40vh] md:pb-5" : "pb-5",
+                  )}
+                  onScroll={(e) => {
+                    const target = e.currentTarget;
+                    if (
+                      target.scrollHeight -
+                        target.scrollTop -
+                        target.clientHeight <
+                      200
+                    ) {
+                      if (displayLimit < filteredMedications.length) {
+                        setDisplayLimit((prev) => prev + 100);
+                      }
                     }
                   }}
-                  className={cn(
-                    "w-full backdrop-blur-3xl border-none rounded-[15px] pl-11 py-3 text-sm focus:outline-none focus:ring-0 transition-all font-medium",
-                    searchQuery ? "pr-20 md:pr-12" : "pr-4 md:pr-4",
-                    theme === 'dark' 
-                      ? "bg-black/90 text-white placeholder:text-zinc-600" 
-                      : "bg-white/90 text-slate-800 placeholder:text-slate-400"
-                  )}
-                />
-                
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  {searchQuery && (
-                    <button 
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="p-1.5 text-zinc-500 hover:text-white transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                  {searchQuery && (
-                    <button 
-                      type="submit"
-                      className="md:hidden p-1.5 text-brand-accent hover:text-[#66D99B] transition-colors"
-                    >
-                      <ArrowRight className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
-              </form>
-
-              {/* Compact Filter Toggle */}
-              <div className="relative filter-popover-container">
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowFilters(!showFilters);
-                  }}
-                  className={cn(
-                    "h-[46px] px-4 rounded-xl border transition-all flex items-center justify-center gap-2 shadow-sm font-bold text-xs uppercase tracking-widest",
-                    showFilters || selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForms.length > 0
-                      ? "bg-brand-accent/20 border-brand-accent/40 text-brand-accent"
-                      : cn(
-                          "transition-colors",
-                          theme === 'dark' 
-                            ? "bg-white/[0.03] border-white/10 text-brand-muted hover:text-white hover:bg-white/[0.05]"
-                            : "bg-white border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 shadow-sm shadow-slate-200"
-                        )
-                  )}
                 >
-                  <Filter className="w-4 h-4" />
-                  <span className="hidden sm:inline">篩選</span>
-                  {(selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForms.length > 0 || onlyFavorites) && (
-                    <span className={cn(
-                      "w-2 h-2 rounded-full bg-brand-accent absolute -top-1 -right-1 shadow-lg border animate-pulse",
-                      theme === 'dark' ? "shadow-brand-accent/50 border-brand-bg" : "shadow-brand-accent/30 border-white"
-                    )} />
-                  )}
-                </button>
+                  <div className="flex flex-col md:flex-row md:items-end justify-end gap-3 mb-2 md:mb-2.5">
+                    {(searchQuery ||
+                      selectedSystem !== "全部系統" ||
+                      selectedClass !== "全部藥理" ||
+                      selectedDosageForms.length > 0) && (
+                      <button
+                        onClick={() => {
+                          setSearchQuery("");
+                          setSelectedSystem("全部系統");
+                          setSelectedClass("全部藥理");
+                          setSelectedDosageForms([]);
+                        }}
+                        className="flex items-center gap-2 text-[10px] font-black text-brand-muted hover:text-brand-accent transition-all uppercase tracking-[0.2em] self-start px-3 py-1.5 rounded-lg hover:bg-brand-accent/5"
+                      >
+                        重設所有篩選 <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
 
-                <AnimatePresence>
-                  {showFilters && (
-                    <motion.div 
-                      key="filter-popover"
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                      transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.5 }}
-                      className={cn(
-                        "absolute top-full right-0 mt-3 w-80 backdrop-blur-3xl border rounded-2xl shadow-2xl z-[100] p-4 flex flex-col gap-4",
-                        theme === 'dark' 
-                          ? "bg-brand-sidebar/95 border-white/10 shadow-black/50" 
-                          : "bg-white border-slate-200 shadow-slate-200/60"
+                  {displayedMedications.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3">
+                      <AnimatePresence mode="popLayout" initial={false}>
+                        {displayedMedications.map((med) => {
+                          const dosageStyle = getDosageColor(med.code);
+                          return (
+                            <motion.div
+                              key={med.id}
+                              layout="position"
+                              initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                              transition={{
+                                type: "spring",
+                                bounce: 0,
+                                duration: 0.4,
+                                layout: {
+                                  type: "spring",
+                                  bounce: 0.1,
+                                  duration: 0.6,
+                                },
+                              }}
+                              onClick={() => setSelectedMed(med)}
+                              className={cn(
+                                "medication-card group bg-transparent border border-transparent p-2 md:p-2.5 rounded-xl transition-all flex flex-col gap-1 items-start relative overflow-hidden",
+                                theme === "dark"
+                                  ? "hover:bg-white/[0.05] hover:shadow-2xl cursor-pointer"
+                                  : "hover:bg-white hover:shadow-xl hover:shadow-slate-200/60 cursor-pointer",
+                              )}
+                            >
+                              {/* Left Vertical Bar Decoration */}
+                              <div
+                                className={cn(
+                                  "absolute top-0 left-0 bottom-0 w-[1px] transition-[width] group-hover:w-[2px]",
+                                  dosageStyle.glow,
+                                )}
+                              />
+
+                              <div className="flex gap-2 items-start w-full pl-1.5">
+                                <div className="flex-1 min-w-0">
+                                  {/* Top Row: Code & Class */}
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span
+                                        className={cn(
+                                          "inline-flex items-center px-1.5 py-[0.5px] rounded text-[9px] font-black tracking-widest uppercase shrink-0 border",
+                                          theme === "dark"
+                                            ? "border-white/20"
+                                            : "border-slate-200",
+                                          dosageStyle.text,
+                                        )}
+                                      >
+                                        <span>{med.code}</span>
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          "text-[10px] font-bold uppercase tracking-wider truncate",
+                                          theme === "dark"
+                                            ? "text-brand-accent/90"
+                                            : "text-brand-accent",
+                                        )}
+                                      >
+                                        {med.pharmacologicalClass}
+                                      </span>
+                                    </div>
+
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleFavorite(med.id);
+                                      }}
+                                      className="p-1 -mr-1 transition-all active:scale-75 group/fav"
+                                    >
+                                      <motion.div
+                                        animate={
+                                          isFavorite(med.id)
+                                            ? { opacity: [0.7, 1, 0.7] }
+                                            : {}
+                                        }
+                                        transition={
+                                          isFavorite(med.id)
+                                            ? {
+                                                duration: 2,
+                                                repeat: Infinity,
+                                                ease: "easeInOut",
+                                              }
+                                            : { duration: 0.3 }
+                                        }
+                                      >
+                                        <SharpStar
+                                          className={cn(
+                                            "w-4 h-4 transition-all",
+                                            isFavorite(med.id)
+                                              ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_6px_rgba(139,92,246,0.4)]"
+                                              : theme === "dark"
+                                                ? "text-zinc-800 group-hover/fav:text-violet-400/50"
+                                                : "text-slate-200 group-hover/fav:text-violet-400/50",
+                                          )}
+                                        />
+                                      </motion.div>
+                                    </button>
+                                  </div>
+
+                                  <div className="flex items-center justify-between mb-0.5 gap-1.5">
+                                    <h3
+                                      className={cn(
+                                        "text-[13px] md:text-[15px] font-bold transition-colors truncate leading-tight flex items-center gap-1.5",
+                                        theme === "dark"
+                                          ? "text-white group-hover:text-brand-accent"
+                                          : "text-slate-800 group-hover:text-brand-accent",
+                                      )}
+                                    >
+                                      <span className="truncate">
+                                        {med.component}
+                                      </span>
+                                    </h3>
+                                  </div>
+
+                                  <div className="flex flex-col gap-0.5">
+                                    <span
+                                      className={cn(
+                                        "text-[10px] font-medium truncate opacity-70",
+                                        theme === "dark"
+                                          ? "text-zinc-500"
+                                          : "text-slate-500",
+                                      )}
+                                    >
+                                      {med.genericName}{" "}
+                                      {med.chineseName &&
+                                        `• ${med.chineseName}`}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+
+                      {displayLimit < filteredMedications.length && (
+                        <div className="col-span-full py-8 flex flex-col items-center gap-4">
+                          <div className="h-px w-24 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                          <button
+                            onClick={() =>
+                              setDisplayLimit((prev) => prev + 100)
+                            }
+                            className="flex items-center gap-2 text-[10px] font-black text-brand-muted hover:text-brand-accent transition-all uppercase tracking-[0.2em] px-6 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/[0.08]"
+                          >
+                            載入更多藥物 (
+                            {filteredMedications.length - displayLimit} 筆)
+                            <ChevronDown className="w-4 h-4" />
+                          </button>
+                        </div>
                       )}
-                    >
-                      <div className="flex items-center justify-between px-1">
-                        <span className="text-[10px] font-bold text-brand-accent uppercase tracking-[0.2em]">分類篩選</span>
-                        <button onClick={() => setShowFilters(false)} className={cn(
-                          "transition-colors",
-                          theme === 'dark' ? "text-zinc-500 hover:text-white" : "text-slate-400 hover:text-slate-600"
-                        )}>
-                          <X className="w-4 h-4" />
-                        </button>
+                    </div>
+                  ) : isSearchingOrFiltering ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center py-20">
+                      <Search className="w-16 h-16 text-brand-muted mb-4 stroke-[0.5]" />
+                      <h3
+                        className={cn(
+                          "text-xl font-medium mb-2",
+                          theme === "dark" ? "text-white" : "text-slate-700",
+                        )}
+                      >
+                        查無相關結果
+                      </h3>
+                      <p className="text-brand-muted text-sm mb-8">
+                        請嘗試不同的診斷名、成分或藥品碼
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center py-12 md:py-20 px-4 max-w-xl mx-auto">
+                      <div
+                        className={cn(
+                          "w-16 h-16 rounded-3xl flex items-center justify-center border mb-6 shadow-lg",
+                          theme === "dark"
+                            ? "bg-white/5 border-white/10 text-purple-400 shadow-purple-500/5"
+                            : "bg-slate-50 border-slate-200 text-purple-500 shadow-slate-100",
+                        )}
+                      >
+                        <Pill className="w-8 h-8 stroke-[1.25]" />
                       </div>
+                      <h3
+                        className={cn(
+                          "text-lg md:text-xl font-bold tracking-tight mb-2.5",
+                          theme === "dark" ? "text-white" : "text-slate-800",
+                        )}
+                      >
+                        院內藥物查詢系統
+                      </h3>
+                      <p
+                        className={cn(
+                          "text-xs md:text-sm max-w-sm mb-8 leading-relaxed",
+                          theme === "dark" ? "text-zinc-500" : "text-slate-500",
+                        )}
+                      >
+                        請在上方輸入關鍵字開始搜尋，或使用篩選按鈕依據系統、藥理分類、劑型進行篩選。
+                      </p>
 
-                      <div className="space-y-4">
-                      <div className="space-y-3">
-                        {/* Compact Favorites Toggle */}
-                        <div className="flex items-center justify-between p-2 pl-3 rounded-lg border transition-colors group cursor-pointer" 
-                             onClick={() => setOnlyFavorites(!onlyFavorites)}
-                             style={{ backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)', borderColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}>
-                          <div className="flex items-center gap-2">
-                            <SharpStar className={cn("w-3.5 h-3.5", onlyFavorites ? "fill-yellow-500 text-yellow-500" : (theme === 'dark' ? "text-zinc-600" : "text-slate-300"))} />
-                            <span className={cn("text-[10px] font-bold uppercase tracking-wider", theme === 'dark' ? "text-zinc-300" : "text-slate-700")}>僅顯示收藏</span>
-                          </div>
-                          <div className={cn(
-                            "w-8 h-4 rounded-full relative transition-colors border p-0.5",
-                            onlyFavorites ? "bg-violet-500 border-violet-500" : (theme === 'dark' ? "bg-zinc-800 border-white/10" : "bg-slate-200 border-slate-300")
-                          )}>
-                            <motion.div 
-                              animate={{ x: onlyFavorites ? 16 : 0 }}
-                              className="w-2.5 h-2.5 rounded-full bg-white shadow-sm"
-                            />
-                          </div>
-                        </div>
-
-                        {/* System & Class combined in a grid */}
-                        <div className="grid grid-cols-2 gap-2">
-                          {/* Anatomical System Filter */}
-                          <div className="space-y-1 overflow-visible dropdown-container">
-                            <label className={cn(
-                              "text-[9px] font-bold uppercase tracking-widest pl-1",
-                              theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                            )}>系統</label>
-                            <div 
-                              className="relative"
-                              onBlur={(e) => {
-                                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                                  setIsSystemOpen(false);
-                                }
-                              }}
-                            >
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setIsSystemOpen(!isSystemOpen);
-                                  setIsClassOpen(false);
-                                  setIsDosageFormOpen(false);
-                                }}
-                                className={cn(
-                                  "w-full border rounded-lg pl-3 pr-2 py-2 text-[10px] flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all shadow-sm group",
-                                  theme === 'dark' 
-                                    ? "bg-white/5 border-white/10 text-zinc-200" 
-                                    : "bg-slate-50 border-slate-200 text-slate-700"
-                                )}
-                              >
-                                <span className="truncate font-medium">{selectedSystem === '全部系統' ? '全部系統' : selectedSystem}</span>
-                                <ChevronDown className={cn("w-3 h-3 text-brand-muted shrink-0 transition-transform", isSystemOpen && "rotate-180")} />
-                              </button>
-                              
-                              <AnimatePresence>
-                                {isSystemOpen && (
-                                  <motion.div 
-                                    key="system-dropdown"
-                                    initial={{ opacity: 0, scale: 0.95 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
-                                    className={cn(
-                                      "absolute top-full left-0 right-0 mt-1 border rounded-lg shadow-2xl z-[110] max-h-48 overflow-y-auto p-1",
-                                      theme === 'dark' ? "bg-brand-header border-white/10" : "bg-white border-slate-200"
-                                    )}
-                                  >
-                                    {anatomicalSystems.map(s => (
-                                      <button
-                                        key={s}
-                                        onClick={() => {
-                                          setSelectedSystem(s);
-                                          setSelectedClass('全部藥理');
-                                          setIsSystemOpen(false);
-                                        }}
-                                        className={cn(
-                                          "w-full text-left px-2 py-1.5 rounded-md text-[10px] transition-all flex items-center justify-between",
-                                          selectedSystem === s 
-                                            ? "bg-brand-accent/20 text-brand-accent font-bold" 
-                                            : theme === 'dark' 
-                                              ? "text-zinc-400 hover:bg-white/5 hover:text-white"
-                                              : "text-slate-600 hover:bg-slate-50 hover:text-brand-accent"
-                                        )}
-                                      >
-                                        {s}
-                                      </button>
-                                    ))}
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
-                            </div>
-                          </div>
-
-                          {/* Pharmacological Class Filter */}
-                          <div className="space-y-1 overflow-visible dropdown-container">
-                            <label className={cn(
-                              "text-[9px] font-bold uppercase tracking-widest pl-1",
-                              theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                            )}>藥理</label>
-                            <div 
-                              className="relative"
-                              onBlur={(e) => {
-                                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                                  setIsClassOpen(false);
-                                }
-                              }}
-                            >
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setIsClassOpen(!isClassOpen);
-                                  setIsSystemOpen(false);
-                                  setIsDosageFormOpen(false);
-                                }}
-                                className={cn(
-                                  "w-full border rounded-lg pl-3 pr-2 py-2 text-[10px] flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all shadow-sm group",
-                                  theme === 'dark' 
-                                    ? "bg-white/5 border-white/10 text-zinc-200" 
-                                    : "bg-slate-50 border-slate-200 text-slate-700"
-                                )}
-                              >
-                                <span className="truncate font-medium">{selectedClass === '全部藥理' ? '全部藥理' : selectedClass}</span>
-                                <ChevronDown className={cn("w-3 h-3 text-brand-muted shrink-0 transition-transform", isClassOpen && "rotate-180")} />
-                              </button>
-                              
-                              <AnimatePresence>
-                                {isClassOpen && (
-                                  <motion.div 
-                                    key="class-dropdown"
-                                    initial={{ opacity: 0, scale: 0.95 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
-                                    className={cn(
-                                      "absolute top-full left-0 right-0 mt-1 border rounded-lg shadow-2xl z-[110] max-h-48 overflow-y-auto p-1",
-                                      theme === 'dark' ? "bg-brand-header border-white/10" : "bg-white border-slate-200"
-                                    )}
-                                  >
-                                    {pharmacologicalClasses.map(c => (
-                                      <button
-                                        key={c}
-                                        onClick={() => {
-                                          setSelectedClass(c);
-                                          setIsClassOpen(false);
-                                        }}
-                                        className={cn(
-                                          "w-full text-left px-2 py-1.5 rounded-md text-[10px] transition-all flex items-center justify-between",
-                                          selectedClass === c 
-                                            ? "bg-brand-accent/20 text-brand-accent font-bold" 
-                                            : theme === 'dark' 
-                                              ? "text-zinc-400 hover:bg-white/5 hover:text-white"
-                                              : "text-slate-600 hover:bg-slate-50 hover:text-brand-accent"
-                                        )}
-                                      >
-                                        {c}
-                                      </button>
-                                    ))}
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Dosage Form Filter - Multi-select Tags */}
-                        <div className="space-y-2 overflow-visible">
-                          <div className="flex items-center justify-between px-1">
-                            <label className={cn(
-                              "text-[9px] font-bold uppercase tracking-widest",
-                              theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                            )}>劑型 (多選)</label>
-                            {selectedDosageForms.length > 0 && (
-                              <button 
-                                onClick={() => setSelectedDosageForms([])}
-                                className="text-[9px] text-brand-accent font-bold hover:underline"
-                              >重設</button>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 p-0.5 max-h-32 overflow-y-auto custom-scrollbar">
-                            {dosageForms.filter(f => f !== '全部劑型').map(f => {
-                              const isSelected = selectedDosageForms.includes(f);
-                              const dosageStyle = getDosageColor(f);
-                              return (
-                                <button
-                                  key={f}
-                                  onClick={() => {
-                                    setSelectedDosageForms(prev => 
-                                      prev.includes(f) ? prev.filter(item => item !== f) : [...prev, f]
-                                    );
-                                  }}
-                                  className={cn(
-                                    "px-2 py-1 rounded-md text-[9px] font-bold transition-all border flex items-center gap-1.5",
-                                    isSelected 
-                                      ? cn(dosageStyle.bg, dosageStyle.text, "border-violet-500/50 shadow-sm shadow-violet-500/20")
-                                      : theme === 'dark' 
-                                        ? "bg-white/5 border-white/5 text-zinc-500 hover:text-zinc-300 hover:bg-white/10" 
-                                        : "bg-slate-100/50 border-slate-100 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-                                  )}
-                                >
-                                  <span className={cn("w-1.5 h-1.5 rounded-full", isSelected ? dosageStyle.glow : "bg-zinc-700")} />
-                                  {getDosageName(f)}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-white/5">
-                        <button 
-                          onClick={() => {
-                            setSelectedSystem('全部系統');
-                            setSelectedClass('全部藥理');
-                            setSelectedDosageForms([]);
-                            setShowFilters(false);
-                          }}
-                          className="w-full py-2 text-[10px] text-zinc-500 hover:text-brand-accent font-bold uppercase tracking-[0.2em] transition-all"
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
+                        <div
+                          className={cn(
+                            "p-4 rounded-2xl border transition-all hover:scale-[1.01]",
+                            theme === "dark"
+                              ? "bg-white/[0.02] border-white/5"
+                              : "bg-slate-50/50 border-slate-200/60",
+                          )}
                         >
-                          重設篩選條件
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-          </div>
-
-          <div 
-            ref={scrollContainerRef}
-            className={cn(
-              "flex-1 pt-[72px] md:pt-[80px] px-3 md:px-5 overflow-y-auto custom-scrollbar bg-gradient-to-b from-white/[0.02] to-transparent transition-all duration-500",
-              selectedMed ? "pb-[40vh] md:pb-5" : "pb-5"
-            )}
-            onScroll={(e) => {
-              const target = e.currentTarget;
-              if (target.scrollHeight - target.scrollTop - target.clientHeight < 200) {
-                if (displayLimit < filteredMedications.length) {
-                  setDisplayLimit(prev => prev + 100);
-                }
-              }
-            }}
-          >
-          <div className="flex flex-col md:flex-row md:items-end justify-end gap-3 mb-2 md:mb-2.5">
-              
-              {(searchQuery || selectedSystem !== '全部系統' || selectedClass !== '全部藥理' || selectedDosageForms.length > 0) && (
-                <button 
-                  onClick={() => { 
-                    setSearchQuery(''); 
-                    setSelectedSystem('全部系統'); 
-                    setSelectedClass('全部藥理');
-                    setSelectedDosageForms([]);
-                  }}
-                  className="flex items-center gap-2 text-[10px] font-black text-brand-muted hover:text-brand-accent transition-all uppercase tracking-[0.2em] self-start px-3 py-1.5 rounded-lg hover:bg-brand-accent/5"
-                >
-                  重設所有篩選 <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-            
-            {displayedMedications.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3">
-              <AnimatePresence mode="popLayout" initial={false}>
-                {displayedMedications.map((med) => {
-                  const dosageStyle = getDosageColor(med.code);
-                  return (
-                    <motion.div
-                      key={med.id}
-                      layout="position"
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -8, scale: 0.98 }}
-                      transition={{ 
-                        type: "spring", 
-                        bounce: 0, 
-                        duration: 0.4,
-                        layout: { type: "spring", bounce: 0.1, duration: 0.6 }
-                      }}
-                      onClick={() => setSelectedMed(med)}
-                      className={cn(
-                        "medication-card group bg-transparent border border-transparent p-2 md:p-2.5 rounded-xl transition-all flex flex-col gap-1 items-start relative overflow-hidden",
-                        theme === 'dark' 
-                          ? "hover:bg-white/[0.05] hover:shadow-2xl cursor-pointer" 
-                          : "hover:bg-white hover:shadow-xl hover:shadow-slate-200/60 cursor-pointer"
-                      )}
-                    >
-                      {/* Left Vertical Bar Decoration */}
-                      <div className={cn("absolute top-0 left-0 bottom-0 w-[1px] transition-[width] group-hover:w-[2px]", dosageStyle.glow)} />
-                      
-                      <div className="flex gap-2 items-start w-full pl-1.5">
-                        <div className="flex-1 min-w-0">
-                          {/* Top Row: Code & Class */}
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className={cn(
-                                "inline-flex items-center px-1.5 py-[0.5px] rounded text-[9px] font-black tracking-widest uppercase shrink-0 border",
-                                theme === 'dark' ? "border-white/20" : "border-slate-200",
-                                dosageStyle.text
-                              )}>
-                                <span>{med.code}</span>
-                              </span>
-                              <span className={cn(
-                                "text-[10px] font-bold uppercase tracking-wider truncate",
-                                theme === 'dark' ? "text-brand-accent/90" : "text-brand-accent"
-                              )}>
-                                {med.pharmacologicalClass}
-                              </span>
-                            </div>
-                            
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleFavorite(med.id);
-                              }}
-                              className="p-1 -mr-1 transition-all active:scale-75 group/fav"
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <Search className="w-4 h-4 text-purple-500" />
+                            <h4
+                              className={cn(
+                                "text-xs font-bold",
+                                theme === "dark"
+                                  ? "text-zinc-300"
+                                  : "text-slate-700",
+                              )}
                             >
-                              <motion.div
-                                animate={isFavorite(med.id) ? { opacity: [0.7, 1, 0.7] } : {}}
-                                transition={isFavorite(med.id) ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
-                              >
-                                <SharpStar 
-                                  className={cn(
-                                    "w-4 h-4 transition-all",
-                                    isFavorite(med.id) 
-                                      ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_6px_rgba(139,92,246,0.4)]" 
-                                      : theme === 'dark' ? "text-zinc-800 group-hover/fav:text-violet-400/50" : "text-slate-200 group-hover/fav:text-violet-400/50"
-                                  )} 
-                                />
-                              </motion.div>
-                            </button>
+                              快速關鍵字搜尋
+                            </h4>
                           </div>
+                          <p
+                            className={cn(
+                              "text-[11px] leading-relaxed",
+                              theme === "dark"
+                                ? "text-zinc-500"
+                                : "text-slate-400",
+                            )}
+                          >
+                            支援輸入藥品成分（如
+                            Dextrose）、商品名、英文簡寫（如
+                            NS）、中文名或特定適應症群。
+                          </p>
+                        </div>
 
-                          <div className="flex items-center justify-between mb-0.5 gap-1.5">
-                            <h3 className={cn(
-                              "text-[13px] md:text-[15px] font-bold transition-colors truncate leading-tight flex items-center gap-1.5",
-                              theme === 'dark' ? "text-white group-hover:text-brand-accent" : "text-slate-800 group-hover:text-brand-accent"
-                            )}>
-                              <span className="truncate">{med.component}</span>
-                            </h3>
+                        <div
+                          className={cn(
+                            "p-4 rounded-2xl border transition-all hover:scale-[1.01]",
+                            theme === "dark"
+                              ? "bg-white/[0.02] border-white/5"
+                              : "bg-slate-50/50 border-slate-200/60",
+                          )}
+                        >
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <Filter className="w-4 h-4 text-purple-500" />
+                            <h4
+                              className={cn(
+                                "text-xs font-bold",
+                                theme === "dark"
+                                  ? "text-zinc-300"
+                                  : "text-slate-700",
+                              )}
+                            >
+                              進階屬性篩選
+                            </h4>
                           </div>
-                          
-                          <div className="flex flex-col gap-0.5">
-                            <span className={cn(
-                              "text-[10px] font-medium truncate opacity-70",
-                              theme === 'dark' ? "text-zinc-500" : "text-slate-500"
-                            )}>
-                              {med.genericName} {med.chineseName && `• ${med.chineseName}`}
-                            </span>
-                          </div>
+                          <p
+                            className={cn(
+                              "text-[11px] leading-relaxed",
+                              theme === "dark"
+                                ? "text-zinc-500"
+                                : "text-slate-400",
+                            )}
+                          >
+                            點擊搜尋框右側的「篩選」按鈕，即可選取特定生理系統、特定藥理分類或給藥劑型進行組合檢驗。
+                          </p>
                         </div>
                       </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-              
-              {displayLimit < filteredMedications.length && (
-                <div className="col-span-full py-8 flex flex-col items-center gap-4">
-                  <div className="h-px w-24 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                  <button 
-                    onClick={() => setDisplayLimit(prev => prev + 100)}
-                    className="flex items-center gap-2 text-[10px] font-black text-brand-muted hover:text-brand-accent transition-all uppercase tracking-[0.2em] px-6 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/[0.08]"
-                  >
-                    載入更多藥物 ({filteredMedications.length - displayLimit} 筆)
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-            </div>
-            
-            ) : isSearchingOrFiltering ? (
-              <div className="h-full flex flex-col items-center justify-center text-center py-20">
-                <Search className="w-16 h-16 text-brand-muted mb-4 stroke-[0.5]" />
-                <h3 className={cn("text-xl font-medium mb-2", theme === 'dark' ? "text-white" : "text-slate-700")}>查無相關結果</h3>
-                <p className="text-brand-muted text-sm mb-8">請嘗試不同的診斷名、成分或藥品碼</p>
-              </div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center py-12 md:py-20 px-4 max-w-xl mx-auto">
-                <div className={cn(
-                  "w-16 h-16 rounded-3xl flex items-center justify-center border mb-6 shadow-lg",
-                  theme === 'dark' 
-                    ? "bg-white/5 border-white/10 text-purple-400 shadow-purple-500/5" 
-                    : "bg-slate-50 border-slate-200 text-purple-500 shadow-slate-100"
-                )}>
-                  <Pill className="w-8 h-8 stroke-[1.25]" />
-                </div>
-                <h3 className={cn(
-                  "text-lg md:text-xl font-bold tracking-tight mb-2.5",
-                  theme === 'dark' ? "text-white" : "text-slate-800"
-                )}>
-                  專科臨床藥物查詢系統
-                </h3>
-                <p className={cn(
-                  "text-xs md:text-sm max-w-sm mb-8 leading-relaxed",
-                  theme === 'dark' ? "text-zinc-500" : "text-slate-500"
-                )}>
-                  請在上方輸入關鍵字開始搜尋，或使用篩選按鈕依據系統、藥理分類、劑型進行篩選。
-                </p>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
-                  <div className={cn(
-                    "p-4 rounded-2xl border transition-all hover:scale-[1.01]",
-                    theme === 'dark' ? "bg-white/[0.02] border-white/5" : "bg-slate-50/50 border-slate-200/60"
-                  )}>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <Search className="w-4 h-4 text-purple-500" />
-                      <h4 className={cn("text-xs font-bold", theme === 'dark' ? "text-zinc-300" : "text-slate-700")}>快速關鍵字搜尋</h4>
                     </div>
-                    <p className={cn("text-[11px] leading-relaxed", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>
-                      支援輸入藥品成分（如 Dextrose）、商品名、英文簡寫（如 NS）、中文名或特定適應症群。
-                    </p>
-                  </div>
-                  
-                  <div className={cn(
-                    "p-4 rounded-2xl border transition-all hover:scale-[1.01]",
-                    theme === 'dark' ? "bg-white/[0.02] border-white/5" : "bg-slate-50/50 border-slate-200/60"
-                  )}>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <Filter className="w-4 h-4 text-purple-500" />
-                      <h4 className={cn("text-xs font-bold", theme === 'dark' ? "text-zinc-300" : "text-slate-700")}>進階屬性篩選</h4>
-                    </div>
-                    <p className={cn("text-[11px] leading-relaxed", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>
-                      點擊搜尋框右側的「篩選」按鈕，即可選取特定生理系統、特定藥理分類或給藥劑型進行組合檢驗。
-                    </p>
-                  </div>
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
               </motion.div>
             ) : (
-              <motion.div 
+              <motion.div
                 key="ai-mode"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -1621,256 +2250,647 @@ T456 普拿疼 緩解疼痛
                 <div className="max-w-4xl mx-auto w-full flex flex-col h-full gap-6">
                   <div className="flex items-center gap-2 px-1">
                     <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-                    <span className="text-[10px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-[0.3em]">AI 智能諮詢模式</span>
+                    <span className="text-[10px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-[0.3em]">
+                      AI 智能諮詢模式
+                    </span>
                   </div>
 
                   <div className="flex-1 min-h-0 flex flex-col relative">
                     <div className="flex-1 p-[1px] rounded-[32px] bg-gradient-to-br from-blue-500/15 via-purple-500/15 to-orange-500/15 overflow-hidden shadow-2xl">
                       <div className="h-full w-full bg-brand-bg/40 backdrop-blur-3xl rounded-[31px] overflow-hidden flex flex-col relative">
-                        
                         {/* Floating Search Bar Overlay */}
                         <div className="absolute top-0 left-0 right-0 z-40 p-3 md:p-4 bg-transparent pointer-events-none">
-                          <form onSubmit={handleAiSearch} className="relative group p-[1.5px] rounded-2xl bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 focus-within:from-blue-500 focus-within:via-purple-500 focus-within:to-orange-500 transition-all shadow-2xl pointer-events-auto">
-                            <input 
+                          <form
+                            onSubmit={handleAiSearch}
+                            className="relative group p-[1.5px] rounded-2xl bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 focus-within:from-blue-500 focus-within:via-purple-500 focus-within:to-orange-500 transition-all shadow-2xl pointer-events-auto"
+                          >
+                            <input
                               type="text"
                               placeholder="例如：病患 58 歲女性，主訴飯後血糖偏高且有糖尿病腎病變，請分析適合的處方藥物..."
                               value={aiQuery}
                               onChange={(e) => setAiQuery(e.target.value)}
                               className={cn(
                                 "w-full backdrop-blur-xl border-none rounded-[15px] pl-5 pr-14 py-3.5 text-sm md:text-base focus:outline-none focus:ring-0 transition-all font-medium shadow-2xl",
-                                theme === 'dark' 
-                                  ? "bg-black/80 text-white placeholder:text-zinc-500" 
-                                  : "bg-white/95 text-slate-800 placeholder:text-slate-400"
+                                theme === "dark"
+                                  ? "bg-black/80 text-white placeholder:text-zinc-500"
+                                  : "bg-white/95 text-slate-800 placeholder:text-slate-400",
                               )}
                             />
-                            <button 
+                            <button
                               type="submit"
                               disabled={isAiLoading || !aiQuery.trim()}
                               className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 text-white flex items-center justify-center hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl active:scale-95"
                             >
-                              {isAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                              {isAiLoading ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <ArrowRight className="w-4 h-4" />
+                              )}
                             </button>
                           </form>
                         </div>
 
                         {/* Content Area */}
-                        <div className={cn(
-                          "flex-1 overflow-y-auto custom-scrollbar pt-[72px] md:pt-[80px] px-4 md:px-8 transition-all duration-500",
-                          selectedMed ? "pb-[40vh] md:pb-8" : "pb-8"
-                        )}>
+                        <div
+                          className={cn(
+                            "flex-1 overflow-y-auto custom-scrollbar pt-[72px] md:pt-[80px] px-4 md:px-8 transition-all duration-500",
+                            selectedMed ? "pb-[40vh] md:pb-8" : "pb-8",
+                          )}
+                        >
                           {aiHistory.length === 0 && !isAiLoading && (
                             <div className="h-full flex flex-col items-center justify-center text-center opacity-30 py-20">
                               <Database className="w-12 h-12 mb-4 stroke-1" />
-                              <p className="text-zinc-400 font-medium tracking-wide">等待輸入諮詢內容...</p>
+                              <p className="text-zinc-400 font-medium tracking-wide">
+                                等待輸入諮詢內容...
+                              </p>
                             </div>
                           )}
 
-                    <div className="space-y-12">
-                      {/* Loading State with Question Bubble */}
-                      {isAiLoading && (
-                        <motion.div 
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.5 }}
-                          className="space-y-4"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className={cn(
-                              "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 border shadow-lg",
-                              theme === 'dark' ? "bg-white/10 border-white/10" : "bg-slate-100 border-slate-200 shadow-slate-200"
-                            )}>
-                              <User className={cn("w-3.5 h-3.5", theme === 'dark' ? "text-zinc-400" : "text-slate-500")} />
-                            </div>
-                            <div className={cn(
-                              "px-4 py-2 rounded-2xl rounded-tl-none border text-xs md:text-sm font-medium shadow-xl max-w-[85%]",
-                              theme === 'dark' ? "bg-white/5 border-white/5 text-zinc-300" : "bg-white border-slate-100 text-slate-700 shadow-slate-200"
-                            )}>
-                              {aiQuery}
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-widest">AI 建議分析中</span>
-                              <div className="h-[1px] flex-1 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
-                            </div>
-                            <div className={cn(
-                              "flex items-center gap-3 text-brand-accent font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-3 rounded-xl border",
-                              theme === 'dark' ? "bg-white/[0.03] border-white/5" : "bg-slate-50 border-slate-100 shadow-sm"
-                            )}>
-                              <div className={cn("w-full h-1 rounded-full overflow-hidden", theme === 'dark' ? "bg-white/5" : "bg-slate-200")}>
-                                <motion.div 
-                                  className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500"
-                                  initial={{ width: "0%" }}
-                                  animate={{ width: "100%" }}
-                                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {/* Conversation History (Include current results) */}
-                      {aiHistory.length > 0 && (
-                        <div className="space-y-10">
-                          <div className="flex items-center justify-between pb-4 border-b border-white/5">
-                            <div className="flex items-center gap-2">
-                              <History className="w-4 h-4 text-zinc-500" />
-                              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em]">諮詢對話</span>
-                            </div>
-                            <button 
-                              onClick={() => setAiHistory([])}
-                              className="text-[10px] text-red-400/50 hover:text-red-400 transition-colors uppercase tracking-widest font-bold"
-                            >
-                              清除紀錄
-                            </button>
-                          </div>
-
                           <div className="space-y-12">
-                            {aiHistory.map((item, hIdx) => (
-                              <motion.div 
-                                key={`history-${item.timestamp}`} 
-                                initial={{ opacity: 0, scale: 0.99 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.6 }}
+                            {/* Loading State with Question Bubble */}
+                            {isAiLoading && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{
+                                  ease: [0.22, 1, 0.36, 1],
+                                  duration: 0.5,
+                                }}
                                 className="space-y-4"
                               >
-                                {/* User Question */}
                                 <div className="flex items-start gap-3">
-                                  <div className={cn(
-                                    "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 border shadow-lg",
-                                    theme === 'dark' ? "bg-white/10 border-white/10" : "bg-slate-100 border-slate-200 shadow-slate-200"
-                                  )}>
-                                    <User className={cn("w-3.5 h-3.5", theme === 'dark' ? "text-zinc-400" : "text-slate-500")} />
+                                  <div
+                                    className={cn(
+                                      "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 border shadow-lg",
+                                      theme === "dark"
+                                        ? "bg-white/10 border-white/10"
+                                        : "bg-slate-100 border-slate-200 shadow-slate-200",
+                                    )}
+                                  >
+                                    <User
+                                      className={cn(
+                                        "w-3.5 h-3.5",
+                                        theme === "dark"
+                                          ? "text-zinc-400"
+                                          : "text-slate-500",
+                                      )}
+                                    />
                                   </div>
-                                  <div className={cn(
-                                    "px-4 py-2.5 rounded-2xl rounded-tl-none border text-xs md:text-sm font-medium shadow-xl max-w-[85%]",
-                                    theme === 'dark' ? "bg-white/5 border-white/5 text-zinc-300" : "bg-white border-slate-100 text-slate-700 shadow-slate-200"
-                                  )}>
-                                    {item.query}
+                                  <div
+                                    className={cn(
+                                      "px-4 py-2 rounded-2xl rounded-tl-none border text-xs md:text-sm font-medium shadow-xl max-w-[85%]",
+                                      theme === "dark"
+                                        ? "bg-white/5 border-white/5 text-zinc-300"
+                                        : "bg-white border-slate-100 text-slate-700 shadow-slate-200",
+                                    )}
+                                  >
+                                    {aiQuery}
                                   </div>
                                 </div>
-
-                                {/* AI Response */}
-                              <div className="flex flex-col gap-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-black bg-gradient-to-r from-blue-400/60 via-purple-400/60 to-orange-400/60 bg-clip-text text-transparent uppercase tracking-widest">AI 建議</span>
-                                  <div className="h-[1px] flex-1 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
-                                </div>
-                                <div className="w-full space-y-8">
-                                  {(() => {
-                                    const lines = item.response.split('\n').filter(line => line.trim());
-                                    const groups: { problem: string, items: string[] }[] = [];
-                                    let currentGroup: { problem: string, items: string[] } | null = null;
-                                    
-                                    lines.forEach(line => {
-                                      const problemMatch = line.match(/^(問題|Problem)[:：]\s*(.*)$/i);
-                                      if (problemMatch) {
-                                        currentGroup = { problem: problemMatch[2].trim(), items: [] };
-                                        groups.push(currentGroup);
-                                      } else if (currentGroup) {
-                                        currentGroup.items.push(line);
-                                      }
-                                    });
-
-                                    return groups.map((group, gIdx) => {
-                                      const limitKey = `${hIdx}-${gIdx}`;
-                                      const limit = aiVisibleLimits[limitKey] || 3;
-                                      const visibleItems = group.items.slice(0, limit);
-                                      const hasMore = group.items.length > limit;
-
-                                      return (
-                                        <div key={`group-${hIdx}-${gIdx}`} className="space-y-3">
-                                          <div className="flex items-center gap-2.5 px-1">
-                                            <div className="w-[3px] h-3 bg-gradient-to-b from-blue-500 via-purple-500 to-orange-500 rounded-full rotate-[15deg] shadow-lg shadow-purple-500/20" />
-                                            <span className="text-[11px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-[0.2em]">{group.problem}</span>
-                                          </div>
-                                          
-                                          <div className="grid gap-2">
-                                            {visibleItems.map((line, lIdx) => {
-                                              // 更加彈性的藥品碼解析，自動跳過編號或點點
-                                              const cleanedLine = line.replace(/^\s*(\d+[\.\、\)]|\*|\-|\•)\s*/, '').trim();
-                                              const parts = cleanedLine.split(/\s+/);
-                                              const code = parts[0]?.toUpperCase();
-                                              const med = medications.find(m => m.code === code);
-                                              
-                                              let name = parts[1] || '';
-                                              let funcPart = parts.slice(2).join(' ');
-
-                                              if (med) {
-                                                name = med.component;
-                                                const lineWithoutCode = line.substring(line.indexOf(' ') + 1).trim();
-                                                if (lineWithoutCode.startsWith(med.component)) {
-                                                  funcPart = lineWithoutCode.replace(med.component, '').trim();
-                                                }
-                                              }
-
-                                              if (!code || !name) return <div key={lIdx} className={cn("text-xs italic px-2", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>{line}</div>;
-
-                                              return (
-                                                <button 
-                                                  key={lIdx} 
-                                                  onClick={() => {
-                                                    const medLookup = medications.find(m => m.code === code);
-                                                    if (medLookup) setSelectedMed(medLookup);
-                                                  }}
-                                                  className={cn(
-                                                    "w-full flex items-center gap-3 text-xs p-3 rounded-xl transition-all group border border-transparent hover:translate-x-1 text-left",
-                                                    theme === 'dark' 
-                                                      ? "bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10" 
-                                                      : "bg-slate-50 hover:bg-white hover:border-slate-200 shadow-sm shadow-slate-100"
-                                                  )}
-                                                >
-                                                  <div className={cn(
-                                                    "font-mono font-bold shrink-0 px-2 py-0.5 rounded",
-                                                    theme === 'dark' ? "bg-white/5" : "bg-slate-100",
-                                                    getDosageColor(code).text
-                                                  )}>
-                                                    {code}
-                                                  </div>
-                                                  <span className={cn(
-                                                    "font-bold truncate",
-                                                    theme === 'dark' ? "text-zinc-200" : "text-slate-800"
-                                                  )}>{name}</span>
-                                                  <span className={cn(
-                                                    "flex-1 truncate text-right transition-colors uppercase text-[10px] tracking-tight",
-                                                    theme === 'dark' ? "text-zinc-500 group-hover:text-zinc-400" : "text-slate-400 group-hover:text-slate-600"
-                                                  )}>{funcPart}</span>
-                                                </button>
-                                              );
-                                            })}
-                                          </div>
-
-                                            {hasMore && (
-                                              <button 
-                                                onClick={() => setAiVisibleLimits(prev => ({
-                                                  ...prev,
-                                                  [limitKey]: limit + 5
-                                                }))}
-                                                className="w-full mt-2 py-3 text-[10px] font-black text-brand-accent hover:text-white bg-brand-accent/10 hover:bg-brand-accent/20 transition-all uppercase tracking-widest flex items-center justify-center gap-2 rounded-xl border border-brand-accent/20 shadow-lg shadow-brand-accent/5 backdrop-blur-sm"
-                                              >
-                                                查看更多建議 ({group.items.length - limit} 筆)
-                                                <ChevronDown className="w-3 h-3" />
-                                              </button>
-                                            )}
-                                          </div>
-                                        );
-                                      });
-                                    })()}
+                                <div className="flex flex-col gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-widest">
+                                      AI 建議分析中
+                                    </span>
+                                    <div className="h-[1px] flex-1 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
+                                  </div>
+                                  <div
+                                    className={cn(
+                                      "flex items-center gap-3 text-brand-accent font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-3 rounded-xl border",
+                                      theme === "dark"
+                                        ? "bg-white/[0.03] border-white/5"
+                                        : "bg-slate-50 border-slate-100 shadow-sm",
+                                    )}
+                                  >
+                                    <div
+                                      className={cn(
+                                        "w-full h-1 rounded-full overflow-hidden",
+                                        theme === "dark"
+                                          ? "bg-white/5"
+                                          : "bg-slate-200",
+                                      )}
+                                    >
+                                      <motion.div
+                                        className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500"
+                                        initial={{ width: "0%" }}
+                                        animate={{ width: "100%" }}
+                                        transition={{
+                                          duration: 2,
+                                          repeat: Infinity,
+                                          ease: "linear",
+                                        }}
+                                      />
+                                    </div>
                                   </div>
                                 </div>
                               </motion.div>
-                            ))}
+                            )}
+
+                            {/* Conversation History (Include current results) */}
+                            {aiHistory.length > 0 && (
+                              <div className="space-y-10">
+                                <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                                  <div className="flex items-center gap-2">
+                                    <History className="w-4 h-4 text-zinc-500" />
+                                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em]">
+                                      諮詢對話
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => setAiHistory([])}
+                                    className="text-[10px] text-red-400/50 hover:text-red-400 transition-colors uppercase tracking-widest font-bold"
+                                  >
+                                    清除紀錄
+                                  </button>
+                                </div>
+
+                                <div className="space-y-12">
+                                  {aiHistory.map((item, hIdx) => (
+                                    <motion.div
+                                      key={`history-${item.timestamp}`}
+                                      initial={{ opacity: 0, scale: 0.99 }}
+                                      animate={{ opacity: 1, scale: 1 }}
+                                      transition={{
+                                        ease: [0.22, 1, 0.36, 1],
+                                        duration: 0.6,
+                                      }}
+                                      className="space-y-4"
+                                    >
+                                      {/* User Question */}
+                                      <div className="flex items-start gap-3">
+                                        <div
+                                          className={cn(
+                                            "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 border shadow-lg",
+                                            theme === "dark"
+                                              ? "bg-white/10 border-white/10"
+                                              : "bg-slate-100 border-slate-200 shadow-slate-200",
+                                          )}
+                                        >
+                                          <User
+                                            className={cn(
+                                              "w-3.5 h-3.5",
+                                              theme === "dark"
+                                                ? "text-zinc-400"
+                                                : "text-slate-500",
+                                            )}
+                                          />
+                                        </div>
+                                        <div
+                                          className={cn(
+                                            "px-4 py-2.5 rounded-2xl rounded-tl-none border text-xs md:text-sm font-medium shadow-xl max-w-[85%]",
+                                            theme === "dark"
+                                              ? "bg-white/5 border-white/5 text-zinc-300"
+                                              : "bg-white border-slate-100 text-slate-700 shadow-slate-200",
+                                          )}
+                                        >
+                                          {item.query}
+                                        </div>
+                                      </div>
+
+                                      {/* AI Response */}
+                                      <div className="flex flex-col gap-2">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] font-black bg-gradient-to-r from-blue-400/60 via-purple-400/60 to-orange-400/60 bg-clip-text text-transparent uppercase tracking-widest">
+                                            AI 建議
+                                          </span>
+                                          <div className="h-[1px] flex-1 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
+                                        </div>
+                                        <div className="w-full space-y-8">
+                                          {(() => {
+                                            const lines = item.response
+                                              .split("\n")
+                                              .filter((line) => line.trim());
+                                            const groups: {
+                                              problem: string;
+                                              items: string[];
+                                            }[] = [];
+                                            let currentGroup: {
+                                              problem: string;
+                                              items: string[];
+                                            } | null = null;
+                                            const summaryLines: string[] = [];
+
+                                            lines.forEach((line) => {
+                                              if (
+                                                line.includes("第一部分") ||
+                                                line.includes("第二部分") ||
+                                                line.includes(
+                                                  "用藥策略與總結",
+                                                ) ||
+                                                line.includes(
+                                                  "用藥策略與建議",
+                                                ) ||
+                                                line.includes(
+                                                  "臨床問題與建議藥物",
+                                                )
+                                              ) {
+                                                return;
+                                              }
+                                              const problemMatch = line.match(
+                                                /^(問題|Problem)[:：]\s*(.*)$/i,
+                                              );
+                                              if (problemMatch) {
+                                                currentGroup = {
+                                                  problem:
+                                                    problemMatch[2].trim(),
+                                                  items: [],
+                                                };
+                                                groups.push(currentGroup);
+                                              } else if (currentGroup) {
+                                                currentGroup.items.push(line);
+                                              } else {
+                                                const cleaned = line
+                                                  .replace(
+                                                    /^[#\s\*]*【?第一部分：[^】\s]+】?[#\s\*]*/,
+                                                    "",
+                                                  )
+                                                  .replace(
+                                                    /^[#\s\*]*處方總結[#\s\*]*/,
+                                                    "",
+                                                  )
+                                                  .replace(
+                                                    /^[#\s\*]*整體用藥策略與總結建議[#\s\*]*/,
+                                                    "",
+                                                  )
+                                                  .trim();
+                                                if (
+                                                  cleaned &&
+                                                  !cleaned.match(
+                                                    /^[-=\*_]{3,}$/,
+                                                  )
+                                                ) {
+                                                  summaryLines.push(cleaned);
+                                                }
+                                              }
+                                            });
+
+                                            const groupsSection = groups.map(
+                                              (group, gIdx) => {
+                                                const limitKey = `${hIdx}-${gIdx}`;
+                                                const limit =
+                                                  aiVisibleLimits[limitKey] ||
+                                                  3;
+                                                const visibleItems =
+                                                  group.items.slice(0, limit);
+                                                const hasMore =
+                                                  group.items.length > limit;
+
+                                                return (
+                                                  <div
+                                                    key={`group-${hIdx}-${gIdx}`}
+                                                    className="space-y-3 w-full max-w-full min-w-0 overflow-hidden"
+                                                  >
+                                                    <div className="flex items-center gap-2.5 px-1 w-full max-w-full min-w-0 overflow-hidden">
+                                                      <div className="w-[3px] h-3 bg-gradient-to-b from-blue-500 via-purple-500 to-orange-500 rounded-full rotate-[15deg] shadow-lg shadow-purple-500/20 shrink-0" />
+                                                      <span className="text-[11px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-[0.2em] truncate flex-1 min-w-0">
+                                                        {group.problem}
+                                                      </span>
+                                                    </div>
+
+                                                    <div className="grid gap-2 w-full max-w-full min-w-0 overflow-hidden box-border">
+                                                      {visibleItems.map(
+                                                        (line, lIdx) => {
+                                                          // 更加彈性的藥品碼解析，自動跳過編號或點點
+                                                          const cleanedLine =
+                                                            line
+                                                              .replace(
+                                                                /^\s*(\d+[\.\、\)]|\*|\-|\•)\s*/,
+                                                                "",
+                                                              )
+                                                              .trim();
+                                                          const parts =
+                                                            cleanedLine.split(
+                                                              /\s+/,
+                                                            );
+                                                          const code =
+                                                            parts[0]?.toUpperCase();
+                                                          const med =
+                                                            medications.find(
+                                                              (m) =>
+                                                                m.code === code,
+                                                            );
+
+                                                          let name =
+                                                            parts[1] || "";
+                                                          let funcPart = parts
+                                                            .slice(2)
+                                                            .join(" ");
+
+                                                          if (med) {
+                                                            name =
+                                                              med.component;
+                                                            const lineWithoutCode =
+                                                              line
+                                                                .substring(
+                                                                  line.indexOf(
+                                                                    " ",
+                                                                  ) + 1,
+                                                                )
+                                                                .trim();
+                                                            if (
+                                                              lineWithoutCode.startsWith(
+                                                                med.component,
+                                                              )
+                                                            ) {
+                                                              funcPart =
+                                                                lineWithoutCode
+                                                                  .replace(
+                                                                    med.component,
+                                                                    "",
+                                                                  )
+                                                                  .trim();
+                                                            }
+                                                          }
+
+                                                          const itemKey = `${hIdx}-${gIdx}-${lIdx}`;
+                                                          const isExpanded =
+                                                            !!aiExpandedMeds[
+                                                              itemKey
+                                                            ];
+
+                                                          if (!code || !name)
+                                                            return (
+                                                              <div
+                                                                key={lIdx}
+                                                                className={cn(
+                                                                  "text-xs italic px-2 w-full max-w-full min-w-0 overflow-hidden break-words",
+                                                                  theme ===
+                                                                    "dark"
+                                                                    ? "text-zinc-500"
+                                                                    : "text-slate-400",
+                                                                )}
+                                                              >
+                                                                {line}
+                                                              </div>
+                                                            );
+
+                                                          return (
+                                                            (() => {
+                                                              const redundantGroup =
+                                                                (
+                                                                  <div className="hidden">
+                                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                                      <div
+                                                                        className={cn(
+                                                                          "font-mono font-bold shrink-0 px-2 py-0.5 rounded text-[10px]",
+                                                                          theme ===
+                                                                            "dark"
+                                                                            ? "bg-white/5"
+                                                                            : "bg-slate-100",
+                                                                          getDosageColor(
+                                                                            code,
+                                                                          )
+                                                                            .text,
+                                                                        )}
+                                                                      >
+                                                                        {code}
+                                                                      </div>
+                                                                      <span
+                                                                        className={cn(
+                                                                          "font-bold truncate text-xs md:text-sm flex-1 min-w-0",
+                                                                          theme ===
+                                                                            "dark"
+                                                                            ? "text-zinc-200"
+                                                                            : "text-slate-800",
+                                                                        )}
+                                                                      >
+                                                                        {name}
+                                                                      </span>
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-1.5 min-w-0 max-w-[50%] md:max-w-[70%] justify-end shrink-0">
+                                                                      {!isExpanded &&
+                                                                        funcPart && (
+                                                                          <span
+                                                                            className={cn(
+                                                                              "truncate text-right transition-colors uppercase text-[10px] tracking-tight min-w-0",
+                                                                              theme ===
+                                                                                "dark"
+                                                                                ? "text-zinc-500 group-hover:text-zinc-400"
+                                                                                : "text-slate-400 group-hover:text-slate-600",
+                                                                            )}
+                                                                          >
+                                                                            {
+                                                                              funcPart
+                                                                            }
+                                                                          </span>
+                                                                        )}
+                                                                      <ChevronDown
+                                                                        className={cn(
+                                                                          "w-3.5 h-3.5 shrink-0 text-zinc-400 group-hover:text-zinc-600 transition-transform duration-200",
+                                                                          isExpanded &&
+                                                                            "rotate-180",
+                                                                        )}
+                                                                      />
+                                                                    </div>
+                                                                  </div>
+                                                                );
+                                                            })() || (
+                                                              <button
+                                                                key={lIdx}
+                                                                onClick={() => {
+                                                                  const medLookup =
+                                                                    medications.find(
+                                                                      (m) =>
+                                                                        m.code ===
+                                                                        code,
+                                                                    );
+                                                                  if (medLookup)
+                                                                    setSelectedMed(
+                                                                      medLookup,
+                                                                    );
+                                                                  setAiExpandedMeds(
+                                                                    (prev) => ({
+                                                                      ...prev,
+                                                                      [itemKey]:
+                                                                        !prev[
+                                                                          itemKey
+                                                                        ],
+                                                                    }),
+                                                                  );
+                                                                }}
+                                                                className={cn(
+                                                                  "w-full max-w-full min-w-0 flex flex-col gap-2.5 text-xs p-3.5 rounded-xl transition-all group border text-left overflow-hidden box-border",
+                                                                  theme ===
+                                                                    "dark"
+                                                                    ? "bg-white/[0.02] hover:bg-white/[0.05] border-white/5 hover:border-white/10"
+                                                                    : "bg-slate-50 hover:bg-white border-slate-100/50 hover:border-slate-200 shadow-sm shadow-slate-100",
+                                                                )}
+                                                              >
+                                                                <div className="flex items-center justify-between w-full gap-2">
+                                                                  <div className="flex items-center gap-2.5 min-w-0">
+                                                                    <div
+                                                                      className={cn(
+                                                                        "font-mono font-bold shrink-0 px-2 py-0.5 rounded text-[10px]",
+                                                                        theme ===
+                                                                          "dark"
+                                                                          ? "bg-white/5"
+                                                                          : "bg-slate-100",
+                                                                        getDosageColor(
+                                                                          code,
+                                                                        ).text,
+                                                                      )}
+                                                                    >
+                                                                      {code}
+                                                                    </div>
+                                                                    <span
+                                                                      className={cn(
+                                                                        "font-bold truncate text-xs md:text-sm",
+                                                                        theme ===
+                                                                          "dark"
+                                                                          ? "text-zinc-200"
+                                                                          : "text-slate-800",
+                                                                      )}
+                                                                    >
+                                                                      {name}
+                                                                    </span>
+                                                                  </div>
+
+                                                                  <div className="flex items-center gap-1.5 shrink-0 max-w-[50%] md:max-w-[70%]">
+                                                                    {!isExpanded &&
+                                                                      funcPart && (
+                                                                        <span
+                                                                          className={cn(
+                                                                            "truncate text-right transition-colors uppercase text-[10px] tracking-tight",
+                                                                            theme ===
+                                                                              "dark"
+                                                                              ? "text-zinc-500 group-hover:text-zinc-400"
+                                                                              : "text-slate-400 group-hover:text-slate-600",
+                                                                          )}
+                                                                        >
+                                                                          {
+                                                                            funcPart
+                                                                          }
+                                                                        </span>
+                                                                      )}
+                                                                    <ChevronDown
+                                                                      className={cn(
+                                                                        "w-3.5 h-3.5 shrink-0 text-zinc-400 group-hover:text-zinc-600 transition-transform duration-200",
+                                                                        isExpanded &&
+                                                                          "rotate-180",
+                                                                      )}
+                                                                    />
+                                                                  </div>
+                                                                </div>
+
+                                                                {funcPart &&
+                                                                  isExpanded && (
+                                                                    <div
+                                                                      className={cn(
+                                                                        "w-full text-xs leading-relaxed border-t pt-2.5 mt-0.5 transition-all duration-300 animate-fadeIn whitespace-normal break-words",
+                                                                        theme ===
+                                                                          "dark"
+                                                                          ? "border-white/5 text-zinc-400"
+                                                                          : "border-slate-100 text-slate-600",
+                                                                      )}
+                                                                    >
+                                                                      <span className="font-semibold inline-block mr-1">
+                                                                        臨床選擇理由：
+                                                                      </span>
+                                                                      <span className="whitespace-normal break-words inline">
+                                                                        {
+                                                                          funcPart
+                                                                        }
+                                                                      </span>
+                                                                    </div>
+                                                                  )}
+                                                              </button>
+                                                            )
+                                                          );
+                                                        },
+                                                      )}
+                                                    </div>
+
+                                                    {hasMore && (
+                                                      <button
+                                                        onClick={() =>
+                                                          setAiVisibleLimits(
+                                                            (prev) => ({
+                                                              ...prev,
+                                                              [limitKey]:
+                                                                limit + 5,
+                                                            }),
+                                                          )
+                                                        }
+                                                        className="w-full mt-2 py-3 text-[10px] font-black text-brand-accent hover:text-white bg-brand-accent/10 hover:bg-brand-accent/20 transition-all uppercase tracking-widest flex items-center justify-center gap-2 rounded-xl border border-brand-accent/20 shadow-lg shadow-brand-accent/5 backdrop-blur-sm"
+                                                      >
+                                                        查看更多建議 (
+                                                        {group.items.length -
+                                                          limit}{" "}
+                                                        筆)
+                                                        <ChevronDown className="w-3 h-3" />
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                );
+                                              },
+                                            );
+
+                                            return (
+                                              <div className="space-y-6">
+                                                {summaryLines.length > 0 && (
+                                                  <div
+                                                    className={cn(
+                                                      "p-4 rounded-xl border text-xs md:text-sm shadow-sm leading-relaxed font-normal text-justify",
+                                                      theme === "dark"
+                                                        ? "bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-orange-500/5 border-white/5 text-zinc-300"
+                                                        : "bg-gradient-to-br from-blue-500/[0.04] via-purple-500/[0.04] to-orange-500/[0.02] border-slate-100 text-slate-700",
+                                                    )}
+                                                  >
+                                                    <div className="space-y-2">
+                                                      {summaryLines.map(
+                                                        (sLine, sIdx) => {
+                                                          const isBullet =
+                                                            sLine.startsWith(
+                                                              "- ",
+                                                            ) ||
+                                                            sLine.startsWith(
+                                                              "* ",
+                                                            ) ||
+                                                            sLine.startsWith(
+                                                              "• ",
+                                                            );
+                                                          const cleanText =
+                                                            isBullet
+                                                              ? sLine.substring(
+                                                                  2,
+                                                                )
+                                                              : sLine;
+                                                          return (
+                                                            <p
+                                                              key={sIdx}
+                                                              className={cn(
+                                                                "text-xs md:text-sm leading-relaxed",
+                                                                isBullet &&
+                                                                  "pl-4 relative before:content-['•'] before:absolute before:left-1 before:text-zinc-400",
+                                                              )}
+                                                            >
+                                                              {cleanText}
+                                                            </p>
+                                                          );
+                                                        },
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                                {groupsSection}
+                                              </div>
+                                            );
+                                          })()}
+                                        </div>
+                                      </div>
+                                    </motion.div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </motion.div>
+              </motion.div>
             )}
           </AnimatePresence>
         </main>
@@ -1880,31 +2900,60 @@ T456 普拿疼 緩解疼痛
           {selectedMed && (
             <motion.aside
               key="detail-panel"
-              initial={{ x: '100%', opacity: 0 }}
+              initial={{ x: "100%", opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              exit={{ x: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 220, mass: 1 }}
+              exit={{ x: "100%", opacity: 0 }}
+              transition={{
+                type: "spring",
+                damping: 28,
+                stiffness: 220,
+                mass: 1,
+              }}
               className={cn(
                 "hidden md:flex flex-col border-l relative z-[60] overflow-hidden bg-brand-sidebar shadow-2xl shrink-0 w-[400px] lg:w-[480px]",
-                theme === 'dark' ? "border-white/10" : "border-slate-200"
+                theme === "dark" ? "border-white/10" : "border-slate-200",
               )}
             >
-              <div className={cn(
-                "py-2 px-6 border-b flex items-center justify-between shrink-0",
-                theme === 'dark' ? "border-white/5 bg-white/[0.02]" : "border-slate-100 bg-slate-50"
-              )}>
+              <div
+                className={cn(
+                  "py-2 px-6 border-b flex items-center justify-between shrink-0",
+                  theme === "dark"
+                    ? "border-white/5 bg-white/[0.02]"
+                    : "border-slate-100 bg-slate-50",
+                )}
+              >
                 <div className="flex items-center gap-3 overflow-hidden">
-                  <h2 className={cn(
-                    "text-[10px] font-bold tracking-[0.15em] truncate uppercase",
-                    theme === 'dark' ? "text-zinc-400" : "text-slate-500"
-                  )}>
-                    Data Sheet <span className={theme === 'dark' ? "text-zinc-700" : "text-slate-300 mx-1 font-normal"}>/</span> <span className={cn("transition-colors", getDosageColor(selectedMed.code).text)}>藥物詳情</span></h2>
+                  <h2
+                    className={cn(
+                      "text-[10px] font-bold tracking-[0.15em] truncate uppercase",
+                      theme === "dark" ? "text-zinc-400" : "text-slate-500",
+                    )}
+                  >
+                    Data Sheet{" "}
+                    <span
+                      className={
+                        theme === "dark"
+                          ? "text-zinc-700"
+                          : "text-slate-300 mx-1 font-normal"
+                      }
+                    >
+                      /
+                    </span>{" "}
+                    <span
+                      className={cn(
+                        "transition-colors",
+                        getDosageColor(selectedMed.code).text,
+                      )}
+                    >
+                      藥物詳情
+                    </span>
+                  </h2>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => toggleFavorite(selectedMed.id)}
                     className={cn(
-                      "p-1.5 rounded-full transition-all duration-300 group relative"
+                      "p-1.5 rounded-full transition-all duration-300 group relative",
                     )}
                     title={isFavorite(selectedMed.id) ? "移除收藏" : "加入收藏"}
                   >
@@ -1912,106 +2961,167 @@ T456 普拿疼 緩解疼痛
                       <motion.div
                         key={isFavorite(selectedMed.id) ? "fav" : "not-fav"}
                         initial={{ scale: 0.5, opacity: 0 }}
-                        animate={{ 
+                        animate={{
                           scale: [1, 1.1, 1],
-                          opacity: 1
+                          opacity: 1,
                         }}
-                        transition={{ 
-                          scale: { duration: 2, repeat: Infinity, ease: "easeInOut" },
-                          opacity: { type: "spring", stiffness: 400, damping: 15 }
+                        transition={{
+                          scale: {
+                            duration: 2,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                          },
+                          opacity: {
+                            type: "spring",
+                            stiffness: 400,
+                            damping: 15,
+                          },
                         }}
                       >
-                        <SharpStar 
+                        <SharpStar
                           className={cn(
                             "w-5 h-5 transition-colors",
-                            isFavorite(selectedMed.id) 
-                              ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_8px_rgba(139,92,246,0.5)]" 
-                              : theme === 'dark' ? "text-zinc-600 group-hover:text-violet-400" : "text-slate-300 group-hover:text-violet-400"
-                          )} 
+                            isFavorite(selectedMed.id)
+                              ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_8px_rgba(139,92,246,0.5)]"
+                              : theme === "dark"
+                                ? "text-zinc-600 group-hover:text-violet-400"
+                                : "text-slate-300 group-hover:text-violet-400",
+                          )}
                         />
                       </motion.div>
                     </AnimatePresence>
                   </button>
-                  <button 
+                  <button
                     onClick={closeDetail}
                     className={cn(
                       "p-1 px-2 rounded-md transition-all border flex items-center gap-2",
-                      theme === 'dark' 
-                        ? "hover:bg-white/5 text-brand-muted hover:text-white border-transparent hover:border-white/10" 
-                        : "hover:bg-slate-100 text-slate-400 hover:text-slate-700 border-transparent hover:border-slate-200"
+                      theme === "dark"
+                        ? "hover:bg-white/5 text-brand-muted hover:text-white border-transparent hover:border-white/10"
+                        : "hover:bg-slate-100 text-slate-400 hover:text-slate-700 border-transparent hover:border-slate-200",
                     )}
                   >
-                    <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Close</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">
+                      Close
+                    </span>
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              <div className={cn(
-                "flex-1 overflow-y-auto p-6 md:p-8 space-y-8 scrollbar-thin",
-                theme === 'dark' 
-                  ? "bg-gradient-to-b from-brand-sidebar to-brand-bg scrollbar-thumb-white/10" 
-                  : "bg-white scrollbar-thumb-slate-200"
-              )}>
+              <div
+                className={cn(
+                  "flex-1 overflow-y-auto p-6 md:p-8 space-y-8 scrollbar-thin",
+                  theme === "dark"
+                    ? "bg-gradient-to-b from-brand-sidebar to-brand-bg scrollbar-thumb-white/10"
+                    : "bg-white scrollbar-thumb-slate-200",
+                )}
+              >
                 <div className="space-y-4">
-                  <div className={cn("inline-flex items-center px-2.5 py-0.5 rounded-md border", getDosageColor(selectedMed.code).bg, getDosageColor(selectedMed.code).borderMain)}>
-                    <span className={cn("font-mono font-black text-[15px] tracking-widest", getDosageColor(selectedMed.code).text)}>{selectedMed.code}</span>
+                  <div
+                    className={cn(
+                      "inline-flex items-center px-2.5 py-0.5 rounded-md border",
+                      getDosageColor(selectedMed.code).bg,
+                      getDosageColor(selectedMed.code).borderMain,
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "font-mono font-black text-[15px] tracking-widest",
+                        getDosageColor(selectedMed.code).text,
+                      )}
+                    >
+                      {selectedMed.code}
+                    </span>
                   </div>
 
                   <div className="space-y-1">
-                    <h1 className={cn(
-                      "text-xl md:text-2xl font-bold leading-tight tracking-tight break-words",
-                      theme === 'dark' ? "text-zinc-100" : "text-slate-900"
-                    )}>{selectedMed.component}</h1>
-                    <p className={cn("text-sm md:text-base font-medium tracking-tight break-words", getDosageColor(selectedMed.code).accent)}>{selectedMed.genericName}</p>
+                    <h1
+                      className={cn(
+                        "text-xl md:text-2xl font-bold leading-tight tracking-tight break-words",
+                        theme === "dark" ? "text-zinc-100" : "text-slate-900",
+                      )}
+                    >
+                      {selectedMed.component}
+                    </h1>
+                    <p
+                      className={cn(
+                        "text-sm md:text-base font-medium tracking-tight break-words",
+                        getDosageColor(selectedMed.code).accent,
+                      )}
+                    >
+                      {selectedMed.genericName}
+                    </p>
                   </div>
 
-                  <div className={cn("flex flex-col gap-1 pt-2 border-l-2 pl-4", getDosageColor(selectedMed.code).borderMain)}>
-                    <p className={cn(
-                      "text-xs md:text-sm font-medium leading-snug",
-                      theme === 'dark' ? "text-zinc-300" : "text-slate-700"
-                    )}>{selectedMed.brandName}</p>
-                    {selectedMed.chineseName && <p className={cn(
-                      "text-[10px] md:text-xs font-normal",
-                      theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                    )}>{selectedMed.chineseName}</p>}
+                  <div
+                    className={cn(
+                      "flex flex-col gap-1 pt-2 border-l-2 pl-4",
+                      getDosageColor(selectedMed.code).borderMain,
+                    )}
+                  >
+                    <p
+                      className={cn(
+                        "text-xs md:text-sm font-medium leading-snug",
+                        theme === "dark" ? "text-zinc-300" : "text-slate-700",
+                      )}
+                    >
+                      {selectedMed.brandName}
+                    </p>
+                    {selectedMed.chineseName && (
+                      <p
+                        className={cn(
+                          "text-[10px] md:text-xs font-normal",
+                          theme === "dark" ? "text-zinc-500" : "text-slate-400",
+                        )}
+                      >
+                        {selectedMed.chineseName}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-6">
                   <div className="space-y-2">
-                    <label className={cn(
-                      "text-[9px] uppercase font-semibold tracking-[0.15em] flex items-center gap-2",
-                      theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                    )}>
+                    <label
+                      className={cn(
+                        "text-[9px] uppercase font-semibold tracking-[0.15em] flex items-center gap-2",
+                        theme === "dark" ? "text-zinc-500" : "text-slate-400",
+                      )}
+                    >
                       Anatomical System
                     </label>
-                    <button 
+                    <button
                       onClick={() => {
                         setSearchQuery(selectedMed.anatomicalSystem);
                       }}
                       className={cn(
                         "font-medium leading-relaxed text-xs md:text-sm pl-2.5 border-l-2 hover:text-brand-accent hover:border-brand-accent transition-all text-left w-full",
-                        theme === 'dark' ? "text-zinc-300 border-zinc-800/60" : "text-slate-600 border-slate-200"
+                        theme === "dark"
+                          ? "text-zinc-300 border-zinc-800/60"
+                          : "text-slate-600 border-slate-200",
                       )}
                     >
                       {selectedMed.anatomicalSystem}
                     </button>
                   </div>
                   <div className="space-y-2">
-                    <label className={cn(
-                      "text-[10px] uppercase font-semibold tracking-[0.15em] flex items-center gap-2",
-                      theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                    )}>
+                    <label
+                      className={cn(
+                        "text-[10px] uppercase font-semibold tracking-[0.15em] flex items-center gap-2",
+                        theme === "dark" ? "text-zinc-500" : "text-slate-400",
+                      )}
+                    >
                       Pharmacological Class
                     </label>
-                    <button 
+                    <button
                       onClick={() => {
                         setSearchQuery(selectedMed.pharmacologicalClass);
                       }}
                       className={cn(
                         "font-medium leading-relaxed text-sm md:text-base pl-2.5 border-l-2 hover:text-brand-accent hover:border-brand-accent transition-all text-left w-full",
-                        theme === 'dark' ? "text-zinc-200 border-zinc-700" : "text-slate-700 border-slate-200"
+                        theme === "dark"
+                          ? "text-zinc-200 border-zinc-700"
+                          : "text-slate-700 border-slate-200",
                       )}
                     >
                       {selectedMed.pharmacologicalClass}
@@ -2021,39 +3131,52 @@ T456 普拿疼 緩解疼痛
 
                 {selectedMed.indications && (
                   <section className="space-y-3">
-                    <div className={cn(
-                      "flex items-center gap-3 font-semibold text-[10px] uppercase tracking-[0.15em]",
-                      theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                    )}>
+                    <div
+                      className={cn(
+                        "flex items-center gap-3 font-semibold text-[10px] uppercase tracking-[0.15em]",
+                        theme === "dark" ? "text-zinc-500" : "text-slate-400",
+                      )}
+                    >
                       ATC Info / Indications
                     </div>
-                    <p className={cn(
-                      "leading-relaxed text-sm md:text-base font-sans backdrop-blur-sm p-4 rounded-lg border shadow-sm break-all",
-                      theme === 'dark' ? "text-zinc-300 bg-white/[0.01] border-white/[0.03]" : "text-slate-700 bg-slate-50 border-slate-100"
-                    )}>
+                    <p
+                      className={cn(
+                        "leading-relaxed text-sm md:text-base font-sans backdrop-blur-sm p-4 rounded-lg border shadow-sm break-all",
+                        theme === "dark"
+                          ? "text-zinc-300 bg-white/[0.01] border-white/[0.03]"
+                          : "text-slate-700 bg-slate-50 border-slate-100",
+                      )}
+                    >
                       {selectedMed.indications}
                     </p>
                   </section>
                 )}
 
                 <div className="space-y-6 pt-6 pb-20">
-                  <h3 className={cn(
-                    "text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2",
-                    theme === 'dark' ? "text-zinc-500" : "text-slate-400"
-                  )}>
-                    <span className={cn("w-1.5 h-1.5 rounded-full animate-pulse", getDosageColor(selectedMed.code).glow)}></span>
+                  <h3
+                    className={cn(
+                      "text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2",
+                      theme === "dark" ? "text-zinc-500" : "text-slate-400",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "w-1.5 h-1.5 rounded-full animate-pulse",
+                        getDosageColor(selectedMed.code).glow,
+                      )}
+                    ></span>
                     Index Metadata
                   </h3>
                   <div className="flex flex-wrap gap-2.5">
                     {selectedMed.searchKeywords.map((k, i) => (
-                      <button 
-                        key={`${k}-${i}`} 
+                      <button
+                        key={`${k}-${i}`}
                         onClick={() => setSearchQuery(k)}
                         className={cn(
                           "px-4 py-1.5 border rounded-lg text-[10px] font-mono transition-all cursor-pointer uppercase tracking-tight",
-                          theme === 'dark' 
-                            ? "bg-brand-secondary/50 border-brand-border text-zinc-500 hover:border-brand-accent/50 hover:bg-brand-accent/5 hover:text-brand-accent" 
-                            : "bg-slate-50 border-slate-200 text-slate-500 hover:border-brand-accent/50 hover:bg-slate-100 hover:text-brand-accentShadow"
+                          theme === "dark"
+                            ? "bg-brand-secondary/50 border-brand-border text-zinc-500 hover:border-brand-accent/50 hover:bg-brand-accent/5 hover:text-brand-accent"
+                            : "bg-slate-50 border-slate-200 text-slate-500 hover:border-brand-accent/50 hover:bg-slate-100 hover:text-brand-accentShadow",
                         )}
                       >
                         {k}
@@ -2081,85 +3204,216 @@ T456 普拿疼 緩解疼痛
                   closeDetail();
                 }
               }}
-              initial={{ y: '100%', opacity: 0 }}
+              initial={{ y: "100%", opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              exit={{ y: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 32, stiffness: 300 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 32, stiffness: 300 }}
               className={cn(
                 "md:hidden fixed inset-x-0 bottom-0 h-[38vh] border-t z-[100] overflow-hidden flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.3)]",
-                theme === 'dark' ? "bg-brand-sidebar border-white/10" : "bg-white border-slate-200"
+                theme === "dark"
+                  ? "bg-brand-sidebar border-white/10"
+                  : "bg-white border-slate-200",
               )}
             >
-              <div 
+              <div
                 onPointerDown={(e) => dragControls.start(e)}
                 className="w-full pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0"
               >
-                <div className={cn(
-                  "w-12 h-1.5 rounded-full mx-auto shadow-sm",
-                  theme === 'dark' ? "bg-zinc-700" : "bg-slate-300"
-                )} />
+                <div
+                  className={cn(
+                    "w-12 h-1.5 rounded-full mx-auto shadow-sm",
+                    theme === "dark" ? "bg-zinc-700" : "bg-slate-300",
+                  )}
+                />
               </div>
               <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-5 scrollbar-none">
                 <div className="flex justify-between items-start sticky top-0 bg-inherit pt-1 pb-2 z-10">
-                   <div className="flex items-center gap-2">
-                     <div className={cn("px-2 py-0.5 rounded border text-[15px] font-mono font-black tracking-widest", getDosageColor(selectedMed.code).bg, getDosageColor(selectedMed.code).text, getDosageColor(selectedMed.code).borderMain)}>
-                        {selectedMed.code}
-                     </div>
-                      <button
-                        onClick={() => toggleFavorite(selectedMed.id)}
-                        className="p-2 rounded-full transition-all active:scale-90"
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={cn(
+                        "px-2 py-0.5 rounded border text-[15px] font-mono font-black tracking-widest",
+                        getDosageColor(selectedMed.code).bg,
+                        getDosageColor(selectedMed.code).text,
+                        getDosageColor(selectedMed.code).borderMain,
+                      )}
+                    >
+                      {selectedMed.code}
+                    </div>
+                    <button
+                      onClick={() => toggleFavorite(selectedMed.id)}
+                      className="p-2 rounded-full transition-all active:scale-90"
+                    >
+                      <motion.div
+                        animate={
+                          isFavorite(selectedMed.id)
+                            ? { scale: [1, 1.05, 1] }
+                            : {}
+                        }
+                        transition={
+                          isFavorite(selectedMed.id)
+                            ? {
+                                duration: 3,
+                                repeat: Infinity,
+                                ease: "easeInOut",
+                              }
+                            : { duration: 0.3 }
+                        }
                       >
-                        <motion.div
-                          animate={isFavorite(selectedMed.id) ? { scale: [1, 1.05, 1] } : {}}
-                          transition={isFavorite(selectedMed.id) ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.3 }}
-                        >
-                          <SharpStar 
-                            className={cn(
-                              "w-6 h-6 transition-colors",
-                              isFavorite(selectedMed.id) 
-                                ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_10px_rgba(139,92,246,0.3)]" 
-                                : theme === 'dark' ? "text-zinc-700" : "text-slate-200"
-                            )} 
-                          />
-                        </motion.div>
-                      </button>
-                   </div>
-                   <button onClick={closeDetail} className="p-1 -mr-2 opacity-60 hover:opacity-100 transition-opacity"><X className="w-5 h-5 text-zinc-500" /></button>
+                        <SharpStar
+                          className={cn(
+                            "w-6 h-6 transition-colors",
+                            isFavorite(selectedMed.id)
+                              ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_10px_rgba(139,92,246,0.3)]"
+                              : theme === "dark"
+                                ? "text-zinc-700"
+                                : "text-slate-200",
+                          )}
+                        />
+                      </motion.div>
+                    </button>
+                  </div>
+                  <button
+                    onClick={closeDetail}
+                    className="p-1 -mr-2 opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-5 h-5 text-zinc-500" />
+                  </button>
                 </div>
-                
+
                 <div className="space-y-1">
-                  <h1 className={cn("text-lg font-bold leading-tight", theme === 'dark' ? "text-white" : "text-slate-900")}>{selectedMed.component}</h1>
-                  <p className={cn("text-xs font-medium", getDosageColor(selectedMed.code).accent)}>{selectedMed.genericName}</p>
+                  <h1
+                    className={cn(
+                      "text-lg font-bold leading-tight",
+                      theme === "dark" ? "text-white" : "text-slate-900",
+                    )}
+                  >
+                    {selectedMed.component}
+                  </h1>
+                  <p
+                    className={cn(
+                      "text-xs font-medium",
+                      getDosageColor(selectedMed.code).accent,
+                    )}
+                  >
+                    {selectedMed.genericName}
+                  </p>
                 </div>
 
                 <div className="space-y-4">
-                   <div className="flex flex-col gap-0.5 border-l-2 pl-3" style={{ borderColor: getDosageColor(selectedMed.code).borderMain.split('-').slice(1).join('-') === 'border-white/20' ? 'rgba(255,255,255,0.1)' : undefined }}>
-                      <p className={cn("text-xs", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>{selectedMed.brandName}</p>
-                      {selectedMed.chineseName && <p className={cn("text-[10px]", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>{selectedMed.chineseName}</p>}
-                   </div>
+                  <div
+                    className="flex flex-col gap-0.5 border-l-2 pl-3"
+                    style={{
+                      borderColor:
+                        getDosageColor(selectedMed.code)
+                          .borderMain.split("-")
+                          .slice(1)
+                          .join("-") === "border-white/20"
+                          ? "rgba(255,255,255,0.1)"
+                          : undefined,
+                    }}
+                  >
+                    <p
+                      className={cn(
+                        "text-xs",
+                        theme === "dark" ? "text-zinc-400" : "text-slate-600",
+                      )}
+                    >
+                      {selectedMed.brandName}
+                    </p>
+                    {selectedMed.chineseName && (
+                      <p
+                        className={cn(
+                          "text-[10px]",
+                          theme === "dark" ? "text-zinc-500" : "text-slate-400",
+                        )}
+                      >
+                        {selectedMed.chineseName}
+                      </p>
+                    )}
+                  </div>
 
-                   <div className="grid grid-cols-2 gap-3">
-                      <div className={cn("p-2.5 rounded-xl border", theme === 'dark' ? "bg-white/[0.02] border-white/5" : "bg-slate-50 border-slate-100")}>
-                         <span className={cn("block text-[8px] uppercase tracking-wider mb-1", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>System</span>
-                         <span className={cn("text-[10px] font-medium block leading-tight", theme === 'dark' ? "text-zinc-300" : "text-slate-700")}>{selectedMed.anatomicalSystem}</span>
-                      </div>
-                      <div className={cn("p-2.5 rounded-xl border", theme === 'dark' ? "bg-white/[0.02] border-white/5" : "bg-slate-50 border-slate-100")}>
-                         <span className={cn("block text-[8px] uppercase tracking-wider mb-1", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>Class</span>
-                         <span className={cn("text-[10px] font-medium block leading-tight", theme === 'dark' ? "text-zinc-300" : "text-slate-700")}>{selectedMed.pharmacologicalClass}</span>
-                      </div>
-                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div
+                      className={cn(
+                        "p-2.5 rounded-xl border",
+                        theme === "dark"
+                          ? "bg-white/[0.02] border-white/5"
+                          : "bg-slate-50 border-slate-100",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "block text-[8px] uppercase tracking-wider mb-1",
+                          theme === "dark" ? "text-zinc-500" : "text-slate-400",
+                        )}
+                      >
+                        System
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[10px] font-medium block leading-tight",
+                          theme === "dark" ? "text-zinc-300" : "text-slate-700",
+                        )}
+                      >
+                        {selectedMed.anatomicalSystem}
+                      </span>
+                    </div>
+                    <div
+                      className={cn(
+                        "p-2.5 rounded-xl border",
+                        theme === "dark"
+                          ? "bg-white/[0.02] border-white/5"
+                          : "bg-slate-50 border-slate-100",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "block text-[8px] uppercase tracking-wider mb-1",
+                          theme === "dark" ? "text-zinc-500" : "text-slate-400",
+                        )}
+                      >
+                        Class
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[10px] font-medium block leading-tight",
+                          theme === "dark" ? "text-zinc-300" : "text-slate-700",
+                        )}
+                      >
+                        {selectedMed.pharmacologicalClass}
+                      </span>
+                    </div>
+                  </div>
 
-                   {selectedMed.indications && (
-                     <div className={cn("p-3 rounded-xl border text-[11px] leading-relaxed", theme === 'dark' ? "bg-white/[0.02] border-white/5 text-zinc-400" : "bg-slate-50 border-slate-100 text-slate-600")}>
-                        {selectedMed.indications}
-                     </div>
-                   )}
+                  {selectedMed.indications && (
+                    <div
+                      className={cn(
+                        "p-3 rounded-xl border text-[11px] leading-relaxed",
+                        theme === "dark"
+                          ? "bg-white/[0.02] border-white/5 text-zinc-400"
+                          : "bg-slate-50 border-slate-100 text-slate-600",
+                      )}
+                    >
+                      {selectedMed.indications}
+                    </div>
+                  )}
 
-                   <div className="flex flex-wrap gap-2 pt-2">
-                     {selectedMed.searchKeywords.slice(0, 5).map((k, i) => (
-                       <button key={i} onClick={() => setSearchQuery(k)} className={cn("px-2 py-1 rounded text-[9px] font-mono border", theme === 'dark' ? "bg-white/5 border-white/10 text-zinc-500" : "bg-slate-50 border-slate-100 text-slate-400")}>{k}</button>
-                     ))}
-                   </div>
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {selectedMed.searchKeywords.slice(0, 5).map((k, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSearchQuery(k)}
+                        className={cn(
+                          "px-2 py-1 rounded text-[9px] font-mono border",
+                          theme === "dark"
+                            ? "bg-white/5 border-white/10 text-zinc-500"
+                            : "bg-slate-50 border-slate-100 text-slate-400",
+                        )}
+                      >
+                        {k}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -2179,11 +3433,11 @@ T456 普拿疼 緩解疼痛
               exit={{ opacity: 0 }}
               onClick={() => {
                 setIsFavoritesManagerOpen(false);
-                setFavoritesSearchQuery('');
+                setFavoritesSearchQuery("");
               }}
               className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150]"
             />
-            
+
             {/* Modal Dialog */}
             <motion.div
               key="favorites-manager-modal"
@@ -2193,33 +3447,46 @@ T456 普拿疼 緩解疼痛
               transition={{ type: "spring", duration: 0.5, bounce: 0.15 }}
               className={cn(
                 "fixed inset-x-4 top-[10%] bottom-[10%] md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[600px] md:h-[550px] rounded-3xl border shadow-2xl flex flex-col overflow-hidden z-[160]",
-                theme === 'dark' 
-                  ? "bg-zinc-900/95 border-white/10 text-white shadow-black/80" 
-                  : "bg-white border-slate-200 text-slate-900 shadow-slate-900/20"
+                theme === "dark"
+                  ? "bg-zinc-900/95 border-white/10 text-white shadow-black/80"
+                  : "bg-white border-slate-200 text-slate-900 shadow-slate-900/20",
               )}
             >
               {/* Header */}
-              <div className={cn(
-                "p-5 border-b shrink-0 flex items-center justify-between",
-                theme === 'dark' ? "border-white/5 bg-white/[0.02]" : "border-slate-100 bg-slate-50"
-              )}>
+              <div
+                className={cn(
+                  "p-5 border-b shrink-0 flex items-center justify-between",
+                  theme === "dark"
+                    ? "border-white/5 bg-white/[0.02]"
+                    : "border-slate-100 bg-slate-50",
+                )}
+              >
                 <div>
                   <div className="flex items-center gap-2">
                     <SharpStar className="w-4 h-4 text-violet-500 fill-violet-500" />
-                    <h3 className="text-sm font-bold tracking-tight">我的收藏藥物管理</h3>
+                    <h3 className="text-sm font-bold tracking-tight">
+                      我的收藏藥物管理
+                    </h3>
                   </div>
-                  <p className={cn("text-[10px] mt-0.5", theme === 'dark' ? "text-zinc-500" : "text-slate-400")}>
+                  <p
+                    className={cn(
+                      "text-[10px] mt-0.5",
+                      theme === "dark" ? "text-zinc-500" : "text-slate-400",
+                    )}
+                  >
                     在此檢視、搜尋，或編輯收藏項目。點擊項目直接查看詳情。
                   </p>
                 </div>
                 <button
                   onClick={() => {
                     setIsFavoritesManagerOpen(false);
-                    setFavoritesSearchQuery('');
+                    setFavoritesSearchQuery("");
                   }}
                   className={cn(
                     "p-1.5 rounded-full transition-colors",
-                    theme === 'dark' ? "hover:bg-white/10 text-zinc-400 hover:text-white" : "hover:bg-slate-100 text-slate-500 hover:text-slate-800"
+                    theme === "dark"
+                      ? "hover:bg-white/10 text-zinc-400 hover:text-white"
+                      : "hover:bg-slate-100 text-slate-500 hover:text-slate-800",
                   )}
                 >
                   <X className="w-4 h-4" />
@@ -2228,10 +3495,14 @@ T456 普拿疼 緩解疼痛
 
               {/* Search input inside favorites */}
               {favorites.length > 0 && (
-                <div className={cn(
-                  "p-3 px-5 border-b shrink-0 flex items-center gap-2",
-                  theme === 'dark' ? "bg-zinc-950/40 border-white/5" : "bg-slate-50/50 border-slate-100"
-                )}>
+                <div
+                  className={cn(
+                    "p-3 px-5 border-b shrink-0 flex items-center gap-2",
+                    theme === "dark"
+                      ? "bg-zinc-950/40 border-white/5"
+                      : "bg-slate-50/50 border-slate-100",
+                  )}
+                >
                   <Search className="w-3.5 h-3.5 opacity-40 shrink-0" />
                   <input
                     type="text"
@@ -2242,7 +3513,7 @@ T456 普拿疼 緩解疼痛
                   />
                   {favoritesSearchQuery && (
                     <button
-                      onClick={() => setFavoritesSearchQuery('')}
+                      onClick={() => setFavoritesSearchQuery("")}
                       className="px-2 py-1 rounded-md text-[9px] font-bold bg-zinc-500/10 hover:bg-zinc-500/20"
                     >
                       清除
@@ -2255,118 +3526,164 @@ T456 普拿疼 緩解疼痛
               <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
                 {favorites.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center py-12">
-                    <div className={cn(
-                      "p-4 rounded-full border mb-3",
-                      theme === 'dark' ? "bg-white/[0.02] border-white/5 text-zinc-700" : "bg-slate-50 border-slate-100 text-slate-300"
-                    )}>
+                    <div
+                      className={cn(
+                        "p-4 rounded-full border mb-3",
+                        theme === "dark"
+                          ? "bg-white/[0.02] border-white/5 text-zinc-700"
+                          : "bg-slate-50 border-slate-100 text-slate-300",
+                      )}
+                    >
                       <SharpStar className="w-8 h-8" />
                     </div>
-                    <h4 className={cn("text-xs font-bold", theme === 'dark' ? "text-zinc-400" : "text-slate-600")}>目前無任何收藏藥物</h4>
+                    <h4
+                      className={cn(
+                        "text-xs font-bold",
+                        theme === "dark" ? "text-zinc-400" : "text-slate-600",
+                      )}
+                    >
+                      目前無任何收藏藥物
+                    </h4>
                     <p className="text-[10px] opacity-40 mt-1 max-w-xs">
                       在主畫面點擊藥物卡片旁的星星，即可將其加入此清單中。
                     </p>
                   </div>
-                ) : (() => {
-                  const favoritedMeds = medications.filter(m => isFavorite(m.id));
-                  const query = favoritesSearchQuery.toLowerCase().trim();
-                  const filtered = favoritedMeds.filter(m => 
-                    m.component.toLowerCase().includes(query) ||
-                    m.code.toLowerCase().includes(query) ||
-                    m.brandName.toLowerCase().includes(query) ||
-                    (m.chineseName && m.chineseName.toLowerCase().includes(query)) ||
-                    (m.genericName && m.genericName.toLowerCase().includes(query)) ||
-                    (m.indications && m.indications.toLowerCase().includes(query))
-                  );
+                ) : (
+                  (() => {
+                    const favoritedMeds = medications.filter((m) =>
+                      isFavorite(m.id),
+                    );
+                    const query = favoritesSearchQuery.toLowerCase().trim();
+                    const filtered = favoritedMeds.filter(
+                      (m) =>
+                        m.component.toLowerCase().includes(query) ||
+                        m.code.toLowerCase().includes(query) ||
+                        m.brandName.toLowerCase().includes(query) ||
+                        (m.chineseName &&
+                          m.chineseName.toLowerCase().includes(query)) ||
+                        (m.genericName &&
+                          m.genericName.toLowerCase().includes(query)) ||
+                        (m.indications &&
+                          m.indications.toLowerCase().includes(query)),
+                    );
 
-                  if (filtered.length === 0) {
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="h-full flex flex-col items-center justify-center text-center py-12">
+                          <p className="text-xs font-medium opacity-50">
+                            查無符合關鍵字的收藏項目
+                          </p>
+                        </div>
+                      );
+                    }
+
                     return (
-                      <div className="h-full flex flex-col items-center justify-center text-center py-12">
-                        <p className="text-xs font-medium opacity-50">查無符合關鍵字的收藏項目</p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center text-[9px] font-mono opacity-50 px-1 mb-2">
+                          <span>
+                            顯示 {filtered.length} / 共 {favoritedMeds.length}{" "}
+                            個收藏項目
+                          </span>
+                          {favoritesSearchQuery && (
+                            <span className="text-violet-500 font-bold animate-pulse">
+                              搜尋中
+                            </span>
+                          )}
+                        </div>
+
+                        <AnimatePresence mode="popLayout">
+                          {filtered.map((med) => {
+                            const dosageStyle = getDosageColor(med.code);
+                            return (
+                              <motion.div
+                                key={`manage-fav-${med.id}`}
+                                layout
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                transition={{ duration: 0.2 }}
+                                onClick={() => {
+                                  setSelectedMed(med);
+                                  setIsFavoritesManagerOpen(false);
+                                  setFavoritesSearchQuery("");
+                                }}
+                                className={cn(
+                                  "w-full text-left p-3.5 rounded-2xl border transition-all text-xs flex items-center justify-between group cursor-pointer",
+                                  theme === "dark"
+                                    ? "bg-white/5 border-white/5 hover:bg-white/10 hover:border-violet-500/30"
+                                    : "bg-slate-50 border-slate-100 hover:bg-slate-100 hover:border-violet-300",
+                                )}
+                              >
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  <div
+                                    className={cn(
+                                      "px-2 py-[2px] rounded-lg text-[9px] font-black tracking-widest uppercase shrink-0 border",
+                                      theme === "dark"
+                                        ? "border-white/20"
+                                        : "border-slate-200",
+                                      dosageStyle.text,
+                                      dosageStyle.bg,
+                                    )}
+                                  >
+                                    {med.code}
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <p
+                                      className={cn(
+                                        "font-bold truncate text-xs",
+                                        theme === "dark"
+                                          ? "text-zinc-100"
+                                          : "text-slate-800",
+                                      )}
+                                    >
+                                      {med.component}
+                                    </p>
+                                    <p className="text-[10px] opacity-60 truncate mt-0.5">
+                                      {med.brandName}{" "}
+                                      {med.chineseName
+                                        ? `(${med.chineseName})`
+                                        : ""}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0 ml-3">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleFavorite(med.id);
+                                    }}
+                                    className={cn(
+                                      "p-2 rounded-xl border transition-all active:scale-75 hover:bg-red-500/15 hover:border-red-500/30 text-zinc-500 hover:text-red-500",
+                                      theme === "dark"
+                                        ? "border-white/5 bg-white/[0.02]"
+                                        : "border-slate-200 bg-white",
+                                    )}
+                                    title="移出收藏"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <ChevronRight className="w-4 h-4 opacity-30 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-violet-400" />
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </AnimatePresence>
                       </div>
                     );
-                  }
-
-                  return (
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center text-[9px] font-mono opacity-50 px-1 mb-2">
-                        <span>顯示 {filtered.length} / 共 {favoritedMeds.length} 個收藏項目</span>
-                        {favoritesSearchQuery && <span className="text-violet-500 font-bold animate-pulse">搜尋中</span>}
-                      </div>
-
-                      <AnimatePresence mode="popLayout">
-                        {filtered.map(med => {
-                          const dosageStyle = getDosageColor(med.code);
-                          return (
-                            <motion.div
-                              key={`manage-fav-${med.id}`}
-                              layout
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.95 }}
-                              transition={{ duration: 0.2 }}
-                              onClick={() => {
-                                setSelectedMed(med);
-                                setIsFavoritesManagerOpen(false);
-                                setFavoritesSearchQuery('');
-                              }}
-                              className={cn(
-                                "w-full text-left p-3.5 rounded-2xl border transition-all text-xs flex items-center justify-between group cursor-pointer",
-                                theme === 'dark' 
-                                  ? "bg-white/5 border-white/5 hover:bg-white/10 hover:border-violet-500/30" 
-                                  : "bg-slate-50 border-slate-100 hover:bg-slate-100 hover:border-violet-300"
-                              )}
-                            >
-                              <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <div className={cn(
-                                  "px-2 py-[2px] rounded-lg text-[9px] font-black tracking-widest uppercase shrink-0 border",
-                                  theme === 'dark' ? "border-white/20" : "border-slate-200",
-                                  dosageStyle.text, 
-                                  dosageStyle.bg
-                                )}>
-                                  {med.code}
-                                </div>
-                                
-                                <div className="min-w-0">
-                                  <p className={cn("font-bold truncate text-xs", theme === 'dark' ? "text-zinc-100" : "text-slate-800")}>
-                                    {med.component}
-                                  </p>
-                                  <p className="text-[10px] opacity-60 truncate mt-0.5">
-                                    {med.brandName} {med.chineseName ? `(${med.chineseName})` : ''}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2 shrink-0 ml-3">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleFavorite(med.id);
-                                  }}
-                                  className={cn(
-                                    "p-2 rounded-xl border transition-all active:scale-75 hover:bg-red-500/15 hover:border-red-500/30 text-zinc-500 hover:text-red-500",
-                                    theme === 'dark' ? "border-white/5 bg-white/[0.02]" : "border-slate-200 bg-white"
-                                  )}
-                                  title="移出收藏"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                                <ChevronRight className="w-4 h-4 opacity-30 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-violet-400" />
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </AnimatePresence>
-                    </div>
-                  );
-                })()}
+                  })()
+                )}
               </div>
 
               {/* Footer */}
               {favorites.length > 0 && (
-                <div className={cn(
-                  "p-4 border-t font-mono text-[9px] opacity-40 text-center shrink-0",
-                  theme === 'dark' ? "border-white/5" : "border-slate-100"
-                )}>
+                <div
+                  className={cn(
+                    "p-4 border-t font-mono text-[9px] opacity-40 text-center shrink-0",
+                    theme === "dark" ? "border-white/5" : "border-slate-100",
+                  )}
+                >
                   Total {favorites.length} medicines pinned in local preferences
                 </div>
               )}
