@@ -10,14 +10,15 @@
   --color-brand-sidebar: var(--bg-sidebar);
   --color-brand-header: var(--bg-header);
   --color-brand-border: var(--border-subtle);
-  --color-brand-accent: #3187BD;
-  --color-brand-secondary-accent: #66D99B;
+  
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-secondary-accent: var(--brand-secondary-accent);
   --color-brand-muted: #71717A;
   --color-brand-secondary: #0F172A;
 
-  --theme-gradient: linear-gradient(135deg, #3187BD 0%, #66D99B 100%);
-  --theme-gradient-to: #66D99B;
-  --theme-gradient-from: #3187BD;
+  --theme-gradient: var(--theme-gradient-val);
+  --theme-gradient-to: var(--theme-gradient-to-val);
+  --theme-gradient-from: var(--theme-gradient-from-val);
 
   --glass-bg: var(--bg-glass);
   --glass-border: var(--border-glass);
@@ -35,8 +36,39 @@
   --text-primary: #FFFFFF;
   --text-secondary: #A1A1AA;
   --text-muted: #71717A;
-  --bg-gradient: linear-gradient(135deg, #1F2232 0%, #0D0E16 50%, #030305 100%);
+  --bg-gradient: linear-gradient(135deg, #091a1b 0%, #0c0e16 50%, #030305 100%);
   --input-bg: rgba(0, 0, 0, 0.9);
+
+  /* Default standard Mode: HMSS (Teal / Cyan) */
+  --brand-accent: #0D9488;          /* Teal 600 */
+  --brand-secondary-accent: #06B6D4;/* Cyan 500 */
+  --theme-gradient-val: linear-gradient(135deg, #0D9488 0%, #06B6D4 100%);
+  --theme-gradient-from-val: #0D9488;
+  --theme-gradient-to-val: #06B6D4;
+  --selection-bg: rgba(13, 148, 136, 0.3);
+  --selection-text: #14B8A6;
+}
+
+[data-mode="hmss"] {
+  --brand-accent: #0D9488;
+  --brand-secondary-accent: #06B6D4;
+  --theme-gradient-val: linear-gradient(135deg, #0D9488 0%, #06B6D4 100%);
+  --theme-gradient-from-val: #0D9488;
+  --theme-gradient-to-val: #06B6D4;
+  --selection-bg: rgba(13, 148, 136, 0.3);
+  --selection-text: #14B8A6;
+  --bg-gradient: linear-gradient(135deg, #091a1b 0%, #0c0e16 50%, #030305 100%);
+}
+
+[data-mode="ai"] {
+  --brand-accent: #8B5CF6;          /* Violet 600 */
+  --brand-secondary-accent: #F97316;/* Orange 500 */
+  --theme-gradient-val: linear-gradient(135deg, #8B5CF6 0%, #F97316 100%);
+  --theme-gradient-from-val: #8B5CF6;
+  --theme-gradient-to-val: #F97316;
+  --selection-bg: rgba(139, 92, 246, 0.3);
+  --selection-text: #A78BFA;
+  --bg-gradient: linear-gradient(135deg, #1C122C 0%, #0D0E16 50%, #030305 100%);
 }
 
 [data-theme="light"] {
@@ -51,8 +83,16 @@
   --text-primary: #0F172A;
   --text-secondary: #475569;
   --text-muted: #94A3B8;
-  --bg-gradient: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 50%, #FFFFFF 100%);
+  --bg-gradient: linear-gradient(135deg, #F0FDFA 0%, #F1F5F9 50%, #FFFFFF 100%);
   --input-bg: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="light"][data-mode="hmss"] {
+  --bg-gradient: linear-gradient(135deg, #F0FDFA 0%, #F1F5F9 50%, #FFFFFF 100%);
+}
+
+[data-theme="light"][data-mode="ai"] {
+  --bg-gradient: linear-gradient(135deg, #FAF5FF 0%, #F1F5F9 50%, #FFFFFF 100%);
 }
 
 @layer base {
@@ -119,8 +159,7 @@
   }
 
   ::selection {
-    background: rgba(16, 185, 129, 0.2);
-    color: #10B981;
+    background: var(--selection-bg);
   }
 
   .vertical-text {

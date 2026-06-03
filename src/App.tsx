@@ -52,6 +52,8 @@ import {
   Settings,
   Smartphone,
   Download,
+  Copy,
+  Check,
 } from "lucide-react";
 
 const getMedicationIcon = (code: string) => {
@@ -295,10 +297,9 @@ export default function App() {
 
   const buildVersion = useMemo(() => {
     try {
-      // @ts-ignore
       const time =
-        typeof __BUILD_TIME__ !== "undefined"
-          ? __BUILD_TIME__
+        typeof (globalThis as any).__BUILD_TIME__ !== "undefined"
+          ? (globalThis as any).__BUILD_TIME__
           : new Date().toISOString();
       const date = new Date(time);
       const yyyy = date.getFullYear();
@@ -364,12 +365,65 @@ export default function App() {
   };
 
   // AI Mode States
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  const handleCopyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setToast({ message: `已成功複製藥物代碼：${code}`, type: "success" });
+    } catch (err) {
+      const textArea = document.createElement("textarea");
+      textArea.value = code;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      textArea.style.top = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setToast({ message: `已成功複製藥物代碼：${code}`, type: "success" });
+      } catch (error) {
+        console.error("Copy failed", error);
+        setToast({ message: "複製失敗，請手動複製", type: "error" });
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressRef = useRef(false);
+
+  const startLongPress = (code: string) => {
+    isLongPressRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      handleCopyCode(code);
+    }, 600); // 600ms threshold for long press
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   const [isAiMode, setIsAiMode] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiHistory, setAiHistory] = useState<
-    { query: string; response: string; timestamp: number }[]
+    { query: string; response: string; timestamp: number; filteredCount?: number; totalCount?: number }[]
   >([]);
   const [aiVisibleLimits, setAiVisibleLimits] = useState<
     Record<string, number>
@@ -468,8 +522,20 @@ export default function App() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    document.documentElement.setAttribute("data-mode", isAiMode ? "ai" : "hmss");
+  }, [isAiMode]);
+
   const ai = useMemo(
-    () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" }),
+    () =>
+      new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY || "",
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build-client",
+          },
+        },
+      }),
     [],
   );
 
@@ -542,32 +608,24 @@ export default function App() {
   useEffect(() => {
     const initData = async () => {
       setLoading(true);
-      const data = await localMedicationService.getAll();
-      setMedications(data);
-      setLoading(false);
-
-      // 如果資料庫是空的，自動進行首次同步
-      if (data.length === 0) {
-        handleSyncGoogleSheet();
-      } else {
-        // 否則只檢查更新
-        const checkUpdates = async () => {
-          try {
-            const hasUpdate =
-              await localMedicationService.checkForUpdates(gsheetUrl);
-            if (hasUpdate) {
-              setIsUpdateAvailable(true);
-            }
-          } catch (e) {
-            console.warn("Update check failed:", e);
-          }
-        };
-        setTimeout(checkUpdates, 2000);
+      try {
+        const stored = await localMedicationService.getAll();
+        if (stored.length > 0) {
+          setMedications(stored);
+        } else {
+          const { meds, hash } =
+            await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
+          await localMedicationService.saveAll(meds, hash);
+          setMedications(meds);
+        }
+      } catch (error) {
+        console.error("Failed to load local database:", error);
+      } finally {
+        setLoading(false);
       }
     };
-
     initData();
-  }, []);
+  }, [gsheetUrl]);
 
   const handleAiSearch = async (e?: FormEvent) => {
     if (e) e.preventDefault();
@@ -576,90 +634,116 @@ export default function App() {
     setIsAiLoading(true);
     setAiResponse(null);
 
+    const currentQuery = aiQuery;
+    const currentTimestamp = Date.now();
+
+    // 立即將主要對話佔位符加入對話歷史
+    setAiHistory((prev) => [
+      { 
+        query: currentQuery, 
+        response: "", 
+        timestamp: currentTimestamp,
+      },
+      ...prev,
+    ]);
+    setAiQuery("");
+
     try {
       if (!process.env.GEMINI_API_KEY) {
         throw new Error(
-          "偵測不到 GEMINI_API_KEY。若您在使用 GitHub Pages，請在專案中設定環境變數。",
+          "偵測不到 GEMINI_API_KEY。請在專案中設定環境變數。",
         );
       }
 
-      // Send the full list of medications to AI for comprehensive analysis
-      const medListSummary = medications.map((m) => ({
-        code: m.code,
-        component: m.component,
-        genericName: m.genericName,
-        brandName: m.brandName,
-        indications: m.indications,
-      }));
+      // 1. 將藥物清單壓縮為兼顧準確與極致短少 Token 的緊湊格式，包含藥理分類與適應症資訊供 AI 推理
+      const medListSummaryText = medications
+        .map(
+          (m) =>
+            `- [${m.code}] ${m.component || m.genericName}${m.brandName ? ` (${m.brandName})` : ""}: [機轉/分類:${m.pharmacologicalClass || "未知"}]_適應症/ATC關鍵字: ${m.indications || "無"}`
+        )
+        .join("\n");
 
-      const currentQuery = aiQuery;
+      // 2. 優化系統提示詞，引導 AI 進行「臨床精確且文字極度精鍊」的回應，大幅加快回答速度
       const prompt = `# Role
 你是一位全能且精通臨床藥理學的主治醫師，具備嚴謹的臨床推理能力與多重用藥（Polypharmacy）審視經驗。
 
 # Context
-用戶將會提供一段關於病患的健康狀況描述（包含主訴、病史或症狀），以及一份特定的可用藥物清單。多病共存的病人往往面臨用藥複雜度高及潛在藥物交互作用的風險，需要精準的藥物整合。
+用戶將會提供一段關於病患的健康狀況描述（包含主訴、病史或症狀），以及一份合適的可用藥物清單。
 
 # Task
-請依據用戶提供的病患描述與藥物資訊，進行以下三步驟的臨床分析：
-1. 臨床問題拆解：分析並識別出描述中健康問題（Problems），並區分為active 與 underlying problems。
-2. 藥理決策與建議：綜合評估識別出的健康問題，針對每個使用者需要解決的問題(active problems)，從可用藥物中篩選出 5-10 個臨床上最適切的藥物建議，並提供藥物功能（或簡述選擇理由）。underlying disease 僅用來與active problems綜合評估病患情況，不需呈現underlying problems的藥物建議。
-3. 處方總結：撰寫一份 50-200 字的整體用藥策略總結(重點式、邏輯清晰、可使用條列式)。
+請依據用戶提供的病患描述與可用藥物，進行以下三步驟的臨床分析：
+1. 臨床問題拆解：分析並識別出描述中健康問題（Problems），並區分為 active 與 underlying problems。
+2. 藥理決策與建議：綜合評估識別出的健康問題，針對每個使用者需要解決的問題 (active problems)，從可用藥物清單中篩選出 5-10 個臨床上最適切的藥物建議，並提供藥物功能與選擇理由。underlying disease 僅用來與 active problems 綜合評估病患情況，不需呈現 underlying problems 的藥物建議。
+3. 處方總結：撰寫一份整體用藥策略總結 (說明請精準扼要，以 50-100 字為限)。
 
 # Constraints
+- 每個藥物建議的「臨床選擇理由與主要功能」必須極度精簡，嚴格限制在 15 個字以內！例如：「一線降血糖藥，心血管保護」。
 - 藥物審視（Medication Review）：挑選藥物時，必須嚴格審視藥物交互作用（DDI）、重複用藥及潛在的副作用。
 - 實證醫學：所有藥物建議必須符合現行臨床指引。
 - 資訊邊界：若病患描述之資訊不足以確立診斷，應明確指出需進一步評估的臨床指標（如肝腎功能、實驗室數據），不可憑空猜測。
 
 # Output Format (強制嚴格執行，以利系統解析)
-請務必嚴格遵守以下結構輸出，且「絕對不要」輸出「【第一部分：整體用藥策略與總結建議】」、「第一部分」、「【第二部分：臨床問題與建議藥物清單】」、「第二部分」等標題：
+請務必嚴格遵守以下结构輸出。請「絕對不要」輸出「【第一部分：整體用藥策略與總結建議】」、「第一部分」、「【第二部分：臨床問題與建議藥物清單】」、「第二部分」等標題：
 
 [整體用藥策略與臨床總結段落]
-請直接在此第一段輸出 50-200 字的整體臨床分析、用藥策略總結以及任何需要進一步評估的臨床指標（說明請精準扼要，重點式、邏輯清晰、可使用條列式，在此段中絕對不可包含「問題：」或「Problem:」字樣）。
+請直接在此第一段輸出 50-100 字的整體臨床分析、用藥策略總結以及任何需要進一步評估的臨床指標（說明請精準扼要，重點式、邏輯清晰、可使用條列式，在此段中絕對不可包含「問題：」或「Problem:」字樣）。
 
 問題：[主動健康問題名稱]
-[藥品碼] [藥物名稱] [該藥之臨床選擇理由與主要功能]
-[藥品碼] [藥物名稱] [該藥之臨床選擇理由與主要功能]
-... （針對此問題建議 5-10 個藥物，每行一藥）
-
-問題：[下一個主動健康問題名稱]
-...
-
-(每個「問題：」區段下方，每行只能包含一個藥物建議。格式範例如下：
-直接以臨床總結開頭：
-病患有高血糖與輕度糖尿病腎病變，建議使用 SGLT2 抑制劑以達降糖與心腎保護效果...
-
-問題：高血糖伴隨糖尿病腎病變
-T101 二甲雙胍 一線口服降血糖藥，具有心血管保護作用
-T102 恩格列淨 SGLT2抑制劑，能有效降低心血管及腎病變惡化風險
-)
+[藥品碼] [藥物名稱] [該藥之臨床選擇理由與主要功能（請限15字內，極致簡短）]
+[藥品碼] [藥物名稱] [該藥之臨床選擇理由與主要功能（請限15字內，極致簡短）]
+... （針對此問題建議最多 5-10 個藥物，每行一藥）
 
 ---
 病患狀況描述：
 ${currentQuery}
 
-可用藥物清單：
-${JSON.stringify(medListSummary)}
+以下是可用藥物清單：
+${medListSummaryText}
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+      // 3. 升級至最新的 gemini-3.5-flash，並配合 generateContentStream。
+      const responseStream = await ai.models.generateContentStream({
+        model: "gemini-3.5-flash",
         contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          thinkingConfig: {
+            thinkingLevel: "LOW",
+          },
+        },
       });
 
-      const resultText = response.text || "未能找到合適的藥物建議。";
-      setAiResponse(resultText);
-      setAiHistory((prev) => [
-        { query: currentQuery, response: resultText, timestamp: Date.now() },
-        ...prev,
-      ]);
-      setAiQuery("");
-    } catch (error) {
+      let fullResponse = "";
+      for await (const chunk of responseStream) {
+        const chunkText = chunk.text || "";
+        if (chunkText) {
+          fullResponse += chunkText;
+          setAiHistory((prev) =>
+            prev.map((item) =>
+              item.timestamp === currentTimestamp
+                ? { ...item, response: fullResponse }
+                : item,
+            ),
+          );
+        }
+      }
+    } catch (error: any) {
       console.error("AI Search Error:", error);
-      setAiResponse("AI 搜尋發生錯誤，請稍後再試。");
+      const errorMsg = error?.message || "AI 搜尋發生錯誤，請稍後再試。";
+      setAiHistory((prev) =>
+        prev.map((item) =>
+          item.timestamp === currentTimestamp
+            ? { ...item, response: `⚠️ 錯誤：${errorMsg}` }
+            : item,
+        ),
+      );
     } finally {
       setIsAiLoading(false);
     }
   };
+
+
+
+
 
   const anatomicalSystems = useMemo(() => {
     const systems = new Set(medications.map((m) => m.anatomicalSystem));
@@ -982,11 +1066,11 @@ ${JSON.stringify(medListSummary)}
                     <div className="flex items-center gap-2.5 min-w-0">
                       <SharpStar
                         className={cn(
-                          "w-4 h-4 text-violet-500 group-hover:scale-110 transition-transform duration-300",
-                          favorites.length > 0 && "fill-violet-500",
+                          "w-3.5 h-3.5 text-amber-500",
+                          favorites.length > 0 && "fill-amber-500",
                         )}
                       />
-                      <span className="font-bold">我的收藏</span>
+                      <span className="font-bold">收藏</span>
                       <span
                         className={cn(
                           "px-1.5 py-0.5 rounded-full text-[9px] font-mono leading-none",
@@ -1225,7 +1309,7 @@ ${JSON.stringify(medListSummary)}
       <div
         className={cn(
           "absolute bottom-[10%] left-[-10%] w-[45%] h-[45%] blur-[120px] rounded-full pointer-events-none z-0",
-          theme === "dark" ? "bg-[#66D99B]/5" : "bg-[#66D99B]/3",
+          theme === "dark" ? "bg-brand-secondary-accent/5" : "bg-brand-secondary-accent/3",
         )}
       ></div>
       <div
@@ -1266,8 +1350,8 @@ ${JSON.stringify(medListSummary)}
             y2="100%"
             stroke={
               theme === "dark"
-                ? "rgba(49,135,189,0.08)"
-                : "rgba(49,135,189,0.12)"
+                ? (isAiMode ? "rgba(139,92,246,0.08)" : "rgba(13,148,136,0.08)")
+                : (isAiMode ? "rgba(139,92,246,0.12)" : "rgba(13,148,136,0.12)")
             }
             strokeWidth="1"
           />
@@ -1278,8 +1362,8 @@ ${JSON.stringify(medListSummary)}
             y2="100%"
             stroke={
               theme === "dark"
-                ? "rgba(102,217,155,0.05)"
-                : "rgba(102,217,155,0.08)"
+                ? (isAiMode ? "rgba(249,115,22,0.05)" : "rgba(6,182,212,0.05)")
+                : (isAiMode ? "rgba(249,115,22,0.08)" : "rgba(6,182,212,0.08)")
             }
             strokeWidth="1"
           />
@@ -1290,8 +1374,8 @@ ${JSON.stringify(medListSummary)}
             y2="40%"
             stroke={
               theme === "dark"
-                ? "rgba(49,135,189,0.04)"
-                : "rgba(49,135,189,0.06)"
+                ? (isAiMode ? "rgba(139,92,246,0.04)" : "rgba(13,148,136,0.04)")
+                : (isAiMode ? "rgba(139,92,246,0.06)" : "rgba(13,148,136,0.06)")
             }
             strokeWidth="1"
           />
@@ -1302,8 +1386,8 @@ ${JSON.stringify(medListSummary)}
             y2="60%"
             stroke={
               theme === "dark"
-                ? "rgba(102,217,155,0.06)"
-                : "rgba(102,217,155,0.1)"
+                ? (isAiMode ? "rgba(249,115,22,0.06)" : "rgba(6,182,212,0.06)")
+                : (isAiMode ? "rgba(249,115,22,0.1)" : "rgba(6,182,212,0.1)")
             }
             strokeWidth="1"
           />
@@ -1353,8 +1437,8 @@ ${JSON.stringify(medListSummary)}
                 className={cn(
                   "absolute h-[calc(100%-8px)] rounded-lg shadow-lg z-0",
                   isAiMode
-                    ? "bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500"
-                    : "bg-gradient-to-r from-[#3187BD] to-[#66D99B]",
+                    ? "bg-gradient-to-r from-violet-600 to-orange-500"
+                    : "bg-gradient-to-r from-teal-600 to-cyan-500",
                 )}
                 initial={false}
                 animate={{
@@ -1415,7 +1499,7 @@ ${JSON.stringify(medListSummary)}
 
         <div className="flex items-center gap-3">
           {importStatus && (
-            <div className="hidden lg:flex items-center gap-2 text-[9px] text-[#3187BD] font-bold bg-brand-accent/5 px-3 py-1.5 rounded-full border border-[#3187BD]/20 animate-pulse">
+            <div className="hidden lg:flex items-center gap-2 text-[9px] text-brand-accent font-bold bg-brand-accent/5 px-3 py-1.5 rounded-full border border-brand-accent/20 animate-pulse">
               <CheckCircle2 className="w-3 h-3" /> {importStatus}
             </div>
           )}
@@ -1454,8 +1538,8 @@ ${JSON.stringify(medListSummary)}
                       className={cn(
                         "relative flex-1 group dropdown-container p-[1.5px] rounded-2xl transition-all shadow-2xl",
                         theme === "dark"
-                          ? "bg-gradient-to-r from-[#3187BD]/60 to-[#66D99B]/60 focus-within:from-[#3187BD] focus-within:to-[#66D99B] shadow-brand-accent/20"
-                          : "bg-gradient-to-r from-[#3187BD]/40 to-[#66D99B]/40 focus-within:from-[#3187BD]/70 focus-within:to-[#66D99B]/70 shadow-slate-200",
+                          ? "bg-gradient-to-r from-teal-600/60 to-cyan-500/60 focus-within:from-teal-600 focus-within:to-cyan-500 shadow-brand-accent/20"
+                          : "bg-gradient-to-r from-teal-600/40 to-cyan-500/40 focus-within:from-teal-605 focus-within:to-cyan-500/70 shadow-slate-200",
                       )}
                     >
                       <Search
@@ -1504,7 +1588,7 @@ ${JSON.stringify(medListSummary)}
                         {searchQuery && (
                           <button
                             type="submit"
-                            className="md:hidden p-1.5 text-brand-accent hover:text-[#66D99B] transition-colors"
+                            className="md:hidden p-1.5 text-brand-accent hover:text-brand-secondary-accent transition-colors"
                           >
                             <ArrowRight className="w-5 h-5" />
                           </button>
@@ -1608,9 +1692,9 @@ ${JSON.stringify(medListSummary)}
                                   <div className="flex items-center gap-2">
                                     <SharpStar
                                       className={cn(
-                                        "w-3.5 h-3.5",
+                                        "w-3 h-3",
                                         onlyFavorites
-                                          ? "fill-yellow-500 text-yellow-500"
+                                          ? "fill-amber-500 text-amber-500"
                                           : theme === "dark"
                                             ? "text-zinc-600"
                                             : "text-slate-300",
@@ -1988,13 +2072,26 @@ ${JSON.stringify(medListSummary)}
                                   duration: 0.6,
                                 },
                               }}
-                              onClick={() => setSelectedMed(med)}
+                              onClick={() => {
+                                if (isLongPressRef.current) {
+                                  isLongPressRef.current = false;
+                                  return;
+                                }
+                                setSelectedMed(med);
+                              }}
+                              onMouseDown={() => startLongPress(med.code)}
+                              onMouseUp={cancelLongPress}
+                              onMouseLeave={cancelLongPress}
+                              onTouchStart={() => startLongPress(med.code)}
+                              onTouchEnd={cancelLongPress}
+                              onTouchMove={cancelLongPress}
                               className={cn(
-                                "medication-card group bg-transparent border border-transparent p-2 md:p-2.5 rounded-xl transition-all flex flex-col gap-1 items-start relative overflow-hidden",
+                                "medication-card group bg-transparent border border-transparent p-2 md:p-2.5 rounded-xl transition-all flex flex-col gap-1 items-start relative overflow-hidden select-none",
                                 theme === "dark"
                                   ? "hover:bg-white/[0.05] hover:shadow-2xl cursor-pointer"
                                   : "hover:bg-white hover:shadow-xl hover:shadow-slate-200/60 cursor-pointer",
                               )}
+                              title="點擊開啟藥物詳情，長按亦可直接複製代碼"
                             >
                               {/* Left Vertical Bar Decoration */}
                               <div
@@ -2009,17 +2106,22 @@ ${JSON.stringify(medListSummary)}
                                   {/* Top Row: Code & Class */}
                                   <div className="flex items-center justify-between mb-1">
                                     <div className="flex items-center gap-1.5">
-                                      <span
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCopyCode(med.code);
+                                        }}
                                         className={cn(
-                                          "inline-flex items-center px-1.5 py-[0.5px] rounded text-[9px] font-black tracking-widest uppercase shrink-0 border",
+                                          "inline-flex items-center px-1.5 py-[0.5px] rounded text-[9px] font-black tracking-widest uppercase shrink-0 border transition-all active:scale-95 cursor-pointer selection:bg-transparent",
                                           theme === "dark"
-                                            ? "border-white/20"
-                                            : "border-slate-200",
+                                            ? "border-white/20 bg-white/[0.02] hover:bg-white/[0.1]"
+                                            : "border-slate-200 bg-slate-50 hover:bg-slate-100",
                                           dosageStyle.text,
                                         )}
+                                        title="點擊直接複製藥物代碼"
                                       >
                                         <span>{med.code}</span>
-                                      </span>
+                                      </button>
                                       <span
                                         className={cn(
                                           "text-[10px] font-bold uppercase tracking-wider truncate",
@@ -2037,35 +2139,18 @@ ${JSON.stringify(medListSummary)}
                                         e.stopPropagation();
                                         toggleFavorite(med.id);
                                       }}
-                                      className="p-1 -mr-1 transition-all active:scale-75 group/fav"
+                                      className="p-1 -mr-1 group/fav cursor-pointer"
                                     >
-                                      <motion.div
-                                        animate={
+                                      <SharpStar
+                                        className={cn(
+                                          "w-3.5 h-3.5 transition-colors",
                                           isFavorite(med.id)
-                                            ? { opacity: [0.7, 1, 0.7] }
-                                            : {}
-                                        }
-                                        transition={
-                                          isFavorite(med.id)
-                                            ? {
-                                                duration: 2,
-                                                repeat: Infinity,
-                                                ease: "easeInOut",
-                                              }
-                                            : { duration: 0.3 }
-                                        }
-                                      >
-                                        <SharpStar
-                                          className={cn(
-                                            "w-4 h-4 transition-all",
-                                            isFavorite(med.id)
-                                              ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_6px_rgba(139,92,246,0.4)]"
-                                              : theme === "dark"
-                                                ? "text-zinc-800 group-hover/fav:text-violet-400/50"
-                                                : "text-slate-200 group-hover/fav:text-violet-400/50",
-                                          )}
-                                        />
-                                      </motion.div>
+                                            ? "fill-amber-400 text-amber-400"
+                                            : theme === "dark"
+                                              ? "text-zinc-800 group-hover/fav:text-amber-400/50"
+                                              : "text-slate-200 group-hover/fav:text-amber-400/50",
+                                        )}
+                                      />
                                     </button>
                                   </div>
 
@@ -2307,85 +2392,6 @@ ${JSON.stringify(medListSummary)}
                           )}
 
                           <div className="space-y-12">
-                            {/* Loading State with Question Bubble */}
-                            {isAiLoading && (
-                              <motion.div
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{
-                                  ease: [0.22, 1, 0.36, 1],
-                                  duration: 0.5,
-                                }}
-                                className="space-y-4"
-                              >
-                                <div className="flex items-start gap-3">
-                                  <div
-                                    className={cn(
-                                      "w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 border shadow-lg",
-                                      theme === "dark"
-                                        ? "bg-white/10 border-white/10"
-                                        : "bg-slate-100 border-slate-200 shadow-slate-200",
-                                    )}
-                                  >
-                                    <User
-                                      className={cn(
-                                        "w-3.5 h-3.5",
-                                        theme === "dark"
-                                          ? "text-zinc-400"
-                                          : "text-slate-500",
-                                      )}
-                                    />
-                                  </div>
-                                  <div
-                                    className={cn(
-                                      "px-4 py-2 rounded-2xl rounded-tl-none border text-xs md:text-sm font-medium shadow-xl max-w-[85%]",
-                                      theme === "dark"
-                                        ? "bg-white/5 border-white/5 text-zinc-300"
-                                        : "bg-white border-slate-100 text-slate-700 shadow-slate-200",
-                                    )}
-                                  >
-                                    {aiQuery}
-                                  </div>
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-widest">
-                                      AI 建議分析中
-                                    </span>
-                                    <div className="h-[1px] flex-1 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
-                                  </div>
-                                  <div
-                                    className={cn(
-                                      "flex items-center gap-3 text-brand-accent font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-3 rounded-xl border",
-                                      theme === "dark"
-                                        ? "bg-white/[0.03] border-white/5"
-                                        : "bg-slate-50 border-slate-100 shadow-sm",
-                                    )}
-                                  >
-                                    <div
-                                      className={cn(
-                                        "w-full h-1 rounded-full overflow-hidden",
-                                        theme === "dark"
-                                          ? "bg-white/5"
-                                          : "bg-slate-200",
-                                      )}
-                                    >
-                                      <motion.div
-                                        className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500"
-                                        initial={{ width: "0%" }}
-                                        animate={{ width: "100%" }}
-                                        transition={{
-                                          duration: 2,
-                                          repeat: Infinity,
-                                          ease: "linear",
-                                        }}
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            )}
-
                             {/* Conversation History (Include current results) */}
                             {aiHistory.length > 0 && (
                               <div className="space-y-10">
@@ -2449,11 +2455,11 @@ ${JSON.stringify(medListSummary)}
 
                                       {/* AI Response */}
                                       <div className="flex flex-col gap-2">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                           <span className="text-[10px] font-black bg-gradient-to-r from-blue-400/60 via-purple-400/60 to-orange-400/60 bg-clip-text text-transparent uppercase tracking-widest">
                                             AI 建議
                                           </span>
-                                          <div className="h-[1px] flex-1 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
+                                          <div className="h-[1px] flex-1 min-w-[20px] bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
                                         </div>
                                         <div className="w-full space-y-8">
                                           {(() => {
@@ -2550,9 +2556,13 @@ ${JSON.stringify(medListSummary)}
                                                     <div className="grid gap-2 w-full max-w-full min-w-0 overflow-hidden box-border">
                                                       {visibleItems.map(
                                                         (line, lIdx) => {
+                                                          const normalizedLine = line
+                                                            .replace(/\[([^\]]+)\]/g, "$1")
+                                                            .replace(/【([^】]+)】/g, "$1")
+                                                            .trim();
                                                           // 更加彈性的藥品碼解析，自動跳過編號或點點
                                                           const cleanedLine =
-                                                            line
+                                                            normalizedLine
                                                               .replace(
                                                                 /^\s*(\d+[\.\、\)]|\*|\-|\•)\s*/,
                                                                 "",
@@ -2562,8 +2572,8 @@ ${JSON.stringify(medListSummary)}
                                                             cleanedLine.split(
                                                               /\s+/,
                                                             );
-                                                          const code =
-                                                            parts[0]?.toUpperCase();
+                                                          const rawCode = parts[0] || "";
+                                                          const code = rawCode.replace(/[\[\]]/g, "").toUpperCase();
                                                           const med =
                                                             medications.find(
                                                               (m) =>
@@ -2580,9 +2590,9 @@ ${JSON.stringify(medListSummary)}
                                                             name =
                                                               med.component;
                                                             const lineWithoutCode =
-                                                              line
+                                                              cleanedLine
                                                                 .substring(
-                                                                  line.indexOf(
+                                                                  cleanedLine.indexOf(
                                                                     " ",
                                                                   ) + 1,
                                                                 )
@@ -2600,6 +2610,13 @@ ${JSON.stringify(medListSummary)}
                                                                   )
                                                                   .trim();
                                                             }
+                                                          }
+
+                                                          // Clean trailing or starting colons or brackets in the parsed parts
+                                                          name = name.replace(/^[\[】【]|[\]】]/g, "").trim();
+                                                          funcPart = funcPart.replace(/^[\[】【]|[\]】]/g, "").trim();
+                                                          if (funcPart.startsWith(":") || funcPart.startsWith("：")) {
+                                                            funcPart = funcPart.substring(1).trim();
                                                           }
 
                                                           const itemKey = `${hIdx}-${gIdx}-${lIdx}`;
@@ -2625,177 +2642,131 @@ ${JSON.stringify(medListSummary)}
                                                             );
 
                                                           return (
-                                                            (() => {
-                                                              const redundantGroup =
-                                                                (
-                                                                  <div className="hidden">
-                                                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                                                      <div
-                                                                        className={cn(
-                                                                          "font-mono font-bold shrink-0 px-2 py-0.5 rounded text-[10px]",
-                                                                          theme ===
-                                                                            "dark"
-                                                                            ? "bg-white/5"
-                                                                            : "bg-slate-100",
-                                                                          getDosageColor(
-                                                                            code,
-                                                                          )
-                                                                            .text,
-                                                                        )}
-                                                                      >
-                                                                        {code}
-                                                                      </div>
-                                                                      <span
-                                                                        className={cn(
-                                                                          "font-bold truncate text-xs md:text-sm flex-1 min-w-0",
-                                                                          theme ===
-                                                                            "dark"
-                                                                            ? "text-zinc-200"
-                                                                            : "text-slate-800",
-                                                                        )}
-                                                                      >
-                                                                        {name}
-                                                                      </span>
-                                                                    </div>
-
-                                                                    <div className="flex items-center gap-1.5 min-w-0 max-w-[50%] md:max-w-[70%] justify-end shrink-0">
-                                                                      {!isExpanded &&
-                                                                        funcPart && (
-                                                                          <span
-                                                                            className={cn(
-                                                                              "truncate text-right transition-colors uppercase text-[10px] tracking-tight min-w-0",
-                                                                              theme ===
-                                                                                "dark"
-                                                                                ? "text-zinc-500 group-hover:text-zinc-400"
-                                                                                : "text-slate-400 group-hover:text-slate-600",
-                                                                            )}
-                                                                          >
-                                                                            {
-                                                                              funcPart
-                                                                            }
-                                                                          </span>
-                                                                        )}
-                                                                      <ChevronDown
-                                                                        className={cn(
-                                                                          "w-3.5 h-3.5 shrink-0 text-zinc-400 group-hover:text-zinc-600 transition-transform duration-200",
-                                                                          isExpanded &&
-                                                                            "rotate-180",
-                                                                        )}
-                                                                      />
-                                                                    </div>
-                                                                  </div>
-                                                                );
-                                                            })() || (
-                                                              <button
-                                                                key={lIdx}
-                                                                onClick={() => {
-                                                                  const medLookup =
-                                                                    medications.find(
-                                                                      (m) =>
-                                                                        m.code ===
-                                                                        code,
-                                                                    );
-                                                                  if (medLookup)
-                                                                    setSelectedMed(
-                                                                      medLookup,
-                                                                    );
-                                                                  setAiExpandedMeds(
-                                                                    (prev) => ({
-                                                                      ...prev,
-                                                                      [itemKey]:
-                                                                        !prev[
-                                                                          itemKey
-                                                                        ],
-                                                                    }),
-                                                                  );
-                                                                }}
-                                                                className={cn(
-                                                                  "w-full max-w-full min-w-0 flex flex-col gap-2.5 text-xs p-3.5 rounded-xl transition-all group border text-left overflow-hidden box-border",
-                                                                  theme ===
-                                                                    "dark"
-                                                                    ? "bg-white/[0.02] hover:bg-white/[0.05] border-white/5 hover:border-white/10"
-                                                                    : "bg-slate-50 hover:bg-white border-slate-100/50 hover:border-slate-200 shadow-sm shadow-slate-100",
-                                                                )}
-                                                              >
-                                                                <div className="flex items-center justify-between w-full gap-2">
-                                                                  <div className="flex items-center gap-2.5 min-w-0">
-                                                                    <div
-                                                                      className={cn(
-                                                                        "font-mono font-bold shrink-0 px-2 py-0.5 rounded text-[10px]",
-                                                                        theme ===
-                                                                          "dark"
-                                                                          ? "bg-white/5"
-                                                                          : "bg-slate-100",
-                                                                        getDosageColor(
+                                                            <div
+                                                              key={lIdx}
+                                                              onMouseDown={() => startLongPress(code)}
+                                                              onMouseUp={cancelLongPress}
+                                                              onMouseLeave={cancelLongPress}
+                                                              onTouchStart={() => startLongPress(code)}
+                                                              onTouchEnd={cancelLongPress}
+                                                              onTouchMove={cancelLongPress}
+                                                              onContextMenu={(e) => {
+                                                                e.preventDefault();
+                                                                handleCopyCode(code);
+                                                              }}
+                                                              className={cn(
+                                                                "w-full max-w-full min-w-0 flex flex-col gap-2.5 text-xs p-3.5 rounded-xl transition-all group border text-left overflow-hidden box-border select-none",
+                                                                theme === "dark"
+                                                                  ? "bg-white/[0.02] hover:bg-white/[0.05] border-white/5 hover:border-white/10"
+                                                                  : "bg-slate-50 hover:bg-white border-slate-100/50 hover:border-slate-200 shadow-sm shadow-slate-100",
+                                                              )}
+                                                              title="點擊左半部開啟藥物詳情，點擊右半部展開或收合機轉，長按或秒點滑鼠右鍵可複製藥品碼"
+                                                            >
+                                                              <div className="flex items-center justify-between w-full gap-2">
+                                                                {/* Left Part: Code & Name - triggers details modal */}
+                                                                <div 
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const medLookup =
+                                                                      medications.find(
+                                                                        (m) =>
+                                                                          m.code ===
                                                                           code,
-                                                                        ).text,
-                                                                      )}
-                                                                    >
-                                                                      {code}
-                                                                    </div>
-                                                                    <span
-                                                                      className={cn(
-                                                                        "font-bold truncate text-xs md:text-sm",
-                                                                        theme ===
-                                                                          "dark"
-                                                                          ? "text-zinc-200"
-                                                                          : "text-slate-800",
-                                                                      )}
-                                                                    >
-                                                                      {name}
-                                                                    </span>
+                                                                      );
+                                                                    if (medLookup) {
+                                                                      setSelectedMed(medLookup);
+                                                                    }
+                                                                  }}
+                                                                  className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 active:scale-[0.98] transition-transform"
+                                                                >
+                                                                  <div
+                                                                    className={cn(
+                                                                      "font-mono font-bold shrink-0 px-2 py-0.5 rounded text-[10px]",
+                                                                      theme ===
+                                                                        "dark"
+                                                                        ? "bg-white/10 text-zinc-300"
+                                                                        : "bg-white border shadow-sm text-slate-800",
+                                                                      getDosageColor(
+                                                                        code,
+                                                                      ).text,
+                                                                    )}
+                                                                  >
+                                                                    {code}
                                                                   </div>
-
-                                                                  <div className="flex items-center gap-1.5 shrink-0 max-w-[50%] md:max-w-[70%]">
-                                                                    {!isExpanded &&
-                                                                      funcPart && (
-                                                                        <span
-                                                                          className={cn(
-                                                                            "truncate text-right transition-colors uppercase text-[10px] tracking-tight",
-                                                                            theme ===
-                                                                              "dark"
-                                                                              ? "text-zinc-500 group-hover:text-zinc-400"
-                                                                              : "text-slate-400 group-hover:text-slate-600",
-                                                                          )}
-                                                                        >
-                                                                          {
-                                                                            funcPart
-                                                                          }
-                                                                        </span>
-                                                                      )}
-                                                                    <ChevronDown
-                                                                      className={cn(
-                                                                        "w-3.5 h-3.5 shrink-0 text-zinc-400 group-hover:text-zinc-600 transition-transform duration-200",
-                                                                        isExpanded &&
-                                                                          "rotate-180",
-                                                                      )}
-                                                                    />
-                                                                  </div>
+                                                                  <span
+                                                                    className={cn(
+                                                                      "font-bold truncate text-xs md:text-sm",
+                                                                      theme ===
+                                                                        "dark"
+                                                                        ? "text-zinc-200"
+                                                                        : "text-slate-800",
+                                                                    )}
+                                                                  >
+                                                                    {name}
+                                                                  </span>
                                                                 </div>
 
-                                                                {funcPart &&
-                                                                  isExpanded && (
-                                                                    <div
-                                                                      className={cn(
-                                                                        "w-full text-xs leading-relaxed border-t pt-2.5 mt-0.5 transition-all duration-300 animate-fadeIn whitespace-normal break-words",
-                                                                        theme ===
-                                                                          "dark"
-                                                                          ? "border-white/5 text-zinc-400"
-                                                                          : "border-slate-100 text-slate-600",
-                                                                      )}
-                                                                    >
-                                                                      <span className="font-semibold inline-block mr-1">
-                                                                        臨床選擇理由：
-                                                                      </span>
-                                                                      <span className="whitespace-normal break-words inline">
+                                                                {/* Right Part: Mechanism text or chevron - triggers expand/collapse */}
+                                                                <div 
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setAiExpandedMeds(
+                                                                      (prev) => ({
+                                                                        ...prev,
+                                                                        [itemKey]:
+                                                                          !prev[
+                                                                            itemKey
+                                                                          ],
+                                                                      }),
+                                                                    );
+                                                                  }}
+                                                                  className="flex items-center gap-1.5 shrink-0 max-w-[50%] md:max-w-[70%] cursor-pointer hover:bg-zinc-500/10 dark:hover:bg-white/5 px-2 py-1 rounded-lg transition-colors"
+                                                                >
+                                                                  {!isExpanded &&
+                                                                    funcPart && (
+                                                                      <span
+                                                                        className={cn(
+                                                                          "truncate text-right transition-colors uppercase text-[10px] tracking-tight",
+                                                                          theme ===
+                                                                            "dark"
+                                                                            ? "text-zinc-500 group-hover:text-zinc-400"
+                                                                            : "text-slate-400 group-hover:text-slate-600",
+                                                                        )}
+                                                                      >
                                                                         {
                                                                           funcPart
                                                                         }
                                                                       </span>
-                                                                    </div>
-                                                                  )}
-                                                              </button>
-                                                            )
+                                                                    )}
+                                                                  <ChevronDown
+                                                                    className={cn(
+                                                                      "w-3.5 h-3.5 shrink-0 text-zinc-400 group-hover:text-zinc-600 transition-transform duration-200",
+                                                                      isExpanded &&
+                                                                        "rotate-180",
+                                                                    )}
+                                                                  />
+                                                                </div>
+                                                              </div>
+
+                                                              {funcPart &&
+                                                                isExpanded && (
+                                                                  <div
+                                                                    className={cn(
+                                                                      "w-full text-xs leading-relaxed border-t pt-2.5 mt-0.5 transition-all duration-300 animate-fadeIn whitespace-normal break-words",
+                                                                      theme ===
+                                                                        "dark"
+                                                                        ? "border-white/5 text-zinc-400"
+                                                                        : "border-slate-100 text-slate-600",
+                                                                    )}
+                                                                  >
+                                                                    <span className="whitespace-normal break-words inline text-[11px] font-normal leading-relaxed">
+                                                                      {
+                                                                        funcPart
+                                                                      }
+                                                                    </span>
+                                                                  </div>
+                                                                )}
+                                                            </div>
                                                           );
                                                         },
                                                       )}
@@ -2877,6 +2848,36 @@ ${JSON.stringify(medListSummary)}
                                               </div>
                                             );
                                           })()}
+                                          {hIdx === 0 && isAiLoading && (
+                                            <div
+                                              className={cn(
+                                                "flex items-center gap-3 text-brand-accent font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-3 rounded-xl border mt-4",
+                                                theme === "dark"
+                                                  ? "bg-white/[0.03] border-white/5"
+                                                  : "bg-slate-50 border-slate-100 shadow-sm",
+                                              )}
+                                            >
+                                              <div
+                                                className={cn(
+                                                  "w-full h-1 rounded-full overflow-hidden",
+                                                  theme === "dark"
+                                                    ? "bg-white/5"
+                                                    : "bg-slate-200",
+                                                )}
+                                              >
+                                                <motion.div
+                                                  className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500"
+                                                  initial={{ width: "0%" }}
+                                                  animate={{ width: "100%" }}
+                                                  transition={{
+                                                    duration: 2,
+                                                    repeat: Infinity,
+                                                    ease: "linear",
+                                                  }}
+                                                />
+                                              </div>
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     </motion.div>
@@ -2952,44 +2953,19 @@ ${JSON.stringify(medListSummary)}
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => toggleFavorite(selectedMed.id)}
-                    className={cn(
-                      "p-1.5 rounded-full transition-all duration-300 group relative",
-                    )}
+                    className="p-1.5 rounded-full transition-all group relative cursor-pointer"
                     title={isFavorite(selectedMed.id) ? "移除收藏" : "加入收藏"}
                   >
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={isFavorite(selectedMed.id) ? "fav" : "not-fav"}
-                        initial={{ scale: 0.5, opacity: 0 }}
-                        animate={{
-                          scale: [1, 1.1, 1],
-                          opacity: 1,
-                        }}
-                        transition={{
-                          scale: {
-                            duration: 2,
-                            repeat: Infinity,
-                            ease: "easeInOut",
-                          },
-                          opacity: {
-                            type: "spring",
-                            stiffness: 400,
-                            damping: 15,
-                          },
-                        }}
-                      >
-                        <SharpStar
-                          className={cn(
-                            "w-5 h-5 transition-colors",
-                            isFavorite(selectedMed.id)
-                              ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_8px_rgba(139,92,246,0.5)]"
-                              : theme === "dark"
-                                ? "text-zinc-600 group-hover:text-violet-400"
-                                : "text-slate-300 group-hover:text-violet-400",
-                          )}
-                        />
-                      </motion.div>
-                    </AnimatePresence>
+                    <SharpStar
+                      className={cn(
+                        "w-4 h-4 transition-colors",
+                        isFavorite(selectedMed.id)
+                          ? "fill-amber-400 text-amber-500"
+                          : theme === "dark"
+                            ? "text-zinc-600 group-hover:text-amber-400"
+                            : "text-slate-300 group-hover:text-amber-400",
+                      )}
+                    />
                   </button>
                   <button
                     onClick={closeDetail}
@@ -3017,12 +2993,15 @@ ${JSON.stringify(medListSummary)}
                 )}
               >
                 <div className="space-y-4">
-                  <div
+                  <button
+                    onClick={() => handleCopyCode(selectedMed.code)}
                     className={cn(
-                      "inline-flex items-center px-2.5 py-0.5 rounded-md border",
+                      "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border transition-all active:scale-95 group/code cursor-pointer",
                       getDosageColor(selectedMed.code).bg,
                       getDosageColor(selectedMed.code).borderMain,
+                      "hover:bg-brand-accent/5 hover:border-brand-accent/30"
                     )}
+                    title="點擊複製藥物代碼"
                   >
                     <span
                       className={cn(
@@ -3032,7 +3011,8 @@ ${JSON.stringify(medListSummary)}
                     >
                       {selectedMed.code}
                     </span>
-                  </div>
+                    <Copy className="w-3.5 h-3.5 opacity-40 group-hover/code:opacity-100 transition-opacity text-brand-muted shrink-0" />
+                  </button>
 
                   <div className="space-y-1">
                     <h1
@@ -3229,47 +3209,34 @@ ${JSON.stringify(medListSummary)}
               <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-5 scrollbar-none">
                 <div className="flex justify-between items-start sticky top-0 bg-inherit pt-1 pb-2 z-10">
                   <div className="flex items-center gap-2">
-                    <div
+                    <button
+                      onClick={() => handleCopyCode(selectedMed.code)}
                       className={cn(
-                        "px-2 py-0.5 rounded border text-[15px] font-mono font-black tracking-widest",
+                        "flex items-center gap-1.5 px-2 py-0.5 rounded border text-[15px] font-mono font-black tracking-widest transition-all active:scale-95 cursor-pointer group/mobile-code",
                         getDosageColor(selectedMed.code).bg,
                         getDosageColor(selectedMed.code).text,
                         getDosageColor(selectedMed.code).borderMain,
+                        "hover:bg-brand-accent/5"
                       )}
+                      title="點擊複製藥物代碼"
                     >
-                      {selectedMed.code}
-                    </div>
+                      <span>{selectedMed.code}</span>
+                      <Copy className="w-3.5 h-3.5 opacity-40 group-hover/mobile-code:opacity-100 transition-opacity text-brand-muted shrink-0" />
+                    </button>
                     <button
                       onClick={() => toggleFavorite(selectedMed.id)}
-                      className="p-2 rounded-full transition-all active:scale-90"
+                      className="p-2 rounded-full cursor-pointer transition-colors group"
                     >
-                      <motion.div
-                        animate={
+                      <SharpStar
+                        className={cn(
+                          "w-[18px] h-[18px] transition-colors",
                           isFavorite(selectedMed.id)
-                            ? { scale: [1, 1.05, 1] }
-                            : {}
-                        }
-                        transition={
-                          isFavorite(selectedMed.id)
-                            ? {
-                                duration: 3,
-                                repeat: Infinity,
-                                ease: "easeInOut",
-                              }
-                            : { duration: 0.3 }
-                        }
-                      >
-                        <SharpStar
-                          className={cn(
-                            "w-6 h-6 transition-colors",
-                            isFavorite(selectedMed.id)
-                              ? "fill-violet-500 text-violet-500 drop-shadow-[0_0_10px_rgba(139,92,246,0.3)]"
-                              : theme === "dark"
-                                ? "text-zinc-700"
-                                : "text-slate-200",
-                          )}
-                        />
-                      </motion.div>
+                            ? "fill-amber-400 text-amber-500"
+                            : theme === "dark"
+                              ? "text-zinc-700 group-hover:text-amber-400/75"
+                              : "text-slate-200 group-hover:text-amber-400/75",
+                        )}
+                      />
                     </button>
                   </div>
                   <button
@@ -3463,7 +3430,7 @@ ${JSON.stringify(medListSummary)}
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <SharpStar className="w-4 h-4 text-violet-500 fill-violet-500" />
+                    <SharpStar className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                     <h3 className="text-sm font-bold tracking-tight">
                       我的收藏藥物管理
                     </h3>
@@ -3534,7 +3501,7 @@ ${JSON.stringify(medListSummary)}
                           : "bg-slate-50 border-slate-100 text-slate-300",
                       )}
                     >
-                      <SharpStar className="w-8 h-8" />
+                      <SharpStar className="w-6 h-6 text-amber-500/30" />
                     </div>
                     <h4
                       className={cn(
@@ -3693,6 +3660,29 @@ ${JSON.stringify(medListSummary)}
       </AnimatePresence>
 
       {/* Detail Overlay Removed */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -30, scale: 0.9 }}
+            transition={{ type: "spring", damping: 25, stiffness: 350 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-xl backdrop-blur-md text-xs font-medium border select-none"
+            style={{
+              backgroundColor: theme === "dark" ? "rgba(24, 24, 27, 0.9)" : "rgba(255, 255, 255, 0.9)",
+              borderColor: theme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.08)",
+              color: theme === "dark" ? "#f4f4f5" : "#18181b",
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500 shrink-0">
+                <Check className="w-3.5 h-3.5" />
+              </span>
+              <span>{toast.message}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
