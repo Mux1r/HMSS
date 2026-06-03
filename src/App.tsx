@@ -54,6 +54,7 @@ import {
   Download,
   Copy,
   Check,
+  HelpCircle,
 } from "lucide-react";
 
 const getMedicationIcon = (code: string) => {
@@ -268,6 +269,7 @@ export default function App() {
   const aiSymptomCacheRef = useRef<Record<string, { classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] }>>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [favoritesSearchQuery, setFavoritesSearchQuery] = useState("");
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [favorites, setFavorites] = useState<string[]>(() => {
@@ -1731,6 +1733,21 @@ ${medListSummaryText}
               {isSyncing ? "Cloud Syncing" : "Connected"}
             </p>
           </div>
+
+          <button
+            id="help-button"
+            onClick={() => setIsHelpOpen(true)}
+            className={cn(
+              "p-2 rounded-xl border transition-all duration-300 flex items-center justify-center gap-1.5",
+              theme === "dark"
+                ? "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white"
+                : "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700",
+            )}
+            title="操作指引與幫助"
+          >
+            <HelpCircle className="w-4 h-4" />
+            <span className="hidden sm:inline text-xs font-semibold">幫助</span>
+          </button>
         </div>
       </header>
 
@@ -2603,7 +2620,7 @@ ${medListSummaryText}
                     <div className="flex-1 p-[1px] rounded-[32px] bg-gradient-to-br from-blue-500/15 via-purple-500/15 to-orange-500/15 overflow-hidden shadow-2xl">
                       <div className="h-full w-full bg-brand-bg/40 backdrop-blur-3xl rounded-[31px] overflow-hidden flex flex-col relative">
                         {/* Floating Search Bar Overlay */}
-                        <div className="absolute top-0 left-0 right-0 z-40 p-3 md:p-4 bg-transparent pointer-events-none">
+                        <div className="absolute top-0 left-0 right-0 z-40 p-2 md:p-3 bg-transparent pointer-events-none">
                           <form
                             onSubmit={handleAiSearch}
                             className="relative group p-[1.5px] rounded-2xl bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 focus-within:from-blue-500 focus-within:via-purple-500 focus-within:to-orange-500 transition-all shadow-2xl pointer-events-auto"
@@ -2614,7 +2631,7 @@ ${medListSummaryText}
                               value={aiQuery}
                               onChange={(e) => setAiQuery(e.target.value)}
                               className={cn(
-                                "w-full backdrop-blur-xl border-none rounded-[15px] pl-5 pr-14 py-3.5 text-sm md:text-base focus:outline-none focus:ring-0 transition-all font-medium shadow-2xl",
+                                "w-full backdrop-blur-xl border-none rounded-[15px] pl-5 pr-14 py-3 text-sm md:text-base focus:outline-none focus:ring-0 transition-all font-medium shadow-2xl",
                                 theme === "dark"
                                   ? "bg-black/80 text-white placeholder:text-zinc-500"
                                   : "bg-white/95 text-slate-800 placeholder:text-slate-400",
@@ -2623,7 +2640,7 @@ ${medListSummaryText}
                             <button
                               type="submit"
                               disabled={isAiLoading || !aiQuery.trim()}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 text-white flex items-center justify-center hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl active:scale-95"
+                              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gradient-to-r from-blue-400 via-purple-500 to-orange-500 text-white flex items-center justify-center hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl active:scale-95"
                             >
                               {isAiLoading ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -2637,7 +2654,7 @@ ${medListSummaryText}
                         {/* Content Area */}
                         <div
                           className={cn(
-                            "flex-1 overflow-y-auto custom-scrollbar pt-[72px] md:pt-[80px] px-4 md:px-8 transition-all duration-500",
+                            "flex-1 overflow-y-auto custom-scrollbar pt-[62px] md:pt-[70px] px-4 md:px-8 transition-all duration-500",
                             selectedMed ? "pb-[40vh] md:pb-8" : "pb-8",
                           )}
                         >
@@ -2653,8 +2670,8 @@ ${medListSummaryText}
                           <div className="space-y-12">
                             {/* Conversation History (Include current results) */}
                             {aiHistory.length > 0 && (
-                              <div className="space-y-10">
-                                <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                              <div className="space-y-6">
+                                <div className="flex items-center justify-between pb-2 border-b border-white/5">
                                   <div className="flex items-center gap-2">
                                     <History className="w-4 h-4 text-zinc-500" />
                                     <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em]">
@@ -2669,7 +2686,7 @@ ${medListSummaryText}
                                   </button>
                                 </div>
 
-                                <div className="space-y-12">
+                                <div className="space-y-8">
                                   {aiHistory.map((item, hIdx) => (
                                     <motion.div
                                       key={`history-${item.timestamp}`}
@@ -2679,7 +2696,7 @@ ${medListSummaryText}
                                         ease: [0.22, 1, 0.36, 1],
                                         duration: 0.6,
                                       }}
-                                      className="space-y-4"
+                                      className="space-y-3"
                                     >
                                       {/* User Question */}
                                       <div className="flex items-start gap-3">
@@ -2720,7 +2737,7 @@ ${medListSummaryText}
                                           </span>
                                           <div className="h-[1px] flex-1 min-w-[20px] bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
                                         </div>
-                                        <div className="w-full space-y-8">
+                                        <div className="w-full space-y-4">
                                           {(() => {
                                             const lines = item.response
                                               .split("\n")
@@ -3110,7 +3127,7 @@ ${medListSummaryText}
                                           {hIdx === 0 && isAiLoading && (
                                             <div
                                               className={cn(
-                                                "flex items-center gap-3 text-brand-accent font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-3 rounded-xl border mt-4",
+                                                "flex items-center gap-3 text-brand-accent font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-2.5 rounded-xl border mt-1.5",
                                                 theme === "dark"
                                                   ? "bg-white/[0.03] border-white/5"
                                                   : "bg-slate-50 border-slate-100 shadow-sm",
@@ -3913,6 +3930,137 @@ ${medListSummaryText}
                   Total {favorites.length} medicines pinned in local preferences
                 </div>
               )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Help & Operation Guide Modal */}
+      <AnimatePresence>
+        {isHelpOpen && (
+          <>
+            {/* Backdrop overlay */}
+            <motion.div
+              key="help-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsHelpOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150]"
+            />
+
+            {/* Modal Dialog */}
+            <motion.div
+              key="help-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", duration: 0.5, bounce: 0.15 }}
+              className={cn(
+                "fixed inset-x-4 top-[12%] bottom-[12%] md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[500px] md:h-[480px] rounded-3xl border shadow-2xl flex flex-col overflow-hidden z-[160]",
+                theme === "dark"
+                  ? "bg-zinc-900/95 border-white/10 text-white shadow-black/80"
+                  : "bg-white border-slate-200 text-slate-900 shadow-slate-900/20",
+              )}
+            >
+              {/* Header */}
+              <div
+                className={cn(
+                  "p-5 border-b shrink-0 flex items-center justify-between",
+                  theme === "dark"
+                    ? "border-white/5 bg-white/[0.02]"
+                    : "border-slate-100 bg-slate-50",
+                )}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={cn(
+                    "p-1.5 rounded-xl flex items-center justify-center shrink-0",
+                    theme === "dark" ? "bg-brand-accent/15 text-brand-accent" : "bg-brand-accent/10 text-brand-accent"
+                  )}>
+                    <HelpCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold tracking-tight">
+                      系統操作指引與介紹
+                    </h3>
+                    <p className={cn(
+                      "text-[10px] mt-0.5",
+                      theme === "dark" ? "text-zinc-500" : "text-slate-400",
+                    )}>
+                      幫助您快速掌握高效率的臨床藥物查詢功能
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsHelpOpen(false)}
+                  className={cn(
+                    "p-1.5 rounded-full transition-colors",
+                    theme === "dark"
+                      ? "hover:bg-white/10 text-zinc-400 hover:text-white"
+                      : "hover:bg-slate-100 text-slate-500 hover:text-slate-800",
+                  )}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar text-xs">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-brand-accent flex items-center gap-1.5">
+                    <span>🔍 模糊症狀與關鍵字查詢</span>
+                  </h4>
+                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
+                    直接在上方輸入框輸入學名、商品名、中文藥名，或任何「症狀、副作用、生理器官描述」（例如「胃酸過多」、「皮膚過敏」）。
+                    系統會透過契合度演算法，優選出最吻合適應症 (Indications) 的首選特效西藥成份。
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="font-bold text-brand-accent flex items-center gap-1.5">
+                    <span>✨ 自動關聯機轉</span>
+                  </h4>
+                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
+                    輸入任何症狀時，頁面最上方會立即以簡約精緻的標籤「自動顯示關聯的學術生理機轉（生理系統與藥理分類）」，完全無多餘字樣干擾。
+                    同時，臨床最常用的首選西藥成分（如 Acetaminophen 等）會被智慧排序並自動置前。
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="font-bold text-violet-500 flex items-center gap-1.5">
+                    <span>🤖 AI 智能情境諮詢模式</span>
+                  </h4>
+                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
+                    點擊頂部中央的開關可切換為「Smart Analysis」AI 情境諮詢模式。
+                    在此模式下，您可以輸入整段臨床情境（如：病患 58 歲女性主訴飯後血糖高），AI 將在數秒內為您分析臨床考量並精確列出可用處方藥。
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="font-bold text-amber-500 flex items-center gap-1.5">
+                    <span>⭐ 收藏與高頻藥物管理</span>
+                  </h4>
+                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
+                    點擊任何藥物卡片右側的星號（⭐）即可將該藥物收藏。
+                    點擊右上角「幫助」左側的「收藏」按鈕，可開啟我的收藏面板，用於快速調閱與一鍵管理。
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div
+                className={cn(
+                  "p-4 border-t flex justify-end shrink-0",
+                  theme === "dark" ? "border-white/5 bg-white/[0.01]" : "border-slate-100 bg-slate-50",
+                )}
+              >
+                <button
+                  onClick={() => setIsHelpOpen(false)}
+                  className="px-4 py-1.5 rounded-xl bg-brand-accent hover:bg-brand-accent/80 text-white font-bold transition-all active:scale-95 shadow-sm text-[11px]"
+                >
+                  我知道了
+                </button>
+              </div>
             </motion.div>
           </>
         )}
