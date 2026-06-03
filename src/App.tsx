@@ -245,6 +245,7 @@ export default function App() {
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [displayLimit, setDisplayLimit] = useState(100);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [selectedSystem, setSelectedSystem] = useState("全部系統");
   const [selectedClass, setSelectedClass] = useState("全部藥理");
   const [selectedDosageForms, setSelectedDosageForms] = useState<string[]>([]);
@@ -262,6 +263,9 @@ export default function App() {
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [aiSymptomMapping, setAiSymptomMapping] = useState<{ classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] } | null>(null);
+  const [isSymptomAnalyzing, setIsSymptomAnalyzing] = useState(false);
+  const aiSymptomCacheRef = useRef<Record<string, { classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] }>>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
   const [favoritesSearchQuery, setFavoritesSearchQuery] = useState("");
@@ -539,6 +543,88 @@ export default function App() {
     [],
   );
 
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query || query.length < 2) {
+      setAiSymptomMapping(null);
+      setIsSymptomAnalyzing(false);
+      return;
+    }
+
+    // Checking if query matches simple codes or short alpha characters to skip AI request
+    const looksLikeCode = /^[A-Z0-9.\-\s%]{1,7}$/i.test(query);
+    if (looksLikeCode) {
+      setAiSymptomMapping(null);
+      setIsSymptomAnalyzing(false);
+      return;
+    }
+
+    if (aiSymptomCacheRef.current[query]) {
+      setAiSymptomMapping(aiSymptomCacheRef.current[query]);
+      setIsSymptomAnalyzing(false);
+      return;
+    }
+
+    const delayTimer = setTimeout(async () => {
+      setIsSymptomAnalyzing(true);
+      try {
+        const classesList = Array.from(new Set(medications.map(m => m.pharmacologicalClass).filter(Boolean)));
+        const systemsList = Array.from(new Set(medications.map(m => m.anatomicalSystem).filter(Boolean)));
+
+        const prompt = `您是一位專業的醫院臨床藥師。
+使用者正在醫院藥物查詢系統的搜尋框中，輸入了一個模糊的「症狀或副作用描述」或非精準藥物名稱：「${query}」。
+請幫忙判斷這個描述可能與我們現有哪些「藥理分類 (Pharmacological Class)」或「生理系統 (Anatomical System)」最直接相關。
+同時，請為該症狀推薦最合適、最常用的 2~4 個首選特效藥物成分英文/中文名稱 (recommended ingredients / generic names，例如: "Dextromethorphan", "Codeine", "Acetaminophen", "Cetirizine" 等)。
+
+現有藥理分類 (Pharmacological Class) 列表：
+${JSON.stringify(classesList)}
+
+現有生理系統 (Anatomical System) 列表：
+${JSON.stringify(systemsList)}
+
+請回傳一個符合以下 JSON 格式的內容，絕不要包含任何 Markdown 格式標籤（如 \`\`\`json ），也絕不要有任何前後引言說明，直接輸出純 JSON 字串即可：
+{
+  "classes": [匹配的最相關藥理分類名稱列表，必須完全吻合上述列表中的字串項目],
+  "systems": [匹配的最相關生理系統名稱列表，必須完全吻合上述列表中的字串項目],
+  "keywords": [擴展的1~2個相關中文或英文藥理同義詞/關鍵字，可用於模糊搜尋輔助，例如 "止咳", "抗過敏"],
+  "recommendedIngredients": [最合適、最常用且最符合適應症的首選西藥成分名稱列表，建議用常見英文學名如 "dextromethorphan"、或是常用中文成分名稱，依據常用度及臨床首選順序由高到低排列]
+}
+
+注意：如果沒有任何相關的，請回傳空陣列形式。`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            thinkingConfig: {
+              thinkingLevel: "MINIMAL",
+            },
+          }
+        });
+
+        const text = response.text || "";
+        const parsed = JSON.parse(text.trim());
+
+        const result = {
+          classes: Array.isArray(parsed.classes) ? parsed.classes.filter((c: any) => classesList.includes(c)) : [],
+          systems: Array.isArray(parsed.systems) ? parsed.systems.filter((s: any) => systemsList.includes(s)) : [],
+          keywords: Array.isArray(parsed.keywords) ? parsed.keywords.map((k: any) => String(k).toLowerCase()) : [],
+          recommendedIngredients: Array.isArray(parsed.recommendedIngredients) ? parsed.recommendedIngredients.map((r: any) => String(r).toLowerCase().trim()) : [],
+        };
+
+        aiSymptomCacheRef.current[query] = result;
+        setAiSymptomMapping(result);
+      } catch (error) {
+        console.error("AI Symptom Analysis Failed:", error);
+      } finally {
+        setIsSymptomAnalyzing(false);
+      }
+    }, 450);
+
+    return () => clearTimeout(delayTimer);
+  }, [searchQuery, medications, ai]);
+
   // Fuse instance for fuzzy search
   const fuse = useMemo(() => {
     return new Fuse(medications, {
@@ -548,7 +634,9 @@ export default function App() {
         { name: "brandName", weight: 0.8 },
         { name: "genericName", weight: 0.7 },
         { name: "chineseName", weight: 0.6 },
-        { name: "indications", weight: 0.4 },
+        { name: "pharmacologicalClass", weight: 0.5 },
+        { name: "anatomicalSystem", weight: 0.5 },
+        { name: "indications", weight: 0.5 },
         { name: "searchKeywords", weight: 0.4 },
       ],
       threshold: 0.4, // 調整基礎靈敏度，由邏輯層決定動態門檻
@@ -928,23 +1016,156 @@ ${medListSummaryText}
         })
         .map((r) => r.item);
 
-      // 整合與去重，保持嚴格優先順序
-      const combinedMeds: typeof medications = [
-        ...exactMatches,
-        ...medicalIntentMatches,
-        ...stringStartMatches,
-        ...firstAlphaStartMatches,
-        ...wordBoundaryMatches,
-      ];
+      // 症狀與 AI 關聯匹配 (Low Latency AI Symptom Match)
+      const aiSymptomMatches = medications.filter((m) => {
+        if (!aiSymptomMapping) return false;
+        if (exactMatches.some((em) => em.id === m.id)) return false;
+        if (medicalIntentMatches.some((mm) => mm.id === m.id)) return false;
+
+        const isClassMatch = aiSymptomMapping.classes.includes(m.pharmacologicalClass);
+        const isSystemMatch = aiSymptomMapping.systems.includes(m.anatomicalSystem);
+        const isKeywordMatch = aiSymptomMapping.keywords.some((kw) => {
+          const pool = `${m.component} ${m.brandName} ${m.genericName} ${m.chineseName} ${m.indications} ${m.pharmacologicalClass}`.toLowerCase();
+          return pool.includes(kw);
+        });
+
+        return isClassMatch || isSystemMatch || isKeywordMatch;
+      });
+
+      // 整合與去重，保持基礎匹配類別 (使用 Set 保證完全無重複 key)
+      const combinedMeds: typeof medications = [];
+      const seenMeds = new Set<string>();
+
+      const addUniqueMeds = (list: typeof medications) => {
+        for (const m of list) {
+          if (!seenMeds.has(m.id)) {
+            seenMeds.add(m.id);
+            combinedMeds.push(m);
+          }
+        }
+      };
+
+      addUniqueMeds(exactMatches);
+      addUniqueMeds(medicalIntentMatches);
+      addUniqueMeds(aiSymptomMatches);
+      addUniqueMeds(stringStartMatches);
+      addUniqueMeds(firstAlphaStartMatches);
+      addUniqueMeds(wordBoundaryMatches);
 
       // 合併模糊匹配結果 (去重)
       constrainedFuzzy.forEach((fm) => {
-        if (!combinedMeds.some((m) => m.id === fm.id)) {
+        if (!seenMeds.has(fm.id)) {
+          seenMeds.add(fm.id);
           combinedMeds.push(fm);
         }
       });
 
-      baseMeds = combinedMeds;
+      // 建立通用高頻臨床首選常用西藥英文成分與拼音對照表，在無 AI 反映或一般搜尋時優先置前
+      const GENERAL_COMMON_INGREDIENTS = [
+        "acetaminophen", "ibuprofen", "diclofenac", "mefenamic", "aspirin", // 止痛消炎
+        "cetirizine", "loratadine", "fexofenadine", "chlorpheniramine", "levocetirizine", // 抗敏
+        "dextromethorphan", "codeine", "acetylcysteine", "medicon", "ambroxol", "cough", "levodropropizine", // 咳嗽
+        "metformin", "glipizide", "gliclazide", "empagliflozin", // 血糖
+        "atorvastatin", "rosuvastatin", "simvastatin", // 血脂
+        "amlodipine", "valsartan", "propranolol", "atenolol", "losartan", "bisoprolol", // 血壓
+        "famotidine", "pantoprazole", "lansoprazole", "magnesium oxide", "rabeprazole", // 腸胃
+        "amoxicillin", "cephalexin", "azithromycin", "ciprofloxacin", // 感染抗生素
+        "salbutamol", "albuterol", "budesonide", "fluticasone", "terbutaline", // 呼吸喘
+        "prednisolone", "dexamethasone" // 類固醇
+      ];
+
+      // 計算藥物契合程度之評分演算法 (優先考量主治適應症與臨床首選頻率，而非劑型字母 A, B, C 等順序)
+      const getSortingScore = (m: Medication) => {
+        let score = 0;
+
+        // 1. 各層級之基礎匹配權重
+        if (exactMatches.some((em) => em.id === m.id)) {
+          score += 10000;
+        } else if (medicalIntentMatches.some((mm) => mm.id === m.id)) {
+          score += 8000;
+        } else if (aiSymptomMatches.some((sm) => sm.id === m.id)) {
+          score += 7000;
+        } else if (stringStartMatches.some((sm) => sm.id === m.id)) {
+          score += 5000;
+        } else if (firstAlphaStartMatches.some((am) => am.id === m.id)) {
+          score += 4000;
+        } else if (wordBoundaryMatches.some((wm) => wm.id === m.id)) {
+          score += 3000;
+        } else {
+          score += 1000;
+        }
+
+        // 2. 適應症(Indications)之精確契合度優選分數 (解決「最符合使用 indication 的藥物作排序」)
+        const indicationsLower = (m.indications || "").toLowerCase();
+        const chineseNameLower = (m.chineseName || "").toLowerCase();
+        const componentLower = (m.component || "").toLowerCase();
+        const brandNameLower = (m.brandName || "").toLowerCase();
+        const pharmacologicalLower = (m.pharmacologicalClass || "").toLowerCase();
+        const genericLower = (m.genericName || "").toLowerCase();
+
+        // 2.1 主治適應症欄位包含搜尋關鍵字，大幅度提升其排序
+        if (indicationsLower.includes(query)) {
+          score += 2000; // 賦予極高權重使之突出
+        }
+        if (chineseNameLower.includes(query) || componentLower.includes(query) || brandNameLower.includes(query)) {
+          score += 1000;
+        }
+        if (pharmacologicalLower.includes(query)) {
+          score += 800;
+        }
+
+        // 2.2 同義詞/關聯詞之契合加分
+        synonyms.forEach((syn) => {
+          const s = syn.toLowerCase();
+          if (indicationsLower.includes(s)) score += 800;
+          if (chineseNameLower.includes(s)) score += 500;
+          if (componentLower.includes(s)) score += 500;
+        });
+
+        // 3. 整合 AI 臨床首選與推薦藥物成分 (與臨床最常用、治療契合度排序對接)
+        if (aiSymptomMapping) {
+          // 3.1 AI 主動推薦的特效/常用成分
+          const recoIndex = aiSymptomMapping.recommendedIngredients.findIndex((ing) => {
+            const cleanIng = ing.toLowerCase();
+            return componentLower.includes(cleanIng) || genericLower.includes(cleanIng) || cleanIng.includes(componentLower);
+          });
+
+          if (recoIndex !== -1) {
+            // 排名越靠前(recoIndex越小)，分數加成越高
+            score += Math.max(200, 3000 - recoIndex * 400);
+          }
+
+          // 3.2 AI 推薦的相關藥理分類符合
+          if (aiSymptomMapping.classes.includes(m.pharmacologicalClass)) {
+            score += 1500;
+          }
+          // 3.3 AI 推薦的相關生理系統符合
+          if (aiSymptomMapping.systems.includes(m.anatomicalSystem)) {
+            score += 800;
+          }
+        }
+
+        // 4. 對臨床常見/常用成分常數加分 (保障基線常用度排序)
+        const isCommonComponent = GENERAL_COMMON_INGREDIENTS.some((gci) => {
+          return componentLower.includes(gci) || genericLower.includes(gci);
+        });
+        if (isCommonComponent) {
+          score += 500;
+        }
+
+        return score;
+      };
+
+      // 執行最終排序
+      baseMeds = [...combinedMeds].sort((a, b) => {
+        const scoreA = getSortingScore(a);
+        const scoreB = getSortingScore(b);
+        if (scoreB !== scoreA) {
+          return scoreB - scoreA;
+        }
+        // 分數相同時，將品牌藥名長度短的、或者常用藥名排在前面，以防偏僻特殊物料卡在首位
+        return (a.brandName || "").length - (b.brandName || "").length;
+      });
     }
 
     return baseMeds.filter((med) => {
@@ -976,6 +1197,7 @@ ${medListSummaryText}
     selectedDosageForms,
     onlyFavorites,
     favorites,
+    aiSymptomMapping,
   ]);
 
   const displayedMedications = useMemo(() => {
@@ -1059,8 +1281,8 @@ ${medListSummaryText}
                     className={cn(
                       "w-full p-3 rounded-xl border transition-all text-xs flex items-center justify-between group cursor-pointer shadow-sm",
                       theme === "dark"
-                        ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200 hover:border-violet-500/30"
-                        : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-800 hover:border-violet-300",
+                        ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200 hover:border-brand-accent/30"
+                        : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-800 hover:border-brand-accent/30",
                     )}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -1082,7 +1304,7 @@ ${medListSummaryText}
                         {favorites.length}
                       </span>
                     </div>
-                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-violet-400 shrink-0" />
+                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-brand-secondary-accent shrink-0" />
                   </button>
                 </div>
 
@@ -1551,6 +1773,7 @@ ${medListSummaryText}
                         )}
                       />
                       <input
+                        ref={searchInputRef}
                         type="text"
                         enterKeyHint="search"
                         placeholder="搜尋成分、代碼、適應症..."
@@ -1715,7 +1938,7 @@ ${medListSummaryText}
                                     className={cn(
                                       "w-8 h-4 rounded-full relative transition-colors border p-0.5",
                                       onlyFavorites
-                                        ? "bg-violet-500 border-violet-500"
+                                        ? "bg-brand-accent border-brand-accent"
                                         : theme === "dark"
                                           ? "bg-zinc-800 border-white/10"
                                           : "bg-slate-200 border-slate-300",
@@ -1967,7 +2190,7 @@ ${medListSummaryText}
                                                 ? cn(
                                                     dosageStyle.bg,
                                                     dosageStyle.text,
-                                                    "border-violet-500/50 shadow-sm shadow-violet-500/20",
+                                                    "border-transparent",
                                                   )
                                                 : theme === "dark"
                                                   ? "bg-white/5 border-white/5 text-zinc-500 hover:text-zinc-300 hover:bg-white/10"
@@ -2031,6 +2254,42 @@ ${medListSummaryText}
                     }
                   }}
                 >
+                  {/* AI Symptom Recognition Banner (只顯示機轉，無多餘字樣) */}
+                  {(isSymptomAnalyzing || (aiSymptomMapping && (aiSymptomMapping.classes.length > 0 || aiSymptomMapping.systems.length > 0))) && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={cn(
+                        "mb-3.5 px-3.5 py-2.5 rounded-xl border flex flex-wrap items-center gap-2 text-xs shadow-sm shadow-brand-accent/5",
+                        theme === "dark"
+                          ? "bg-brand-accent/[0.03] border-brand-accent/20 text-zinc-300"
+                          : "bg-brand-accent/[0.015] border-brand-accent/15 text-slate-700",
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 shrink-0 font-bold text-brand-accent">
+                        <Sparkles className={cn("w-3.5 h-3.5", isSymptomAnalyzing && "animate-pulse")} />
+                        <span>關聯機轉：</span>
+                      </div>
+
+                      {isSymptomAnalyzing ? (
+                        <span className="text-[11px] text-brand-accent/70 animate-pulse font-medium">分析中...</span>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                          {aiSymptomMapping?.classes.map((cls) => (
+                            <span key={cls} className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/25">
+                              {cls}
+                            </span>
+                          ))}
+                          {aiSymptomMapping?.systems.map((sys) => (
+                            <span key={sys} className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-secondary-accent/10 text-brand-secondary-accent border border-brand-secondary-accent/25">
+                              {sys}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+
                   <div className="flex flex-col md:flex-row md:items-end justify-end gap-3 mb-2 md:mb-2.5">
                     {(searchQuery ||
                       selectedSystem !== "全部系統" ||
@@ -2227,8 +2486,8 @@ ${medListSummaryText}
                         className={cn(
                           "w-16 h-16 rounded-3xl flex items-center justify-center border mb-6 shadow-lg",
                           theme === "dark"
-                            ? "bg-white/5 border-white/10 text-purple-400 shadow-purple-500/5"
-                            : "bg-slate-50 border-slate-200 text-purple-500 shadow-slate-100",
+                            ? "bg-brand-accent/10 border-brand-accent/20 text-brand-accent shadow-brand-accent/5"
+                            : "bg-brand-accent/10 border-brand-accent/20 text-brand-accent shadow-brand-accent/10",
                         )}
                       >
                         <Pill className="w-8 h-8 stroke-[1.25]" />
@@ -2252,15 +2511,18 @@ ${medListSummaryText}
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
                         <div
+                          onClick={() => {
+                            searchInputRef.current?.focus();
+                          }}
                           className={cn(
-                            "p-4 rounded-2xl border transition-all hover:scale-[1.01]",
+                            "p-4 rounded-2xl border transition-all hover:scale-[1.01] cursor-pointer",
                             theme === "dark"
-                              ? "bg-white/[0.02] border-white/5"
-                              : "bg-slate-50/50 border-slate-200/60",
+                              ? "bg-white/[0.02] border-white/5 hover:border-brand-accent/40 hover:bg-brand-accent/[0.03]"
+                              : "bg-slate-50/50 border-slate-200/60 hover:border-brand-accent/30 hover:bg-brand-accent/[0.02] shadow-sm shadow-slate-100",
                           )}
                         >
                           <div className="flex items-center gap-2 mb-1.5">
-                            <Search className="w-4 h-4 text-purple-500" />
+                            <Search className="w-4 h-4 text-brand-accent" />
                             <h4
                               className={cn(
                                 "text-xs font-bold",
@@ -2287,15 +2549,19 @@ ${medListSummaryText}
                         </div>
 
                         <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowFilters(true);
+                          }}
                           className={cn(
-                            "p-4 rounded-2xl border transition-all hover:scale-[1.01]",
+                            "p-4 rounded-2xl border transition-all hover:scale-[1.01] cursor-pointer",
                             theme === "dark"
-                              ? "bg-white/[0.02] border-white/5"
-                              : "bg-slate-50/50 border-slate-200/60",
+                              ? "bg-white/[0.02] border-white/5 hover:border-brand-accent/40 hover:bg-brand-accent/[0.03]"
+                              : "bg-slate-50/50 border-slate-200/60 hover:border-brand-accent/30 hover:bg-brand-accent/[0.02] shadow-sm shadow-slate-100",
                           )}
                         >
                           <div className="flex items-center gap-2 mb-1.5">
-                            <Filter className="w-4 h-4 text-purple-500" />
+                            <Filter className="w-4 h-4 text-brand-accent" />
                             <h4
                               className={cn(
                                 "text-xs font-bold",
@@ -2333,13 +2599,6 @@ ${medListSummaryText}
                 className="flex-1 flex flex-col overflow-hidden p-4 md:p-8"
               >
                 <div className="max-w-4xl mx-auto w-full flex flex-col h-full gap-6">
-                  <div className="flex items-center gap-2 px-1">
-                    <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-                    <span className="text-[10px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-[0.3em]">
-                      AI 智能諮詢模式
-                    </span>
-                  </div>
-
                   <div className="flex-1 min-h-0 flex flex-col relative">
                     <div className="flex-1 p-[1px] rounded-[32px] bg-gradient-to-br from-blue-500/15 via-purple-500/15 to-orange-500/15 overflow-hidden shadow-2xl">
                       <div className="h-full w-full bg-brand-bg/40 backdrop-blur-3xl rounded-[31px] overflow-hidden flex flex-col relative">
@@ -2351,7 +2610,7 @@ ${medListSummaryText}
                           >
                             <input
                               type="text"
-                              placeholder="例如：病患 58 歲女性，主訴飯後血糖偏高且有糖尿病腎病變，請分析適合的處方藥物..."
+                              placeholder="輸入臨床情境分析藥物"
                               value={aiQuery}
                               onChange={(e) => setAiQuery(e.target.value)}
                               className={cn(
@@ -3577,8 +3836,8 @@ ${medListSummaryText}
                                 className={cn(
                                   "w-full text-left p-3.5 rounded-2xl border transition-all text-xs flex items-center justify-between group cursor-pointer",
                                   theme === "dark"
-                                    ? "bg-white/5 border-white/5 hover:bg-white/10 hover:border-violet-500/30"
-                                    : "bg-slate-50 border-slate-100 hover:bg-slate-100 hover:border-violet-300",
+                                    ? "bg-white/5 border-white/5 hover:bg-white/10 hover:border-brand-accent/30"
+                                    : "bg-slate-50 border-slate-100 hover:bg-slate-100 hover:border-brand-accent/30",
                                 )}
                               >
                                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -3631,7 +3890,7 @@ ${medListSummaryText}
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
-                                  <ChevronRight className="w-4 h-4 opacity-30 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-violet-400" />
+                                  <ChevronRight className="w-4 h-4 opacity-30 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-brand-secondary-accent" />
                                 </div>
                               </motion.div>
                             );
