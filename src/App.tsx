@@ -239,6 +239,33 @@ import {
 import { cn } from "./lib/utils";
 import { MEDICAL_ALIASES } from "./lib/medicalKeywords";
 
+// Helper function to retry Gemini API calls with exponential backoff on 429 Too Many Requests errors.
+const retryWithBackoff = async <T = any>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delay = 1000,
+  backoffFactor = 2
+): Promise<T> => {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const isRateLimit =
+      error?.status === 429 ||
+      error?.statusCode === 429 ||
+      (error?.message && error.message.includes("429")) ||
+      (error?.message && error.message.toLowerCase().includes("too many requests")) ||
+      (error?.message && error.message.toLowerCase().includes("quota")) ||
+      (error?.message && error.message.toLowerCase().includes("exhausted"));
+
+    if (retries > 0 && isRateLimit) {
+      console.warn(`Gemini API rate limited (429). Retrying in ${delay}ms... (${retries} retries left)`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return retryWithBackoff(fn, retries - 1, delay * backoffFactor, backoffFactor);
+    }
+    throw error;
+  }
+};
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -594,16 +621,18 @@ ${JSON.stringify(systemsList)}
 
 注意：如果沒有任何相關的，請回傳空陣列形式。`;
 
-        const response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            thinkingConfig: {
-              thinkingLevel: "MINIMAL",
-            },
-          }
-        });
+        const response = await retryWithBackoff<any>(() =>
+          ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              thinkingConfig: {
+                thinkingLevel: "MINIMAL",
+              },
+            }
+          })
+        );
 
         const text = response.text || "";
         const parsed = JSON.parse(text.trim());
@@ -792,15 +821,17 @@ ${medListSummaryText}
 `;
 
       // 3. 升級至最新的 gemini-3.5-flash，並配合 generateContentStream。
-      const responseStream = await ai.models.generateContentStream({
-        model: "gemini-3.5-flash",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          thinkingConfig: {
-            thinkingLevel: "LOW",
+      const responseStream = await retryWithBackoff<any>(() =>
+        ai.models.generateContentStream({
+          model: "gemini-3.5-flash",
+          contents: [{ parts: [{ text: prompt }] }],
+          config: {
+            thinkingConfig: {
+              thinkingLevel: "LOW",
+            },
           },
-        },
-      });
+        })
+      );
 
       let fullResponse = "";
       for await (const chunk of responseStream) {
