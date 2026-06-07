@@ -661,18 +661,18 @@ ${JSON.stringify(systemsList)}
     return new Fuse(medications, {
       keys: [
         { name: "code", weight: 1.0 },
-        { name: "component", weight: 0.9 },
-        { name: "brandName", weight: 0.8 },
-        { name: "genericName", weight: 0.7 },
-        { name: "chineseName", weight: 0.6 },
-        { name: "pharmacologicalClass", weight: 0.5 },
-        { name: "anatomicalSystem", weight: 0.5 },
-        { name: "indications", weight: 0.5 },
-        { name: "searchKeywords", weight: 0.4 },
+        { name: "component", weight: 0.95 },
+        { name: "brandName", weight: 0.9 },
+        { name: "genericName", weight: 0.8 },
+        { name: "chineseName", weight: 0.8 },
+        { name: "pharmacologicalClass", weight: 0.4 },
+        { name: "anatomicalSystem", weight: 0.4 },
+        { name: "indications", weight: 0.3 },
+        { name: "searchKeywords", weight: 0.3 },
       ],
-      threshold: 0.4, // 調整基礎靈敏度，由邏輯層決定動態門檻
-      location: 0, // 優先考慮字串開頭的匹配
-      distance: 50, // 縮小範圍，讓遠離位點 0 的匹配扣分更高
+      threshold: 0.3, // 更緊確的閾值提升精準度
+      location: 0, // 優先考慮字串開頭的匹配 (字首重要性)
+      distance: 20, // 縮小權重位距拉大字首匹配與段中匹配的分差
       includeScore: true,
       shouldSort: true,
     });
@@ -978,20 +978,20 @@ ${medListSummaryText}
         return m ? m[0].toLowerCase() : str.toLowerCase();
       };
 
-      // 第二層： 字串絕對開頭匹配 (String Start)
+      // 第二層： 字串絕對開頭匹配 (String Start - 字首精準匹配)
       const stringStartMatches = medications.filter((m) => {
         if (exactMatches.some((em) => em.id === m.id)) return false;
         if (medicalIntentMatches.some((mm) => mm.id === m.id)) return false;
-        const targets = [m.code, m.component, m.brandName, m.genericName];
+        const targets = [m.code, m.component, m.brandName, m.genericName, m.chineseName];
         return targets.some((t) => t?.toLowerCase().startsWith(query));
       });
 
-      // 第三層： 第一個「字母」單字開頭匹配 (例如解決 "10% Dextrose" 的 "Dextrose" 開頭)
+      // 第三層： 第一個「字母/中文字」單字開頭匹配 (例如解決 "10% Dextrose" 的 "Dextrose" 開頭，或中文開頭)
       const firstAlphaStartMatches = medications.filter((m) => {
         if (exactMatches.some((em) => em.id === m.id)) return false;
         if (medicalIntentMatches.some((mm) => mm.id === m.id)) return false;
         if (stringStartMatches.some((sm) => sm.id === m.id)) return false;
-        const targets = [m.component, m.brandName, m.genericName];
+        const targets = [m.component, m.brandName, m.genericName, m.chineseName];
         return targets.some((t) => {
           if (!t) return false;
           const alphaT = getAlphaStart(t);
@@ -999,7 +999,7 @@ ${medListSummaryText}
         });
       });
 
-      // 第四層： 其他單字開頭 (Word Boundary Match) - 滿足「每個單字開頭權重都調高」
+      // 第四層： 其他單字開頭 (Word Boundary Match - 單字字首開頭) - 滿足「每個單字開頭權重都調高」
       const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const wordBoundaryRegex = new RegExp(`\\b${escapedQuery}`, "i");
       const wordBoundaryMatches = medications.filter((m) => {
@@ -1111,19 +1111,19 @@ ${medListSummaryText}
       const getSortingScore = (m: Medication) => {
         let score = 0;
 
-        // 1. 各層級之基礎匹配權重
+        // 1. 各層級之基礎匹配權重 (調整排序：字首開頭/首字匹配優先權大幅調高，高於症狀關聯與一般適應症，確保字首重要性)
         if (exactMatches.some((em) => em.id === m.id)) {
-          score += 10000;
-        } else if (medicalIntentMatches.some((mm) => mm.id === m.id)) {
-          score += 8000;
-        } else if (aiSymptomMatches.some((sm) => sm.id === m.id)) {
-          score += 7000;
+          score += 12000;
         } else if (stringStartMatches.some((sm) => sm.id === m.id)) {
-          score += 5000;
+          score += 10000;
         } else if (firstAlphaStartMatches.some((am) => am.id === m.id)) {
-          score += 4000;
+          score += 9000;
         } else if (wordBoundaryMatches.some((wm) => wm.id === m.id)) {
-          score += 3000;
+          score += 8000;
+        } else if (medicalIntentMatches.some((mm) => mm.id === m.id)) {
+          score += 7000;
+        } else if (aiSymptomMatches.some((sm) => sm.id === m.id)) {
+          score += 6000;
         } else {
           score += 1000;
         }
@@ -1154,6 +1154,17 @@ ${medListSummaryText}
           if (chineseNameLower.includes(s)) score += 500;
           if (componentLower.includes(s)) score += 500;
         });
+
+        // 2.3 字首與首字匹配追加超高加權 (Emphasis on Prefix/Word boundary start matching)
+        const checkPrefix = (str?: string) => {
+          if (!str) return false;
+          const s = str.toLowerCase();
+          return s.startsWith(query) || s.split(/[\s+\-_/()]+/).some(w => w.startsWith(query));
+        };
+
+        if (checkPrefix(m.component) || checkPrefix(m.brandName) || checkPrefix(m.chineseName) || checkPrefix(m.genericName) || checkPrefix(m.code)) {
+          score += 5000; // 給予超高額外字首分數，強調字首的絕對重要性！
+        }
 
         // 3. 整合 AI 臨床首選與推薦藥物成分 (與臨床最常用、治療契合度排序對接)
         if (aiSymptomMapping) {
@@ -4039,11 +4050,13 @@ ${medListSummaryText}
               <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar text-xs">
                 <div className="space-y-1">
                   <h4 className="font-bold text-brand-accent flex items-center gap-1.5">
-                    <span>🔍 模糊症狀與關鍵字查詢</span>
+                    <span>🔍 字首優先！模糊與精準查詢</span>
                   </h4>
+                  <p className="leading-relaxed text-[11px] pl-5 text-amber-500/90 font-medium">
+                    💡 關鍵密技：優先輸入成分/英文或中文的「完整字首」（例如以 'acet' / '乙醯' 進行查詢），高強度字首優選演算法即刻啟動，迅速置頂精確西藥成份。
+                  </p>
                   <p className="opacity-80 leading-relaxed text-[11px] pl-5">
-                    直接在上方輸入框輸入學名、商品名、中文藥名，或任何「症狀、副作用、生理器官描述」（例如「胃酸過多」、「皮膚過敏」）。
-                    系統會透過契合度演算法，優選出最吻合適應症 (Indications) 的首選特效西藥成份。
+                    同時也支持直接輸入學名、商品名、中文藥名，或任何「症狀、副作用、生理器官描述」（例如「胃酸過多」、「皮膚過敏」）。系統會透過自動演算，優選出最吻合適應症 (Indications) 的常用西藥成份。
                   </p>
                 </div>
 
