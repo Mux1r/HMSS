@@ -55,6 +55,7 @@ import {
   Copy,
   Check,
   HelpCircle,
+  Square,
 } from "lucide-react";
 
 const getMedicationIcon = (code: string) => {
@@ -293,6 +294,7 @@ export default function App() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [aiSymptomMapping, setAiSymptomMapping] = useState<{ classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] } | null>(null);
   const [isSymptomAnalyzing, setIsSymptomAnalyzing] = useState(false);
+  const [isAiSymptomRequested, setIsAiSymptomRequested] = useState(false);
   const aiSymptomCacheRef = useRef<Record<string, { classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] }>>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
@@ -311,6 +313,54 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("favorites", JSON.stringify(favorites));
   }, [favorites]);
+
+  // Initial load of cached medications from IndexedDB
+  useEffect(() => {
+    const loadCachedData = async () => {
+      try {
+        const cachedMeds = await localMedicationService.getAll();
+        setMedications(cachedMeds);
+        
+        // Check for cloud updates if URL exists
+        if (cachedMeds.length > 0 && gsheetUrl) {
+          const hasUpdate = await localMedicationService.checkForUpdates(gsheetUrl);
+          setIsUpdateAvailable(hasUpdate);
+        }
+      } catch (err) {
+        console.error("Failed to load cached medications:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadCachedData();
+  }, [gsheetUrl]);
+
+  const handleSyncGoogleSheet = async () => {
+    if (!gsheetUrl.trim()) {
+      setToast({ message: "同步 URL 格式無效或未設定。", type: "error" });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      setToast({ message: "正在從 Google Sheet 同步臨床藥物資料...", type: "info" });
+      const result = await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
+      
+      if (result && result.meds) {
+        await localMedicationService.saveAll(result.meds, result.hash);
+        setMedications(result.meds);
+        setIsUpdateAvailable(false);
+        setToast({ message: `同步成功！共載入 ${result.meds.length} 筆臨床藥物。`, type: "success" });
+      } else {
+        throw new Error("同步失敗，未取得藥物資料。");
+      }
+    } catch (error: any) {
+      console.error("Google Sheet Sync Error:", error);
+      setToast({ message: error?.message || "同步失敗，請檢查 URL 或網路連線。", type: "error" });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const toggleFavorite = (id: string) => {
     setFavorites((prev) =>
@@ -455,6 +505,9 @@ export default function App() {
   const [aiQuery, setAiQuery] = useState("");
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiProgress, setAiProgress] = useState(0);
+  const [aiProgressStage, setAiProgressStage] = useState("");
+  const aiAbortControllerRef = useRef<AbortController | null>(null);
   const [aiHistory, setAiHistory] = useState<
     { query: string; response: string; timestamp: number; filteredCount?: number; totalCount?: number }[]
   >([]);
@@ -572,7 +625,26 @@ export default function App() {
     [],
   );
 
+  const isQueryValidForAi = useMemo(() => {
+    const query = searchQuery.trim();
+    if (!query || query.length < 2) return false;
+    const looksLikeCode = /^[A-Z0-9.\-\s%]{1,7}$/i.test(query);
+    return !looksLikeCode;
+  }, [searchQuery]);
+
+  // Reset AI request when search query changes
   useEffect(() => {
+    setIsAiSymptomRequested(false);
+    setAiSymptomMapping(null);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (!isAiSymptomRequested) {
+      setAiSymptomMapping(null);
+      setIsSymptomAnalyzing(false);
+      return;
+    }
+
     const query = searchQuery.trim();
     if (!query || query.length < 2) {
       setAiSymptomMapping(null);
@@ -594,8 +666,8 @@ export default function App() {
       return;
     }
 
+    setIsSymptomAnalyzing(true);
     const delayTimer = setTimeout(async () => {
-      setIsSymptomAnalyzing(true);
       try {
         const classesList = Array.from(new Set(medications.map(m => m.pharmacologicalClass).filter(Boolean)));
         const systemsList = Array.from(new Set(medications.map(m => m.anatomicalSystem).filter(Boolean)));
@@ -651,10 +723,10 @@ ${JSON.stringify(systemsList)}
       } finally {
         setIsSymptomAnalyzing(false);
       }
-    }, 450);
+    }, 150);
 
     return () => clearTimeout(delayTimer);
-  }, [searchQuery, medications, ai]);
+  }, [isAiSymptomRequested, searchQuery, medications, ai]);
 
   // Fuse instance for fuzzy search
   const fuse = useMemo(() => {
@@ -680,11 +752,8 @@ ${JSON.stringify(systemsList)}
 
   // Remove global click listener in favor of local onBlur for better focus management
   useEffect(() => {
-    // We can keep a simplified version or rely solely on onBlur
-    // But standard "outside click" is usually better for mouse users who click non-focusable areas
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // If click is not inside a dropdown or filter area, close them
       if (
         !target.closest(".dropdown-container") &&
         !target.closest(".filter-popover-container")
@@ -699,52 +768,31 @@ ${JSON.stringify(systemsList)}
     return () => window.removeEventListener("click", handleClick);
   }, []);
 
-  const handleSyncGoogleSheet = async () => {
-    setIsSyncing(true);
-    setImportStatus("正在連線至雲端資料庫...");
-
-    try {
-      const { meds, hash } =
-        await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
-      setImportStatus(`正在存儲 ${meds.length} 筆資料至本地庫...`);
-
-      // 直接覆蓋現有清單，並儲存原始資料的雜湊以供未來比對
-      await localMedicationService.saveAll(meds, hash);
-      setMedications(meds);
-
-      setImportStatus(`同步成功！已更新 ${meds.length} 筆資料`);
-      setIsUpdateAvailable(false);
-    } catch (error) {
-      setImportStatus("同步失敗，請檢查網路連線或資料格式");
-      console.error(error);
-    } finally {
-      setIsSyncing(false);
-      setTimeout(() => setImportStatus(null), 3000);
+  const handleAiCancel = () => {
+    if (aiAbortControllerRef.current) {
+      aiAbortControllerRef.current.abort();
     }
-  };
-
-  // Data Loading and Update Check
-  useEffect(() => {
-    const initData = async () => {
-      setLoading(true);
-      try {
-        const stored = await localMedicationService.getAll();
-        if (stored.length > 0) {
-          setMedications(stored);
-        } else {
-          const { meds, hash } =
-            await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
-          await localMedicationService.saveAll(meds, hash);
-          setMedications(meds);
+    setIsAiLoading(false);
+    setAiProgress(0);
+    setAiProgressStage("");
+    
+    setAiHistory((prev) => {
+      if (prev.length === 0) return prev;
+      return prev.map((item, idx) => {
+        if (idx === 0) {
+          const currentRes = item.response ? item.response.trim() : "";
+          const cancelMsg = currentRes 
+            ? `${currentRes}\n\n⚠️ (分析已被使用者取消)` 
+            : "⚠️ 分析已被使用者取消。";
+          return {
+            ...item,
+            response: cancelMsg,
+          };
         }
-      } catch (error) {
-        console.error("Failed to load local database:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    initData();
-  }, [gsheetUrl]);
+        return item;
+      });
+    });
+  };
 
   const handleAiSearch = async (e?: FormEvent) => {
     if (e) e.preventDefault();
@@ -752,9 +800,14 @@ ${JSON.stringify(systemsList)}
 
     setIsAiLoading(true);
     setAiResponse(null);
+    setAiProgress(5);
+    setAiProgressStage("正在建立 AI 臨床連線...");
 
     const currentQuery = aiQuery;
     const currentTimestamp = Date.now();
+
+    const controller = new AbortController();
+    aiAbortControllerRef.current = controller;
 
     // 立即將主要對話佔位符加入對話歷史
     setAiHistory((prev) => [
@@ -767,10 +820,19 @@ ${JSON.stringify(systemsList)}
     ]);
     setAiQuery("");
 
+    // 平滑增加初始連線進度 (5% - 15%)
+    const progressInterval = setInterval(() => {
+      setAiProgress((prev) => {
+        if (prev < 15) return prev + 2;
+        if (prev < 25) return prev + 1;
+        return prev;
+      });
+    }, 150);
+
     try {
       if (!process.env.GEMINI_API_KEY) {
         throw new Error(
-          "偵測不到 GEMINI_API_KEY。請在專案中設定環境變數。",
+          "偵測不到 GEMINI_API_KEY。請在專案中設定環境變裝。",
         );
       }
 
@@ -833,11 +895,27 @@ ${medListSummaryText}
         })
       );
 
+      // 開始接收串流時，清除預設的 progressInterval 並自己算
+      clearInterval(progressInterval);
+      setAiProgress(15);
+      setAiProgressStage("正在接收與分析臨床處方...");
+
       let fullResponse = "";
       for await (const chunk of responseStream) {
+        if (controller.signal.aborted) {
+          break;
+        }
         const chunkText = chunk.text || "";
         if (chunkText) {
           fullResponse += chunkText;
+
+          // 更新 stage，顯示即時取得進度
+          setAiProgressStage(`正在接收臨床建議... (已讀取 ${fullResponse.length} 字)`);
+
+          // 計算實時進度，最大至 95%
+          const lengthProgress = 15 + Math.min(Math.round(fullResponse.length / 8), 80);
+          setAiProgress(lengthProgress);
+
           setAiHistory((prev) =>
             prev.map((item) =>
               item.timestamp === currentTimestamp
@@ -847,7 +925,19 @@ ${medListSummaryText}
           );
         }
       }
+
+      if (!controller.signal.aborted) {
+        setAiProgress(100);
+        setAiProgressStage("臨床處方分析完成！");
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     } catch (error: any) {
+      clearInterval(progressInterval);
+      if (controller.signal.aborted || error?.name === "AbortError") {
+        console.log("AI Search Aborted by user");
+        return;
+      }
+
       console.error("AI Search Error:", error);
       const errorMsg = error?.message || "AI 搜尋發生錯誤，請稍後再試。";
       setAiHistory((prev) =>
@@ -858,13 +948,15 @@ ${medListSummaryText}
         ),
       );
     } finally {
+      clearInterval(progressInterval);
       setIsAiLoading(false);
+      // 完成後一併重設 progress
+      setTimeout(() => {
+        setAiProgress(0);
+        setAiProgressStage("");
+      }, 1000);
     }
   };
-
-
-
-
 
   const anatomicalSystems = useMemo(() => {
     const systems = new Set(medications.map((m) => m.anatomicalSystem));
@@ -2313,8 +2405,32 @@ ${medListSummaryText}
                     }
                   }}
                 >
-                  {/* AI Symptom Recognition Banner (只顯示機轉，無多餘字樣) */}
-                  {(isSymptomAnalyzing || (aiSymptomMapping && (aiSymptomMapping.classes.length > 0 || aiSymptomMapping.systems.length > 0))) && (
+                  {/* AI Symptom Recognition Banner (由使用者點選開啟) */}
+                  {isQueryValidForAi && !isAiSymptomRequested && (
+                    <motion.button
+                      id="ai-symptom-trigger-btn"
+                      onClick={() => setIsAiSymptomRequested(true)}
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={cn(
+                        "w-full mb-3.5 px-3.5 py-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs shadow-sm transition-all duration-300",
+                        theme === "dark"
+                          ? "bg-brand-accent/[0.03] hover:bg-brand-accent/[0.08] border-brand-accent/20 hover:border-brand-accent/40 text-brand-accent"
+                          : "bg-brand-accent/[0.015] hover:bg-brand-accent/[0.04] border-brand-accent/15 hover:border-brand-accent/30 text-brand-accent",
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>AI 輔助機轉查詢</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] font-medium opacity-80 shrink-0">
+                        <span>分析</span>
+                        <ChevronRight className="w-3 h-3" />
+                      </div>
+                    </motion.button>
+                  )}
+
+                  {isAiSymptomRequested && (isSymptomAnalyzing || aiSymptomMapping) && (
                     <motion.div
                       initial={{ opacity: 0, y: -6 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -2332,7 +2448,7 @@ ${medListSummaryText}
 
                       {isSymptomAnalyzing ? (
                         <span className="text-[11px] text-brand-accent/70 animate-pulse font-medium">分析中...</span>
-                      ) : (
+                      ) : (aiSymptomMapping && (aiSymptomMapping.classes.length > 0 || aiSymptomMapping.systems.length > 0)) ? (
                         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                           {aiSymptomMapping?.classes.map((cls) => (
                             <span key={cls} className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/25">
@@ -2345,6 +2461,8 @@ ${medListSummaryText}
                             </span>
                           ))}
                         </div>
+                      ) : (
+                        <span className="text-[11px] text-zinc-400 font-medium">未查得顯著相關之藥理分類/生理系統機轉</span>
                       )}
                     </motion.div>
                   )}
@@ -2669,23 +2787,31 @@ ${medListSummaryText}
                           >
                             <input
                               type="text"
-                              placeholder="輸入臨床情境分析藥物"
+                              placeholder={isAiLoading ? "AI 臨床處方正在分析中..." : "輸入臨床情境分析藥物"}
                               value={aiQuery}
                               onChange={(e) => setAiQuery(e.target.value)}
+                              disabled={isAiLoading}
                               className={cn(
                                 "w-full backdrop-blur-xl border-none rounded-[15px] pl-5 pr-14 py-3 text-sm md:text-base focus:outline-none focus:ring-0 transition-all font-medium shadow-2xl",
                                 theme === "dark"
-                                  ? "bg-black/80 text-white placeholder:text-zinc-500"
-                                  : "bg-white/95 text-slate-800 placeholder:text-slate-400",
+                                  ? "bg-black/80 text-white placeholder:text-zinc-500 disabled:opacity-50"
+                                  : "bg-white/95 text-slate-800 placeholder:text-slate-400 disabled:opacity-50",
                               )}
                             />
                             <button
-                              type="submit"
-                              disabled={isAiLoading || !aiQuery.trim()}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gradient-to-r from-blue-400 via-purple-500 to-orange-500 text-white flex items-center justify-center hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl active:scale-95"
+                              type={isAiLoading ? "button" : "submit"}
+                              onClick={isAiLoading ? handleAiCancel : undefined}
+                              disabled={!isAiLoading && !aiQuery.trim()}
+                              className={cn(
+                                "absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full text-white flex items-center justify-center transition-all shadow-xl active:scale-95 cursor-pointer",
+                                isAiLoading
+                                  ? "bg-red-500 hover:bg-red-600 animate-pulse"
+                                  : "bg-gradient-to-r from-blue-400 via-purple-500 to-orange-500 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                              )}
+                              title={isAiLoading ? "停止 AI 分析" : "送出"}
                             >
                               {isAiLoading ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <Square className="w-4 h-4 fill-white text-white" />
                               ) : (
                                 <ArrowRight className="w-4 h-4" />
                               )}
@@ -3169,15 +3295,27 @@ ${medListSummaryText}
                                           {hIdx === 0 && isAiLoading && (
                                             <div
                                               className={cn(
-                                                "flex items-center gap-3 text-brand-accent font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-2.5 rounded-xl border mt-1.5",
+                                                "flex flex-col gap-3 p-4 rounded-2xl border mt-3 transition-all",
                                                 theme === "dark"
-                                                  ? "bg-white/[0.03] border-white/5"
-                                                  : "bg-slate-50 border-slate-100 shadow-sm",
+                                                  ? "bg-white/[0.02] border-white/5"
+                                                  : "bg-slate-50/50 border-slate-100 shadow-sm",
                                               )}
                                             >
+                                              <div className="flex items-center justify-between text-xs font-semibold">
+                                                <div className="flex items-center gap-2">
+                                                  <Loader2 className="w-4 h-4 animate-spin text-brand-accent animate-duration-1000" />
+                                                  <span className={theme === "dark" ? "text-zinc-300 font-medium" : "text-slate-700 font-medium"}>
+                                                    {aiProgressStage || "正在執行臨床處方分析..."}
+                                                  </span>
+                                                </div>
+                                                <span className="font-mono text-xs text-brand-accent font-bold">
+                                                  {aiProgress}%
+                                                </span>
+                                              </div>
+
                                               <div
                                                 className={cn(
-                                                  "w-full h-1 rounded-full overflow-hidden",
+                                                  "w-full h-2 rounded-full overflow-hidden",
                                                   theme === "dark"
                                                     ? "bg-white/5"
                                                     : "bg-slate-200",
@@ -3185,14 +3323,25 @@ ${medListSummaryText}
                                               >
                                                 <motion.div
                                                   className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500"
-                                                  initial={{ width: "0%" }}
-                                                  animate={{ width: "100%" }}
-                                                  transition={{
-                                                    duration: 2,
-                                                    repeat: Infinity,
-                                                    ease: "linear",
-                                                  }}
+                                                  animate={{ width: `${aiProgress}%` }}
+                                                  transition={{ duration: 0.3, ease: "easeOut" }}
                                                 />
+                                              </div>
+
+                                              <div className="flex justify-end mt-1">
+                                                <button
+                                                  type="button"
+                                                  onClick={handleAiCancel}
+                                                  className={cn(
+                                                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all active:scale-95 border cursor-pointer",
+                                                    theme === "dark"
+                                                      ? "bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20"
+                                                      : "bg-red-50 hover:bg-red-100 text-red-600 border-red-100"
+                                                  )}
+                                                >
+                                                  <Square className="w-3 h-3 fill-current" />
+                                                  <span>停止處方分析</span>
+                                                </button>
                                               </div>
                                             </div>
                                           )}
