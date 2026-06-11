@@ -24,6 +24,27 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 // Helper function to retry Gemini API calls with exponential backoff on 429 Too Many Requests errors.
+const isHighDemandOrRateLimit = (error: any): boolean => {
+  if (!error) return false;
+  const status = error?.status || error?.statusCode;
+  if (status === 429 || status === 403 || status === 503) {
+    return true;
+  }
+  const msg = (error?.message || "").toLowerCase();
+  return (
+    msg.includes("429") ||
+    msg.includes("503") ||
+    msg.includes("too many requests") ||
+    msg.includes("quota") ||
+    msg.includes("exhausted") ||
+    msg.includes("limit") ||
+    msg.includes("overload") ||
+    msg.includes("demand") ||
+    msg.includes("capacity") ||
+    msg.includes("service unavailable")
+  );
+};
+
 const retryWithBackoff = async <T = any>(
   fn: () => Promise<T>,
   retries = 3,
@@ -33,16 +54,8 @@ const retryWithBackoff = async <T = any>(
   try {
     return await fn();
   } catch (error: any) {
-    const isRateLimit =
-      error?.status === 429 ||
-      error?.statusCode === 429 ||
-      (error?.message && error.message.includes("429")) ||
-      (error?.message && error.message.toLowerCase().includes("too many requests")) ||
-      (error?.message && error.message.toLowerCase().includes("quota")) ||
-      (error?.message && error.message.toLowerCase().includes("exhausted"));
-
-    if (retries > 0 && isRateLimit) {
-      console.warn(`Gemini API rate limited (429) on server. Retrying in ${delay}ms... (${retries} retries left)`);
+    if (retries > 0 && isHighDemandOrRateLimit(error)) {
+      console.warn(`Gemini API rate limited (429/high-demand) on server. Retrying in ${delay}ms... (${retries} retries left)`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       return retryWithBackoff(fn, retries - 1, delay * backoffFactor, backoffFactor);
     }
@@ -65,20 +78,41 @@ async function startServer() {
       }
 
       const client = getGeminiClient();
-      const response = await retryWithBackoff(() =>
-        client.models.generateContent({
-          model: "gemini-3.5-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            thinkingConfig: {
-              thinkingLevel: ThinkingLevel.MINIMAL,
-            },
-          },
-        })
-      );
+      let text = "";
 
-      const text = response.text || "";
+      try {
+        console.log("[api/gemini/symptom] Attempting primary model gemini-3.5-flash with ThinkingLevel.MINIMAL...");
+        const response = await retryWithBackoff(() =>
+          client.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              thinkingConfig: {
+                thinkingLevel: ThinkingLevel.MINIMAL,
+              },
+            },
+          })
+        );
+        text = response.text || "";
+      } catch (error: any) {
+        if (isHighDemandOrRateLimit(error)) {
+          console.warn("[api/gemini/symptom] High demand / rate limit on primary model. Falling back to gemini-flash-latest...", error.message);
+          const response = await retryWithBackoff(() =>
+            client.models.generateContent({
+              model: "gemini-flash-latest",
+              contents: prompt,
+              config: {
+                responseMimeType: "application/json",
+              },
+            })
+          );
+          text = response.text || "";
+        } else {
+          throw error;
+        }
+      }
+
       res.json({ text });
     } catch (error: any) {
       console.error("Server API Error (/api/gemini/symptom):", error);
@@ -87,6 +121,9 @@ async function startServer() {
   });
 
   app.post("/api/gemini/analyze", async (req, res) => {
+    let responseStream: any = null;
+    let modelUsed = "gemini-3.5-flash";
+
     try {
       const { prompt } = req.body;
       if (!prompt) {
@@ -95,17 +132,33 @@ async function startServer() {
 
       const client = getGeminiClient();
       
-      const responseStream = await retryWithBackoff(() =>
-        client.models.generateContentStream({
-          model: "gemini-3.5-flash",
-          contents: [{ parts: [{ text: prompt }] }],
-          config: {
-            thinkingConfig: {
-              thinkingLevel: ThinkingLevel.LOW,
+      try {
+        console.log("[api/gemini/analyze] Attempting primary model gemini-3.5-flash with ThinkingLevel.LOW...");
+        responseStream = await retryWithBackoff(() =>
+          client.models.generateContentStream({
+            model: "gemini-3.5-flash",
+            contents: [{ parts: [{ text: prompt }] }],
+            config: {
+              thinkingConfig: {
+                thinkingLevel: ThinkingLevel.LOW,
+              },
             },
-          },
-        })
-      );
+          })
+        );
+      } catch (error: any) {
+        if (isHighDemandOrRateLimit(error)) {
+          console.warn("[api/gemini/analyze] High demand / rate limit on primary streaming. Falling back to gemini-flash-latest...", error.message);
+          modelUsed = "gemini-flash-latest";
+          responseStream = await retryWithBackoff(() =>
+            client.models.generateContentStream({
+              model: "gemini-flash-latest",
+              contents: [{ parts: [{ text: prompt }] }],
+            })
+          );
+        } else {
+          throw error;
+        }
+      }
 
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.setHeader("Transfer-Encoding", "chunked");
@@ -117,7 +170,7 @@ async function startServer() {
 
       res.end();
     } catch (error: any) {
-      console.error("Server API Error (/api/gemini/analyze):", error);
+      console.error(`Server API Error (/api/gemini/analyze) [Model: ${modelUsed}]:`, error);
       if (!res.headersSent) {
         res.status(500).send(error.message || "An error occurred with Gemini on the server.");
       } else {
