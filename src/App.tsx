@@ -57,6 +57,8 @@ import {
   Square,
 } from "lucide-react";
 
+declare const __BUILD_TIME__: string;
+
 const getMedicationIcon = (code: string) => {
   const firstChar = code?.charAt(0)?.toUpperCase();
   switch (firstChar) {
@@ -379,10 +381,8 @@ export default function App() {
 
   const buildVersion = useMemo(() => {
     try {
-      const time =
-        typeof (globalThis as any).__BUILD_TIME__ !== "undefined"
-          ? (globalThis as any).__BUILD_TIME__
-          : new Date().toISOString();
+      // Use compile-time injected build timestamp
+      const time = typeof __BUILD_TIME__ !== "undefined" ? __BUILD_TIME__ : new Date().toISOString();
       const date = new Date(time);
       const yyyy = date.getFullYear();
       const mm = String(date.getMonth() + 1).padStart(2, "0");
@@ -391,7 +391,7 @@ export default function App() {
       const min = String(date.getMinutes()).padStart(2, "0");
       return `${yyyy}${mm}${dd}.${hh}${min}`;
     } catch (e) {
-      return "20240101.0000";
+      return "20260611.0000";
     }
   }, []);
 
