@@ -646,7 +646,7 @@ ${JSON.stringify(systemsList)}
 
         const response = await retryWithBackoff<any>(() =>
           ai.models.generateContent({
-            model: "gemini-3.5-flash",
+            model: "gemini-3.1-flash-lite",
             contents: prompt,
             config: {
               responseMimeType: "application/json",
@@ -843,14 +843,14 @@ ${currentQuery}
 ${medListSummaryText}
 `;
 
-      // 3. 升級至最新的 gemini-3.5-flash，並配合 generateContentStream。
+      // 3. 升級至最新的 gemini-3.1-flash-lite，並配合 generateContentStream。
       const responseStream = await retryWithBackoff<any>(() =>
         ai.models.generateContentStream({
-          model: "gemini-3.5-flash",
+          model: "gemini-3.1-flash-lite",
           contents: [{ parts: [{ text: prompt }] }],
           config: {
             thinkingConfig: {
-              thinkingLevel: "LOW",
+              thinkingLevel: "MINIMAL",
             },
           },
         })
