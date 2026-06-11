@@ -12,6 +12,7 @@ import {
   FormEvent,
 } from "react";
 import Fuse from "fuse.js";
+import { GoogleGenAI } from "@google/genai";
 import { motion, AnimatePresence, useDragControls } from "motion/react";
 import {
   Search,
@@ -49,25 +50,12 @@ import {
   Sun,
   Moon,
   Settings,
-  Key,
   Smartphone,
   Download,
   Copy,
   Check,
   HelpCircle,
-  Square,
 } from "lucide-react";
-
-import {
-  getStoredApiKey,
-  setStoredApiKey,
-  getStoredModel,
-  setStoredModel,
-  directGeminiSymptomFetch,
-  directGeminiAnalyzeStream,
-} from "./services/geminiClient";
-
-declare const __BUILD_TIME__: string;
 
 const getMedicationIcon = (code: string) => {
   const firstChar = code?.charAt(0)?.toUpperCase();
@@ -308,9 +296,6 @@ export default function App() {
   const [isAiSymptomRequested, setIsAiSymptomRequested] = useState(false);
   const aiSymptomCacheRef = useRef<Record<string, { classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] }>>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [userApiKey, setUserApiKey] = useState(() => getStoredApiKey());
-  const [userModel, setUserModel] = useState(() => getStoredModel());
-  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [favoritesSearchQuery, setFavoritesSearchQuery] = useState("");
@@ -327,54 +312,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("favorites", JSON.stringify(favorites));
   }, [favorites]);
-
-  // Initial load of cached medications from IndexedDB
-  useEffect(() => {
-    const loadCachedData = async () => {
-      try {
-        const cachedMeds = await localMedicationService.getAll();
-        setMedications(cachedMeds);
-        
-        // Check for cloud updates if URL exists
-        if (cachedMeds.length > 0 && gsheetUrl) {
-          const hasUpdate = await localMedicationService.checkForUpdates(gsheetUrl);
-          setIsUpdateAvailable(hasUpdate);
-        }
-      } catch (err) {
-        console.error("Failed to load cached medications:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadCachedData();
-  }, [gsheetUrl]);
-
-  const handleSyncGoogleSheet = async () => {
-    if (!gsheetUrl.trim()) {
-      setToast({ message: "同步 URL 格式無效或未設定。", type: "error" });
-      return;
-    }
-
-    setIsSyncing(true);
-    try {
-      setToast({ message: "正在從 Google Sheet 同步臨床藥物資料...", type: "info" });
-      const result = await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
-      
-      if (result && result.meds) {
-        await localMedicationService.saveAll(result.meds, result.hash);
-        setMedications(result.meds);
-        setIsUpdateAvailable(false);
-        setToast({ message: `同步成功！共載入 ${result.meds.length} 筆臨床藥物。`, type: "success" });
-      } else {
-        throw new Error("同步失敗，未取得藥物資料。");
-      }
-    } catch (error: any) {
-      console.error("Google Sheet Sync Error:", error);
-      setToast({ message: error?.message || "同步失敗，請檢查 URL 或網路連線。", type: "error" });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   const toggleFavorite = (id: string) => {
     setFavorites((prev) =>
@@ -394,8 +331,10 @@ export default function App() {
 
   const buildVersion = useMemo(() => {
     try {
-      // Use compile-time injected build timestamp
-      const time = typeof __BUILD_TIME__ !== "undefined" ? __BUILD_TIME__ : new Date().toISOString();
+      const time =
+        typeof (globalThis as any).__BUILD_TIME__ !== "undefined"
+          ? (globalThis as any).__BUILD_TIME__
+          : new Date().toISOString();
       const date = new Date(time);
       const yyyy = date.getFullYear();
       const mm = String(date.getMonth() + 1).padStart(2, "0");
@@ -404,7 +343,7 @@ export default function App() {
       const min = String(date.getMinutes()).padStart(2, "0");
       return `${yyyy}${mm}${dd}.${hh}${min}`;
     } catch (e) {
-      return "20260611.0000";
+      return "20240101.0000";
     }
   }, []);
 
@@ -517,9 +456,6 @@ export default function App() {
   const [aiQuery, setAiQuery] = useState("");
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
-  const [aiProgress, setAiProgress] = useState(0);
-  const [aiProgressStage, setAiProgressStage] = useState("");
-  const aiAbortControllerRef = useRef<AbortController | null>(null);
   const [aiHistory, setAiHistory] = useState<
     { query: string; response: string; timestamp: number; filteredCount?: number; totalCount?: number }[]
   >([]);
@@ -624,7 +560,18 @@ export default function App() {
     document.documentElement.setAttribute("data-mode", isAiMode ? "ai" : "hmss");
   }, [isAiMode]);
 
-
+  const ai = useMemo(
+    () =>
+      new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY || "",
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build-client",
+          },
+        },
+      }),
+    [],
+  );
 
   const isQueryValidForAi = useMemo(() => {
     const query = searchQuery.trim();
@@ -694,37 +641,18 @@ ${JSON.stringify(systemsList)}
 
 注意：如果沒有任何相關的，請回傳空陣列形式。`;
 
-        const response = await retryWithBackoff<any>(async () => {
-          const savedApiKey = getStoredApiKey();
-          if (savedApiKey) {
-            try {
-              console.log("[Symptom] Using direct client-side Gemini API...");
-              return await directGeminiSymptomFetch(prompt, savedApiKey);
-            } catch (err: any) {
-              console.warn("[Symptom] Direct client-side call failed, trying server-side proxy fallback...", err.message);
+        const response = await retryWithBackoff<any>(() =>
+          ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              thinkingConfig: {
+                thinkingLevel: "MINIMAL",
+              },
             }
-          }
-
-          try {
-            const res = await fetch("/api/gemini/symptom", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prompt }),
-            });
-            if (!res.ok) {
-              if (res.status === 405 || res.status === 404) {
-                throw new Error("STATIC_HOST_PROMPT_KEY");
-              }
-              throw new Error(`API error: ${res.statusText}`);
-            }
-            return res.json();
-          } catch (serverErr: any) {
-            if (serverErr.message === "STATIC_HOST_PROMPT_KEY" || serverErr.message?.includes("405") || serverErr.message?.includes("404")) {
-              throw new Error("偵測到靜態主機環境（如 GitHub Pages）不支援後端代理解析 (405 Not Allowed)。💡 請點選控制中心「金鑰設定」填入您個人的 Gemini API Key 以啟用完整 AI 搜尋功能。");
-            }
-            throw serverErr;
-          }
-        });
+          })
+        );
 
         const text = response.text || "";
         const parsed = JSON.parse(text.trim());
@@ -746,7 +674,7 @@ ${JSON.stringify(systemsList)}
     }, 150);
 
     return () => clearTimeout(delayTimer);
-  }, [isAiSymptomRequested, searchQuery, medications]);
+  }, [isAiSymptomRequested, searchQuery, medications, ai]);
 
   // Fuse instance for fuzzy search
   const fuse = useMemo(() => {
@@ -772,8 +700,11 @@ ${JSON.stringify(systemsList)}
 
   // Remove global click listener in favor of local onBlur for better focus management
   useEffect(() => {
+    // We can keep a simplified version or rely solely on onBlur
+    // But standard "outside click" is usually better for mouse users who click non-focusable areas
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
+      // If click is not inside a dropdown or filter area, close them
       if (
         !target.closest(".dropdown-container") &&
         !target.closest(".filter-popover-container")
@@ -788,31 +719,52 @@ ${JSON.stringify(systemsList)}
     return () => window.removeEventListener("click", handleClick);
   }, []);
 
-  const handleAiCancel = () => {
-    if (aiAbortControllerRef.current) {
-      aiAbortControllerRef.current.abort();
+  const handleSyncGoogleSheet = async () => {
+    setIsSyncing(true);
+    setImportStatus("正在連線至雲端資料庫...");
+
+    try {
+      const { meds, hash } =
+        await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
+      setImportStatus(`正在存儲 ${meds.length} 筆資料至本地庫...`);
+
+      // 直接覆蓋現有清單，並儲存原始資料的雜湊以供未來比對
+      await localMedicationService.saveAll(meds, hash);
+      setMedications(meds);
+
+      setImportStatus(`同步成功！已更新 ${meds.length} 筆資料`);
+      setIsUpdateAvailable(false);
+    } catch (error) {
+      setImportStatus("同步失敗，請檢查網路連線或資料格式");
+      console.error(error);
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setImportStatus(null), 3000);
     }
-    setIsAiLoading(false);
-    setAiProgress(0);
-    setAiProgressStage("");
-    
-    setAiHistory((prev) => {
-      if (prev.length === 0) return prev;
-      return prev.map((item, idx) => {
-        if (idx === 0) {
-          const currentRes = item.response ? item.response.trim() : "";
-          const cancelMsg = currentRes 
-            ? `${currentRes}\n\n⚠️ (分析已被使用者取消)` 
-            : "⚠️ 分析已被使用者取消。";
-          return {
-            ...item,
-            response: cancelMsg,
-          };
-        }
-        return item;
-      });
-    });
   };
+
+  // Data Loading and Update Check
+  useEffect(() => {
+    const initData = async () => {
+      setLoading(true);
+      try {
+        const stored = await localMedicationService.getAll();
+        if (stored.length > 0) {
+          setMedications(stored);
+        } else {
+          const { meds, hash } =
+            await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
+          await localMedicationService.saveAll(meds, hash);
+          setMedications(meds);
+        }
+      } catch (error) {
+        console.error("Failed to load local database:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    initData();
+  }, [gsheetUrl]);
 
   const handleAiSearch = async (e?: FormEvent) => {
     if (e) e.preventDefault();
@@ -820,14 +772,9 @@ ${JSON.stringify(systemsList)}
 
     setIsAiLoading(true);
     setAiResponse(null);
-    setAiProgress(5);
-    setAiProgressStage("正在建立 AI 臨床連線...");
 
     const currentQuery = aiQuery;
     const currentTimestamp = Date.now();
-
-    const controller = new AbortController();
-    aiAbortControllerRef.current = controller;
 
     // 立即將主要對話佔位符加入對話歷史
     setAiHistory((prev) => [
@@ -840,16 +787,13 @@ ${JSON.stringify(systemsList)}
     ]);
     setAiQuery("");
 
-    // 平滑增加初始連線進度 (5% - 15%)
-    const progressInterval = setInterval(() => {
-      setAiProgress((prev) => {
-        if (prev < 15) return prev + 2;
-        if (prev < 25) return prev + 1;
-        return prev;
-      });
-    }, 150);
-
     try {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error(
+          "偵測不到 GEMINI_API_KEY。請在專案中設定環境變數。",
+        );
+      }
+
       // 1. 將藥物清單壓縮為兼顧準確與極致短少 Token 的緊湊格式，包含藥理分類與適應症資訊供 AI 推理
       const medListSummaryText = medications
         .map(
@@ -896,126 +840,51 @@ ${currentQuery}
 ${medListSummaryText}
 `;
 
-      const savedApiKey = getStoredApiKey();
-      let apiStreamFinished = false;
-
-      // Helper to update result text
-      const updateResponseText = (text: string) => {
-        setAiHistory((prev) =>
-          prev.map((item) =>
-            item.timestamp === currentTimestamp
-              ? { ...item, response: text }
-              : item
-          )
-        );
-      };
-
-      if (savedApiKey) {
-        clearInterval(progressInterval);
-        setAiProgress(15);
-        setAiProgressStage("正在建立與 Gemini API 的直接本機串流連線...");
-        try {
-          await directGeminiAnalyzeStream(
-            prompt,
-            savedApiKey,
-            (text) => {
-              setAiProgressStage(`正在接收臨床建議... (已讀取 ${text.length} 字)`);
-              const lengthProgress = 15 + Math.min(Math.round(text.length / 8), 80);
-              setAiProgress(lengthProgress);
-              updateResponseText(text);
+      // 3. 升級至最新的 gemini-3.5-flash，並配合 generateContentStream。
+      const responseStream = await retryWithBackoff<any>(() =>
+        ai.models.generateContentStream({
+          model: "gemini-3.5-flash",
+          contents: [{ parts: [{ text: prompt }] }],
+          config: {
+            thinkingConfig: {
+              thinkingLevel: "LOW",
             },
-            controller.signal
+          },
+        })
+      );
+
+      let fullResponse = "";
+      for await (const chunk of responseStream) {
+        const chunkText = chunk.text || "";
+        if (chunkText) {
+          fullResponse += chunkText;
+          setAiHistory((prev) =>
+            prev.map((item) =>
+              item.timestamp === currentTimestamp
+                ? { ...item, response: fullResponse }
+                : item,
+            ),
           );
-          apiStreamFinished = true;
-        } catch (err: any) {
-          console.warn("Direct client Gemini stream failed, trying server proxy backup...", err.message);
         }
-      }
-
-      if (!apiStreamFinished) {
-        setAiProgressStage("正在建立 AI 臨床連線 (後端代理)...");
-        const response = await fetch("/api/gemini/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt }),
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          if (response.status === 405 || response.status === 404) {
-            throw new Error("STATIC_HOST_PROMPT_KEY");
-          }
-          const errorText = await response.text();
-          throw new Error(errorText || "AI 臨床連線建立失敗");
-        }
-
-        // 開始接收串流時，清除預設的 progressInterval 並自己算
-        clearInterval(progressInterval);
-        setAiProgress(15);
-        setAiProgressStage("正在接收與分析臨床處方...");
-
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("無法讀取串流");
-        }
-
-        const decoder = new TextDecoder();
-        let fullResponse = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunkText = decoder.decode(value, { stream: true });
-          if (chunkText) {
-            fullResponse += chunkText;
-
-            // 更新 stage，顯示即時取得進度
-            setAiProgressStage(`正在接收臨床建議... (已讀取 ${fullResponse.length} 字)`);
-
-            // 計算實時進度，最大至 95%
-            const lengthProgress = 15 + Math.min(Math.round(fullResponse.length / 8), 80);
-            setAiProgress(lengthProgress);
-
-            updateResponseText(fullResponse);
-          }
-        }
-      }
-
-      if (!controller.signal.aborted) {
-        setAiProgress(100);
-        setAiProgressStage("臨床處方分析完成！");
-        await new Promise((resolve) => setTimeout(resolve, 500));
       }
     } catch (error: any) {
-      clearInterval(progressInterval);
-      if (controller.signal.aborted || error?.name === "AbortError") {
-        console.log("AI Search Aborted by user");
-        return;
-      }
-
       console.error("AI Search Error:", error);
-      let errorMsg = error?.message || "AI 搜尋發生錯誤，請稍後再試。";
-      if (errorMsg.includes("STATIC_HOST_PROMPT_KEY") || errorMsg.includes("405") || errorMsg.includes("404")) {
-        errorMsg = "偵測到靜態主機環境（如 GitHub Pages）不支援後端代理解析 (405 Not Allowed)。\n\n💡 請點選控制中心「金鑰設定」填入您個人的 Gemini API Key，即可直接在瀏覽器端極速運行！";
-      }
+      const errorMsg = error?.message || "AI 搜尋發生錯誤，請稍後再試。";
       setAiHistory((prev) =>
         prev.map((item) =>
           item.timestamp === currentTimestamp
             ? { ...item, response: `⚠️ 錯誤：${errorMsg}` }
-            : item
-        )
+            : item,
+        ),
       );
     } finally {
-      clearInterval(progressInterval);
       setIsAiLoading(false);
-      // 完成後一併重設 progress
-      setTimeout(() => {
-        setAiProgress(0);
-        setAiProgressStage("");
-      }, 1000);
     }
   };
+
+
+
+
 
   const anatomicalSystems = useMemo(() => {
     const systems = new Set(medications.map((m) => m.anatomicalSystem));
@@ -1498,37 +1367,6 @@ ${medListSummaryText}
                       >
                         {favorites.length}
                       </span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-brand-secondary-accent shrink-0" />
-                  </button>
-                </div>
-
-                {/* API Key Settings Entry */}
-                <div className="space-y-2">
-                  <button
-                    onClick={() => {
-                      setIsApiKeyModalOpen(true);
-                      setIsSettingsOpen(false);
-                    }}
-                    className={cn(
-                      "w-full p-3 rounded-xl border transition-all text-xs flex items-center justify-between group cursor-pointer shadow-sm",
-                      theme === "dark"
-                        ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200 hover:border-brand-accent/30"
-                        : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-800 hover:border-brand-accent/30",
-                    )}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <Key className="w-3.5 h-3.5 text-indigo-400" />
-                      <span className="font-bold">金鑰設定</span>
-                      {userApiKey ? (
-                        <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-green-500/10 text-green-400 font-mono scale-90">
-                          安全啟用
-                        </span>
-                      ) : (
-                        <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-amber-500/10 text-amber-500 font-mono scale-90">
-                          未設定
-                        </span>
-                      )}
                     </div>
                     <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-brand-secondary-accent shrink-0" />
                   </button>
@@ -2877,31 +2715,23 @@ ${medListSummaryText}
                           >
                             <input
                               type="text"
-                              placeholder={isAiLoading ? "AI 臨床處方正在分析中..." : "輸入臨床情境分析藥物"}
+                              placeholder="輸入臨床情境分析藥物"
                               value={aiQuery}
                               onChange={(e) => setAiQuery(e.target.value)}
-                              disabled={isAiLoading}
                               className={cn(
                                 "w-full backdrop-blur-xl border-none rounded-[15px] pl-5 pr-14 py-3 text-sm md:text-base focus:outline-none focus:ring-0 transition-all font-medium shadow-2xl",
                                 theme === "dark"
-                                  ? "bg-black/80 text-white placeholder:text-zinc-500 disabled:opacity-50"
-                                  : "bg-white/95 text-slate-800 placeholder:text-slate-400 disabled:opacity-50",
+                                  ? "bg-black/80 text-white placeholder:text-zinc-500"
+                                  : "bg-white/95 text-slate-800 placeholder:text-slate-400",
                               )}
                             />
                             <button
-                              type={isAiLoading ? "button" : "submit"}
-                              onClick={isAiLoading ? handleAiCancel : undefined}
-                              disabled={!isAiLoading && !aiQuery.trim()}
-                              className={cn(
-                                "absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full text-white flex items-center justify-center transition-all shadow-xl active:scale-95 cursor-pointer",
-                                isAiLoading
-                                  ? "bg-red-500 hover:bg-red-600 animate-pulse"
-                                  : "bg-gradient-to-r from-blue-400 via-purple-500 to-orange-500 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
-                              )}
-                              title={isAiLoading ? "停止 AI 分析" : "送出"}
+                              type="submit"
+                              disabled={isAiLoading || !aiQuery.trim()}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gradient-to-r from-blue-400 via-purple-500 to-orange-500 text-white flex items-center justify-center hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl active:scale-95"
                             >
                               {isAiLoading ? (
-                                <Square className="w-4 h-4 fill-white text-white" />
+                                <Loader2 className="w-4 h-4 animate-spin" />
                               ) : (
                                 <ArrowRight className="w-4 h-4" />
                               )}
@@ -3385,27 +3215,15 @@ ${medListSummaryText}
                                           {hIdx === 0 && isAiLoading && (
                                             <div
                                               className={cn(
-                                                "flex flex-col gap-3 p-4 rounded-2xl border mt-3 transition-all",
+                                                "flex items-center gap-3 text-brand-accent font-bold animate-pulse tracking-widest text-[10px] uppercase px-4 py-2.5 rounded-xl border mt-1.5",
                                                 theme === "dark"
-                                                  ? "bg-white/[0.02] border-white/5"
-                                                  : "bg-slate-50/50 border-slate-100 shadow-sm",
+                                                  ? "bg-white/[0.03] border-white/5"
+                                                  : "bg-slate-50 border-slate-100 shadow-sm",
                                               )}
                                             >
-                                              <div className="flex items-center justify-between text-xs font-semibold">
-                                                <div className="flex items-center gap-2">
-                                                  <Loader2 className="w-4 h-4 animate-spin text-brand-accent animate-duration-1000" />
-                                                  <span className={theme === "dark" ? "text-zinc-300 font-medium" : "text-slate-700 font-medium"}>
-                                                    {aiProgressStage || "正在執行臨床處方分析..."}
-                                                  </span>
-                                                </div>
-                                                <span className="font-mono text-xs text-brand-accent font-bold">
-                                                  {aiProgress}%
-                                                </span>
-                                              </div>
-
                                               <div
                                                 className={cn(
-                                                  "w-full h-2 rounded-full overflow-hidden",
+                                                  "w-full h-1 rounded-full overflow-hidden",
                                                   theme === "dark"
                                                     ? "bg-white/5"
                                                     : "bg-slate-200",
@@ -3413,25 +3231,14 @@ ${medListSummaryText}
                                               >
                                                 <motion.div
                                                   className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500"
-                                                  animate={{ width: `${aiProgress}%` }}
-                                                  transition={{ duration: 0.3, ease: "easeOut" }}
+                                                  initial={{ width: "0%" }}
+                                                  animate={{ width: "100%" }}
+                                                  transition={{
+                                                    duration: 2,
+                                                    repeat: Infinity,
+                                                    ease: "linear",
+                                                  }}
                                                 />
-                                              </div>
-
-                                              <div className="flex justify-end mt-1">
-                                                <button
-                                                  type="button"
-                                                  onClick={handleAiCancel}
-                                                  className={cn(
-                                                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all active:scale-95 border cursor-pointer",
-                                                    theme === "dark"
-                                                      ? "bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20"
-                                                      : "bg-red-50 hover:bg-red-100 text-red-600 border-red-100"
-                                                  )}
-                                                >
-                                                  <Square className="w-3 h-3 fill-current" />
-                                                  <span>停止處方分析</span>
-                                                </button>
                                               </div>
                                             </div>
                                           )}
@@ -4333,184 +4140,16 @@ ${medListSummaryText}
               {/* Footer */}
               <div
                 className={cn(
-                  "p-4 border-t flex items-center justify-between gap-3 shrink-0",
+                  "p-4 border-t flex justify-end shrink-0",
                   theme === "dark" ? "border-white/5 bg-white/[0.01]" : "border-slate-100 bg-slate-50",
                 )}
               >
-                <a
-                  href="#google-form-url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all active:scale-95 shadow-sm",
-                    theme === "dark"
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                      : "border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-                  )}
-                  onClick={(e) => {
-                    // Alert users to configure their URL or keep simple fallback
-                    if (e.currentTarget.getAttribute('href') === '#google-form-url') {
-                      e.preventDefault();
-                      alert("問卷鏈接即將開啟！\n\n【提示：您可以在 App.tsx 的第 4251 行，將 '#google-form-url' 替換為您剛才建立的正式 Google 表單網址。】");
-                      window.open("https://forms.google.com", "_blank");
-                    }
-                  }}
-                >
-                  📝 填寫測試問卷 (約1分鐘)
-                </a>
                 <button
                   onClick={() => setIsHelpOpen(false)}
                   className="px-4 py-1.5 rounded-xl bg-brand-accent hover:bg-brand-accent/80 text-white font-bold transition-all active:scale-95 shadow-sm text-[11px]"
                 >
                   我知道了
                 </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Gemini API Key Configuration Modal */}
-      <AnimatePresence>
-        {isApiKeyModalOpen && (
-          <>
-            <motion.div
-              key="api-key-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsApiKeyModalOpen(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150]"
-            />
-
-            <motion.div
-              key="api-key-modal"
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: "spring", duration: 0.5, bounce: 0.15 }}
-              className={cn(
-                "fixed inset-x-4 top-[15%] bottom-[15%] md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[460px] md:h-[420px] rounded-3xl border shadow-2xl flex flex-col overflow-hidden z-[160]",
-                theme === "dark"
-                  ? "bg-zinc-900/95 border-white/10 text-white shadow-black/80"
-                  : "bg-white border-slate-200 text-slate-900 shadow-slate-900/20"
-              )}
-            >
-              {/* Header */}
-              <div
-                className={cn(
-                  "p-5 border-b shrink-0 flex items-center justify-between",
-                  theme === "dark" ? "border-white/5 bg-white/[0.02]" : "border-slate-100 bg-slate-50"
-                )}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded-xl flex items-center justify-center shrink-0 bg-indigo-500/10 text-indigo-400">
-                    <Key className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold tracking-tight">Gemini 呼叫設定</h3>
-                    <p className={cn("text-[10px] mt-0.5", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
-                      設定本機 API 金鑰以在靜態空間啟用 AI 功能
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsApiKeyModalOpen(false)}
-                  className={cn(
-                    "p-1.5 rounded-full transition-colors",
-                    theme === "dark" ? "hover:bg-white/10 text-zinc-400 hover:text-white" : "hover:bg-slate-100 text-slate-500 hover:text-slate-800"
-                  )}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar text-xs">
-                <div className={cn("p-3 rounded-xl border leading-relaxed text-[11px]", theme === "dark" ? "bg-white/5 border-white/10 text-zinc-300" : "bg-indigo-50/50 border-indigo-100 text-slate-600")}>
-                  📌 <strong>為什麼需要設定？</strong><br />
-                  當您從 GitHub Pages 等靜態託管環境運行此系統時，由於沒有後端 Express 代理伺服器，「後端 AI 呼叫」會傳回錯誤（405 Not Allowed）。<br />
-                  藉由在瀏覽器端設定您個人的 <strong>Gemini API Key</strong>，本系統可以直接從您本地呼叫 Google AI，金鑰僅儲存於您的瀏覽器本地 LocalStorage 中，百分之百安全。
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold block text-[11px]">本機 Gemini API Key 金鑰</label>
-                  <input
-                    type="password"
-                    placeholder="在此貼上您個人的 GEMINI_API_KEY..."
-                    value={userApiKey}
-                    onChange={(e) => setUserApiKey(e.target.value)}
-                    className={cn(
-                      "w-full px-3 py-2 rounded-xl border text-xs focus:ring-1 outline-none font-mono",
-                      theme === "dark"
-                        ? "bg-zinc-800/50 border-white/10 focus:border-indigo-400 focus:ring-indigo-400 text-white"
-                        : "bg-slate-50 border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 text-slate-900"
-                    )}
-                  />
-                  <p className="text-[9px] text-zinc-400 mt-1">
-                    還沒有 Key？可以前往 <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 underline hover:text-indigo-300">Google AI Studio</a> 免費申請一個。
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-bold block text-[11px]">優先使用模型 (Model)</label>
-                  <select
-                    value={userModel}
-                    onChange={(e) => setUserModel(e.target.value)}
-                    className={cn(
-                      "w-full px-3 py-2 rounded-xl border text-xs focus:ring-1 outline-none font-mono",
-                      theme === "dark"
-                        ? "bg-zinc-800/50 border-white/10 focus:border-indigo-400 focus:ring-indigo-400 text-white"
-                        : "bg-slate-50 border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 text-slate-900"
-                    )}
-                  >
-                    <option value="gemini-2.5-flash">gemini-2.5-flash (推薦！極速、回應高、精確度優)</option>
-                    <option value="gemini-1.5-flash">gemini-1.5-flash (經典高效模型)</option>
-                    <option value="gemini-1.5-pro">gemini-1.5-pro (推理強，速度中等)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className={cn("p-4 border-t flex items-center justify-between gap-3 shrink-0", theme === "dark" ? "border-white/5 bg-white/[0.01]" : "border-slate-100 bg-slate-50")}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUserApiKey("");
-                    setStoredApiKey("");
-                    setToast({ message: "金鑰已成功清除，回復為預設後端代理模式" });
-                    setIsApiKeyModalOpen(false);
-                  }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all hover:bg-red-500 hover:text-white hover:border-red-500",
-                    theme === "dark" ? "border-white/10 text-zinc-400" : "border-slate-200 text-slate-500"
-                  )}
-                >
-                  清除金鑰
-                </button>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setIsApiKeyModalOpen(false)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all",
-                      theme === "dark" ? "border-white/10 text-zinc-400 hover:bg-zinc-800" : "border-slate-200 text-slate-500 hover:bg-slate-100"
-                    )}
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={() => {
-                      setStoredApiKey(userApiKey);
-                      setStoredModel(userModel);
-                      setToast({ message: "API 呼叫設定已成功儲存！" });
-                      setIsApiKeyModalOpen(false);
-                    }}
-                    className="px-4 py-1.5 rounded-xl bg-brand-accent hover:bg-indigo-600 text-white font-bold transition-all text-[11px] shadow-sm"
-                  >
-                    儲存設定
-                  </button>
-                </div>
               </div>
             </motion.div>
           </>
