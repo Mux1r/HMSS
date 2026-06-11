@@ -22,6 +22,11 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Skip non-GET requests and API requests
+  if (event.request.method !== 'GET' || event.request.url.includes('/api/')) {
+    return; // Let the browser handle these normally
+  }
+
   // Required for PWA installation and offline support
   event.respondWith(
     fetch(event.request).catch(() => {
