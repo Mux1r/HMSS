@@ -4,10 +4,14 @@ import App from './App.tsx';
 import './index.css';
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(error => {
-      console.log('ServiceWorker registration failed: ', error);
-    });
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const registration of registrations) {
+      registration.unregister().then(() => {
+        console.log('Unregistered stale service worker successfully.');
+      });
+    }
+  }).catch((err) => {
+    console.error('Error getting list of service worker registrations:', err);
   });
 }
 
