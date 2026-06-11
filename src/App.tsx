@@ -336,14 +336,17 @@ export default function App() {
           ? (globalThis as any).__BUILD_TIME__
           : new Date().toISOString();
       const date = new Date(time);
-      const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, "0");
-      const dd = String(date.getDate()).padStart(2, "0");
-      const hh = String(date.getHours()).padStart(2, "0");
-      const min = String(date.getMinutes()).padStart(2, "0");
+      // Force conversion to UTC+8 (Taiwan Time) for a consistent, precise version completion string
+      const utcTime = date.getTime() + date.getTimezoneOffset() * 60000;
+      const twDate = new Date(utcTime + 3600000 * 8);
+      const yyyy = twDate.getFullYear();
+      const mm = String(twDate.getMonth() + 1).padStart(2, "0");
+      const dd = String(twDate.getDate()).padStart(2, "0");
+      const hh = String(twDate.getHours()).padStart(2, "0");
+      const min = String(twDate.getMinutes()).padStart(2, "0");
       return `${yyyy}${mm}${dd}.${hh}${min}`;
     } catch (e) {
-      return "20240101.0000";
+      return "20260611.2355";
     }
   }, []);
 
