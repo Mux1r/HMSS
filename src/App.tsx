@@ -49,6 +49,7 @@ import {
   Sun,
   Moon,
   Settings,
+  Key,
   Smartphone,
   Download,
   Copy,
@@ -56,6 +57,15 @@ import {
   HelpCircle,
   Square,
 } from "lucide-react";
+
+import {
+  getStoredApiKey,
+  setStoredApiKey,
+  getStoredModel,
+  setStoredModel,
+  directGeminiSymptomFetch,
+  directGeminiAnalyzeStream,
+} from "./services/geminiClient";
 
 declare const __BUILD_TIME__: string;
 
@@ -298,6 +308,9 @@ export default function App() {
   const [isAiSymptomRequested, setIsAiSymptomRequested] = useState(false);
   const aiSymptomCacheRef = useRef<Record<string, { classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] }>>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [userApiKey, setUserApiKey] = useState(() => getStoredApiKey());
+  const [userModel, setUserModel] = useState(() => getStoredModel());
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [favoritesSearchQuery, setFavoritesSearchQuery] = useState("");
@@ -682,15 +695,35 @@ ${JSON.stringify(systemsList)}
 注意：如果沒有任何相關的，請回傳空陣列形式。`;
 
         const response = await retryWithBackoff<any>(async () => {
-          const res = await fetch("/api/gemini/symptom", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt }),
-          });
-          if (!res.ok) {
-            throw new Error(`API error: ${res.statusText}`);
+          const savedApiKey = getStoredApiKey();
+          if (savedApiKey) {
+            try {
+              console.log("[Symptom] Using direct client-side Gemini API...");
+              return await directGeminiSymptomFetch(prompt, savedApiKey);
+            } catch (err: any) {
+              console.warn("[Symptom] Direct client-side call failed, trying server-side proxy fallback...", err.message);
+            }
           }
-          return res.json();
+
+          try {
+            const res = await fetch("/api/gemini/symptom", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prompt }),
+            });
+            if (!res.ok) {
+              if (res.status === 405 || res.status === 404) {
+                throw new Error("STATIC_HOST_PROMPT_KEY");
+              }
+              throw new Error(`API error: ${res.statusText}`);
+            }
+            return res.json();
+          } catch (serverErr: any) {
+            if (serverErr.message === "STATIC_HOST_PROMPT_KEY" || serverErr.message?.includes("405") || serverErr.message?.includes("404")) {
+              throw new Error("偵測到靜態主機環境（如 GitHub Pages）不支援後端代理解析 (405 Not Allowed)。💡 請點選控制中心「金鑰設定」填入您個人的 Gemini API Key 以啟用完整 AI 搜尋功能。");
+            }
+            throw serverErr;
+          }
         });
 
         const text = response.text || "";
@@ -863,53 +896,89 @@ ${currentQuery}
 ${medListSummaryText}
 `;
 
-      const response = await fetch("/api/gemini/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-        signal: controller.signal,
-      });
+      const savedApiKey = getStoredApiKey();
+      let apiStreamFinished = false;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "AI 臨床連線建立失敗");
-      }
+      // Helper to update result text
+      const updateResponseText = (text: string) => {
+        setAiHistory((prev) =>
+          prev.map((item) =>
+            item.timestamp === currentTimestamp
+              ? { ...item, response: text }
+              : item
+          )
+        );
+      };
 
-      // 開始接收串流時，清除預設的 progressInterval 並自己算
-      clearInterval(progressInterval);
-      setAiProgress(15);
-      setAiProgressStage("正在接收與分析臨床處方...");
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("無法讀取串流");
-      }
-
-      const decoder = new TextDecoder();
-      let fullResponse = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunkText = decoder.decode(value, { stream: true });
-        if (chunkText) {
-          fullResponse += chunkText;
-
-          // 更新 stage，顯示即時取得進度
-          setAiProgressStage(`正在接收臨床建議... (已讀取 ${fullResponse.length} 字)`);
-
-          // 計算實時進度，最大至 95%
-          const lengthProgress = 15 + Math.min(Math.round(fullResponse.length / 8), 80);
-          setAiProgress(lengthProgress);
-
-          setAiHistory((prev) =>
-            prev.map((item) =>
-              item.timestamp === currentTimestamp
-                ? { ...item, response: fullResponse }
-                : item,
-            ),
+      if (savedApiKey) {
+        clearInterval(progressInterval);
+        setAiProgress(15);
+        setAiProgressStage("正在建立與 Gemini API 的直接本機串流連線...");
+        try {
+          await directGeminiAnalyzeStream(
+            prompt,
+            savedApiKey,
+            (text) => {
+              setAiProgressStage(`正在接收臨床建議... (已讀取 ${text.length} 字)`);
+              const lengthProgress = 15 + Math.min(Math.round(text.length / 8), 80);
+              setAiProgress(lengthProgress);
+              updateResponseText(text);
+            },
+            controller.signal
           );
+          apiStreamFinished = true;
+        } catch (err: any) {
+          console.warn("Direct client Gemini stream failed, trying server proxy backup...", err.message);
+        }
+      }
+
+      if (!apiStreamFinished) {
+        setAiProgressStage("正在建立 AI 臨床連線 (後端代理)...");
+        const response = await fetch("/api/gemini/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          if (response.status === 405 || response.status === 404) {
+            throw new Error("STATIC_HOST_PROMPT_KEY");
+          }
+          const errorText = await response.text();
+          throw new Error(errorText || "AI 臨床連線建立失敗");
+        }
+
+        // 開始接收串流時，清除預設的 progressInterval 並自己算
+        clearInterval(progressInterval);
+        setAiProgress(15);
+        setAiProgressStage("正在接收與分析臨床處方...");
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("無法讀取串流");
+        }
+
+        const decoder = new TextDecoder();
+        let fullResponse = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunkText = decoder.decode(value, { stream: true });
+          if (chunkText) {
+            fullResponse += chunkText;
+
+            // 更新 stage，顯示即時取得進度
+            setAiProgressStage(`正在接收臨床建議... (已讀取 ${fullResponse.length} 字)`);
+
+            // 計算實時進度，最大至 95%
+            const lengthProgress = 15 + Math.min(Math.round(fullResponse.length / 8), 80);
+            setAiProgress(lengthProgress);
+
+            updateResponseText(fullResponse);
+          }
         }
       }
 
@@ -926,13 +995,16 @@ ${medListSummaryText}
       }
 
       console.error("AI Search Error:", error);
-      const errorMsg = error?.message || "AI 搜尋發生錯誤，請稍後再試。";
+      let errorMsg = error?.message || "AI 搜尋發生錯誤，請稍後再試。";
+      if (errorMsg.includes("STATIC_HOST_PROMPT_KEY") || errorMsg.includes("405") || errorMsg.includes("404")) {
+        errorMsg = "偵測到靜態主機環境（如 GitHub Pages）不支援後端代理解析 (405 Not Allowed)。\n\n💡 請點選控制中心「金鑰設定」填入您個人的 Gemini API Key，即可直接在瀏覽器端極速運行！";
+      }
       setAiHistory((prev) =>
         prev.map((item) =>
           item.timestamp === currentTimestamp
             ? { ...item, response: `⚠️ 錯誤：${errorMsg}` }
-            : item,
-        ),
+            : item
+        )
       );
     } finally {
       clearInterval(progressInterval);
@@ -1426,6 +1498,37 @@ ${medListSummaryText}
                       >
                         {favorites.length}
                       </span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-brand-secondary-accent shrink-0" />
+                  </button>
+                </div>
+
+                {/* API Key Settings Entry */}
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      setIsApiKeyModalOpen(true);
+                      setIsSettingsOpen(false);
+                    }}
+                    className={cn(
+                      "w-full p-3 rounded-xl border transition-all text-xs flex items-center justify-between group cursor-pointer shadow-sm",
+                      theme === "dark"
+                        ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200 hover:border-brand-accent/30"
+                        : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-800 hover:border-brand-accent/30",
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Key className="w-3.5 h-3.5 text-indigo-400" />
+                      <span className="font-bold">金鑰設定</span>
+                      {userApiKey ? (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-green-500/10 text-green-400 font-mono scale-90">
+                          安全啟用
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-amber-500/10 text-amber-500 font-mono scale-90">
+                          未設定
+                        </span>
+                      )}
                     </div>
                     <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-brand-secondary-accent shrink-0" />
                   </button>
@@ -4261,6 +4364,153 @@ ${medListSummaryText}
                 >
                   我知道了
                 </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Gemini API Key Configuration Modal */}
+      <AnimatePresence>
+        {isApiKeyModalOpen && (
+          <>
+            <motion.div
+              key="api-key-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsApiKeyModalOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150]"
+            />
+
+            <motion.div
+              key="api-key-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", duration: 0.5, bounce: 0.15 }}
+              className={cn(
+                "fixed inset-x-4 top-[15%] bottom-[15%] md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[460px] md:h-[420px] rounded-3xl border shadow-2xl flex flex-col overflow-hidden z-[160]",
+                theme === "dark"
+                  ? "bg-zinc-900/95 border-white/10 text-white shadow-black/80"
+                  : "bg-white border-slate-200 text-slate-900 shadow-slate-900/20"
+              )}
+            >
+              {/* Header */}
+              <div
+                className={cn(
+                  "p-5 border-b shrink-0 flex items-center justify-between",
+                  theme === "dark" ? "border-white/5 bg-white/[0.02]" : "border-slate-100 bg-slate-50"
+                )}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-xl flex items-center justify-center shrink-0 bg-indigo-500/10 text-indigo-400">
+                    <Key className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold tracking-tight">Gemini 呼叫設定</h3>
+                    <p className={cn("text-[10px] mt-0.5", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
+                      設定本機 API 金鑰以在靜態空間啟用 AI 功能
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsApiKeyModalOpen(false)}
+                  className={cn(
+                    "p-1.5 rounded-full transition-colors",
+                    theme === "dark" ? "hover:bg-white/10 text-zinc-400 hover:text-white" : "hover:bg-slate-100 text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar text-xs">
+                <div className={cn("p-3 rounded-xl border leading-relaxed text-[11px]", theme === "dark" ? "bg-white/5 border-white/10 text-zinc-300" : "bg-indigo-50/50 border-indigo-100 text-slate-600")}>
+                  📌 <strong>為什麼需要設定？</strong><br />
+                  當您從 GitHub Pages 等靜態託管環境運行此系統時，由於沒有後端 Express 代理伺服器，「後端 AI 呼叫」會傳回錯誤（405 Not Allowed）。<br />
+                  藉由在瀏覽器端設定您個人的 <strong>Gemini API Key</strong>，本系統可以直接從您本地呼叫 Google AI，金鑰僅儲存於您的瀏覽器本地 LocalStorage 中，百分之百安全。
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold block text-[11px]">本機 Gemini API Key 金鑰</label>
+                  <input
+                    type="password"
+                    placeholder="在此貼上您個人的 GEMINI_API_KEY..."
+                    value={userApiKey}
+                    onChange={(e) => setUserApiKey(e.target.value)}
+                    className={cn(
+                      "w-full px-3 py-2 rounded-xl border text-xs focus:ring-1 outline-none font-mono",
+                      theme === "dark"
+                        ? "bg-zinc-800/50 border-white/10 focus:border-indigo-400 focus:ring-indigo-400 text-white"
+                        : "bg-slate-50 border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 text-slate-900"
+                    )}
+                  />
+                  <p className="text-[9px] text-zinc-400 mt-1">
+                    還沒有 Key？可以前往 <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 underline hover:text-indigo-300">Google AI Studio</a> 免費申請一個。
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-bold block text-[11px]">優先使用模型 (Model)</label>
+                  <select
+                    value={userModel}
+                    onChange={(e) => setUserModel(e.target.value)}
+                    className={cn(
+                      "w-full px-3 py-2 rounded-xl border text-xs focus:ring-1 outline-none font-mono",
+                      theme === "dark"
+                        ? "bg-zinc-800/50 border-white/10 focus:border-indigo-400 focus:ring-indigo-400 text-white"
+                        : "bg-slate-50 border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 text-slate-900"
+                    )}
+                  >
+                    <option value="gemini-2.5-flash">gemini-2.5-flash (推薦！極速、回應高、精確度優)</option>
+                    <option value="gemini-1.5-flash">gemini-1.5-flash (經典高效模型)</option>
+                    <option value="gemini-1.5-pro">gemini-1.5-pro (推理強，速度中等)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className={cn("p-4 border-t flex items-center justify-between gap-3 shrink-0", theme === "dark" ? "border-white/5 bg-white/[0.01]" : "border-slate-100 bg-slate-50")}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserApiKey("");
+                    setStoredApiKey("");
+                    setToast({ message: "金鑰已成功清除，回復為預設後端代理模式" });
+                    setIsApiKeyModalOpen(false);
+                  }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all hover:bg-red-500 hover:text-white hover:border-red-500",
+                    theme === "dark" ? "border-white/10 text-zinc-400" : "border-slate-200 text-slate-500"
+                  )}
+                >
+                  清除金鑰
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsApiKeyModalOpen(false)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all",
+                      theme === "dark" ? "border-white/10 text-zinc-400 hover:bg-zinc-800" : "border-slate-200 text-slate-500 hover:bg-slate-100"
+                    )}
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={() => {
+                      setStoredApiKey(userApiKey);
+                      setStoredModel(userModel);
+                      setToast({ message: "API 呼叫設定已成功儲存！" });
+                      setIsApiKeyModalOpen(false);
+                    }}
+                    className="px-4 py-1.5 rounded-xl bg-brand-accent hover:bg-indigo-600 text-white font-bold transition-all text-[11px] shadow-sm"
+                  >
+                    儲存設定
+                  </button>
+                </div>
               </div>
             </motion.div>
           </>
