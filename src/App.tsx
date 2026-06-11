@@ -12,7 +12,6 @@ import {
   FormEvent,
 } from "react";
 import Fuse from "fuse.js";
-import { GoogleGenAI } from "@google/genai";
 import { motion, AnimatePresence, useDragControls } from "motion/react";
 import {
   Search,
@@ -612,18 +611,7 @@ export default function App() {
     document.documentElement.setAttribute("data-mode", isAiMode ? "ai" : "hmss");
   }, [isAiMode]);
 
-  const ai = useMemo(
-    () =>
-      new GoogleGenAI({
-        apiKey: process.env.GEMINI_API_KEY || "",
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build-client",
-          },
-        },
-      }),
-    [],
-  );
+
 
   const isQueryValidForAi = useMemo(() => {
     const query = searchQuery.trim();
@@ -693,18 +681,17 @@ ${JSON.stringify(systemsList)}
 
 注意：如果沒有任何相關的，請回傳空陣列形式。`;
 
-        const response = await retryWithBackoff<any>(() =>
-          ai.models.generateContent({
-            model: "gemini-3.5-flash",
-            contents: prompt,
-            config: {
-              responseMimeType: "application/json",
-              thinkingConfig: {
-                thinkingLevel: "MINIMAL",
-              },
-            }
-          })
-        );
+        const response = await retryWithBackoff<any>(async () => {
+          const res = await fetch("/api/gemini/symptom", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt }),
+          });
+          if (!res.ok) {
+            throw new Error(`API error: ${res.statusText}`);
+          }
+          return res.json();
+        });
 
         const text = response.text || "";
         const parsed = JSON.parse(text.trim());
@@ -726,7 +713,7 @@ ${JSON.stringify(systemsList)}
     }, 150);
 
     return () => clearTimeout(delayTimer);
-  }, [isAiSymptomRequested, searchQuery, medications, ai]);
+  }, [isAiSymptomRequested, searchQuery, medications]);
 
   // Fuse instance for fuzzy search
   const fuse = useMemo(() => {
@@ -830,12 +817,6 @@ ${JSON.stringify(systemsList)}
     }, 150);
 
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error(
-          "偵測不到 GEMINI_API_KEY。請在專案中設定環境變裝。",
-        );
-      }
-
       // 1. 將藥物清單壓縮為兼顧準確與極致短少 Token 的緊湊格式，包含藥理分類與適應症資訊供 AI 推理
       const medListSummaryText = medications
         .map(
@@ -882,30 +863,36 @@ ${currentQuery}
 ${medListSummaryText}
 `;
 
-      // 3. 升級至最新的 gemini-3.5-flash，並配合 generateContentStream。
-      const responseStream = await retryWithBackoff<any>(() =>
-        ai.models.generateContentStream({
-          model: "gemini-3.5-flash",
-          contents: [{ parts: [{ text: prompt }] }],
-          config: {
-            thinkingConfig: {
-              thinkingLevel: "LOW",
-            },
-          },
-        })
-      );
+      const response = await fetch("/api/gemini/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "AI 臨床連線建立失敗");
+      }
 
       // 開始接收串流時，清除預設的 progressInterval 並自己算
       clearInterval(progressInterval);
       setAiProgress(15);
       setAiProgressStage("正在接收與分析臨床處方...");
 
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("無法讀取串流");
+      }
+
+      const decoder = new TextDecoder();
       let fullResponse = "";
-      for await (const chunk of responseStream) {
-        if (controller.signal.aborted) {
-          break;
-        }
-        const chunkText = chunk.text || "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunkText = decoder.decode(value, { stream: true });
         if (chunkText) {
           fullResponse += chunkText;
 
@@ -4243,10 +4230,31 @@ ${medListSummaryText}
               {/* Footer */}
               <div
                 className={cn(
-                  "p-4 border-t flex justify-end shrink-0",
+                  "p-4 border-t flex items-center justify-between gap-3 shrink-0",
                   theme === "dark" ? "border-white/5 bg-white/[0.01]" : "border-slate-100 bg-slate-50",
                 )}
               >
+                <a
+                  href="#google-form-url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(
+                    "flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all active:scale-95 shadow-sm",
+                    theme === "dark"
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                  )}
+                  onClick={(e) => {
+                    // Alert users to configure their URL or keep simple fallback
+                    if (e.currentTarget.getAttribute('href') === '#google-form-url') {
+                      e.preventDefault();
+                      alert("問卷鏈接即將開啟！\n\n【提示：您可以在 App.tsx 的第 4251 行，將 '#google-form-url' 替換為您剛才建立的正式 Google 表單網址。】");
+                      window.open("https://forms.google.com", "_blank");
+                    }
+                  }}
+                >
+                  📝 填寫測試問卷 (約1分鐘)
+                </a>
                 <button
                   onClick={() => setIsHelpOpen(false)}
                   className="px-4 py-1.5 rounded-xl bg-brand-accent hover:bg-brand-accent/80 text-white font-bold transition-all active:scale-95 shadow-sm text-[11px]"
