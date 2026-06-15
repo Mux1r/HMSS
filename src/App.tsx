@@ -55,6 +55,8 @@ import {
   Copy,
   Check,
   HelpCircle,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 
 const getMedicationIcon = (code: string) => {
@@ -239,31 +241,85 @@ import {
 import { cn } from "./lib/utils";
 import { MEDICAL_ALIASES } from "./lib/medicalKeywords";
 
-// Helper function to retry Gemini API calls with exponential backoff on 429 Too Many Requests errors.
+// Helper function to retry Gemini API calls with exponential backoff on transient errors (429 Rate Limit, 503 Unavailable, etc.).
 const retryWithBackoff = async <T = any>(
   fn: () => Promise<T>,
-  retries = 3,
+  retries = 4,
   delay = 1000,
   backoffFactor = 2
 ): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
-    const isRateLimit =
+    const isTransientError =
       error?.status === 429 ||
       error?.statusCode === 429 ||
-      (error?.message && error.message.includes("429")) ||
-      (error?.message && error.message.toLowerCase().includes("too many requests")) ||
-      (error?.message && error.message.toLowerCase().includes("quota")) ||
-      (error?.message && error.message.toLowerCase().includes("exhausted"));
+      error?.error?.code === 429 ||
+      error?.status === 503 ||
+      error?.statusCode === 503 ||
+      error?.error?.code === 503 ||
+      (error?.message && (
+        error.message.includes("429") ||
+        error.message.includes("503") ||
+        error.message.toLowerCase().includes("too many requests") ||
+        error.message.toLowerCase().includes("quota") ||
+        error.message.toLowerCase().includes("exhausted") ||
+        error.message.toLowerCase().includes("unavailable") ||
+        error.message.toLowerCase().includes("high demand") ||
+        error.message.toLowerCase().includes("temporary")
+      ));
 
-    if (retries > 0 && isRateLimit) {
-      console.warn(`Gemini API rate limited (429). Retrying in ${delay}ms... (${retries} retries left)`);
+    if (retries > 0 && isTransientError) {
+      console.warn(`Gemini API error (transient). Retrying in ${delay}ms... (${retries} retries left)`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       return retryWithBackoff(fn, retries - 1, delay * backoffFactor, backoffFactor);
     }
     throw error;
   }
+};
+
+const formatAiError = (error: any): string => {
+  if (!error) return "AI 系統暫時無回應，請稍候重試。";
+  
+  const status = error.status || error.statusCode || error?.error?.code || 0;
+  const errMsg = (error.message || "").toLowerCase();
+  
+  if (status === 503 || errMsg.includes("503") || errMsg.includes("unavailable") || errMsg.includes("high demand") || errMsg.includes("temporary")) {
+    return "AI 模式目前處於極高負載狀態（503 Unavailable）。伺服器暫時繁忙，這通常是暫時性的。請稍候幾秒鐘，然後點擊「重新嘗試」按鈕。";
+  }
+  if (status === 429 || errMsg.includes("429") || errMsg.includes("too many requests") || errMsg.includes("quota") || errMsg.includes("exhausted")) {
+    return "已達到 AI 模式的調用頻率限制（429 Rate Limit）。請稍候幾秒鐘，然後點擊「重新嘗試」按鈕。";
+  }
+  if (status === 400 || errMsg.includes("400") || errMsg.includes("bad request") || errMsg.includes("invalid")) {
+    return "請求格式有誤或輸入內容不合適（400 Bad Request）。請嘗試修改或簡化您的諮詢描述後重試。";
+  }
+  if (status === 403 || errMsg.includes("403") || errMsg.includes("permission") || errMsg.includes("api key") || errMsg.includes("key is missing") || errMsg.includes("偵測不到")) {
+    return "AI 金鑰驗證失敗或權限不足（403 Forbidden）。請確認專案環境變數中的 GEMINI_API_KEY 已正確設定並生效。";
+  }
+  
+  // Try to parse raw nested error from JSON string in error.message (a typical SDK format)
+  try {
+    const errorStr = typeof error.message === "string" ? error.message : "";
+    if (errorStr.trim().startsWith("{")) {
+       const parsedJson = JSON.parse(errorStr);
+       const nestedError = parsedJson?.error;
+       if (nestedError) {
+         const code = nestedError.code;
+         const message = nestedError.message || "";
+         if (code === 503 || message.toLowerCase().includes("high demand") || message.toLowerCase().includes("unavailable")) {
+           return "AI 模式目前處於極高負載狀態（503 Unavailable）。伺服器暫時繁忙，這通常是暫時性的。請稍候幾秒鐘，然後點擊「重新嘗試」按鈕。";
+         }
+         if (code === 429 || message.toLowerCase().includes("rate limit") || message.toLowerCase().includes("too many requests")) {
+           return "已達到 AI 模式的調用頻率限制（429 Rate Limit）。請稍候幾秒鐘，然後點擊「重新嘗試」按鈕。";
+         }
+         return `AI 系統傳回錯誤 (${code})：${message}`;
+       }
+    }
+  } catch (e) {
+    // Ignore JSON parse error
+  }
+  
+  return `AI 系統發生未知錯誤，請稍候重試。機械訊息：${error.message || error}`;
 };
 
 export default function App() {
@@ -650,64 +706,27 @@ ${JSON.stringify(systemsList)}
             contents: prompt,
             config: {
               responseMimeType: "application/json",
-              thinkingConfig: {
-                thinkingLevel: "MINIMAL",
-              },
-            }
+            },
           })
         );
-
-        const text = response.text || "";
-        const parsed = JSON.parse(text.trim());
-
-        const result = {
-          classes: Array.isArray(parsed.classes) ? parsed.classes.filter((c: any) => classesList.includes(c)) : [],
-          systems: Array.isArray(parsed.systems) ? parsed.systems.filter((s: any) => systemsList.includes(s)) : [],
-          keywords: Array.isArray(parsed.keywords) ? parsed.keywords.map((k: any) => String(k).toLowerCase()) : [],
-          recommendedIngredients: Array.isArray(parsed.recommendedIngredients) ? parsed.recommendedIngredients.map((r: any) => String(r).toLowerCase().trim()) : [],
-        };
-
-        aiSymptomCacheRef.current[query] = result;
-        setAiSymptomMapping(result);
+        const resultText = response.text || "";
+        const parsed = JSON.parse(resultText);
+        aiSymptomCacheRef.current[query] = parsed;
+        setAiSymptomMapping(parsed);
       } catch (error) {
-        console.error("AI Symptom Analysis Failed:", error);
+        console.error("AI Symptom mapping error:", error);
       } finally {
         setIsSymptomAnalyzing(false);
       }
-    }, 150);
+    }, 450);
 
     return () => clearTimeout(delayTimer);
   }, [isAiSymptomRequested, searchQuery, medications, ai]);
 
-  // Fuse instance for fuzzy search
-  const fuse = useMemo(() => {
-    return new Fuse(medications, {
-      keys: [
-        { name: "code", weight: 1.0 },
-        { name: "component", weight: 0.95 },
-        { name: "brandName", weight: 0.9 },
-        { name: "genericName", weight: 0.8 },
-        { name: "chineseName", weight: 0.8 },
-        { name: "pharmacologicalClass", weight: 0.4 },
-        { name: "anatomicalSystem", weight: 0.4 },
-        { name: "indications", weight: 0.3 },
-        { name: "searchKeywords", weight: 0.3 },
-      ],
-      threshold: 0.3, // 更緊確的閾值提升精準度
-      location: 0, // 優先考慮字串開頭的匹配 (字首重要性)
-      distance: 20, // 縮小權重位距拉大字首匹配與段中匹配的分差
-      includeScore: true,
-      shouldSort: true,
-    });
-  }, [medications]);
-
   // Remove global click listener in favor of local onBlur for better focus management
   useEffect(() => {
-    // We can keep a simplified version or rely solely on onBlur
-    // But standard "outside click" is usually better for mouse users who click non-focusable areas
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // If click is not inside a dropdown or filter area, close them
       if (
         !target.closest(".dropdown-container") &&
         !target.closest(".filter-popover-container")
@@ -746,7 +765,6 @@ ${JSON.stringify(systemsList)}
     }
   };
 
-  // Data Loading and Update Check
   useEffect(() => {
     const initData = async () => {
       setLoading(true);
@@ -769,26 +787,39 @@ ${JSON.stringify(systemsList)}
     initData();
   }, [gsheetUrl]);
 
-  const handleAiSearch = async (e?: FormEvent) => {
+  const handleAiSearch = async (e?: FormEvent, directQuery?: string) => {
     if (e) e.preventDefault();
-    if (!aiQuery.trim() || isAiLoading) return;
+    const targetQuery = directQuery !== undefined ? directQuery : aiQuery;
+    if (!targetQuery.trim() || isAiLoading) return;
 
     setIsAiLoading(true);
     setAiResponse(null);
 
-    const currentQuery = aiQuery;
+    const currentQuery = targetQuery;
     const currentTimestamp = Date.now();
 
     // 立即將主要對話佔位符加入對話歷史
-    setAiHistory((prev) => [
-      { 
-        query: currentQuery, 
-        response: "", 
-        timestamp: currentTimestamp,
-      },
-      ...prev,
-    ]);
-    setAiQuery("");
+    setAiHistory((prev) => {
+      // If retraining, remove any past error items for the same query to keep history clean and uncluttered.
+      let list = prev;
+      if (directQuery !== undefined) {
+        list = prev.filter(item => !(item.query === currentQuery && item.response.includes("⚠️ 錯誤：")));
+      } else {
+        list = prev.filter(item => !(item.query === currentQuery && item.response.includes("⚠️ 錯誤：")));
+      }
+      return [
+        { 
+          query: currentQuery, 
+          response: "", 
+          timestamp: currentTimestamp,
+        },
+        ...list,
+      ];
+    });
+
+    if (directQuery === undefined) {
+      setAiQuery("");
+    }
 
     try {
       if (!process.env.GEMINI_API_KEY) {
@@ -889,6 +920,7 @@ ${medListSummaryText}
 
 
 
+
   const anatomicalSystems = useMemo(() => {
     const systems = new Set(medications.map((m) => m.anatomicalSystem));
     return ["全部系統", ...Array.from(systems).sort()];
@@ -951,6 +983,11 @@ ${medListSummaryText}
     if (query) {
       const minPrefixLength = 3;
       const queryLen = query.length;
+
+      const fuse = new Fuse(baseMeds, {
+        keys: ["code", "component", "brandName", "genericName", "chineseName", "searchKeywords"],
+        threshold: 0.45,
+      });
 
       // 1. 完全或縮寫匹配 (最優先)
       const exactMatches = medications.filter((m) => {
@@ -1041,7 +1078,7 @@ ${medListSummaryText}
       // 過濾與限制模糊搜尋結果
       const constrainedFuzzy = fuzzyResults
         .filter((result) => {
-          const item = result.item;
+          const item = result.item as any;
           if (exactMatches.some((em) => em.id === item.id)) return false;
           if (medicalIntentMatches.some((mm) => mm.id === item.id))
             return false;
@@ -1070,7 +1107,7 @@ ${medListSummaryText}
 
           return true;
         })
-        .map((r) => r.item);
+        .map((r) => r.item as any);
 
       // 症狀與 AI 關聯匹配 (Low Latency AI Symptom Match)
       const aiSymptomMatches = medications.filter((m) => {
@@ -1109,7 +1146,7 @@ ${medListSummaryText}
       addUniqueMeds(wordBoundaryMatches);
 
       // 合併模糊匹配結果 (去重)
-      constrainedFuzzy.forEach((fm) => {
+      constrainedFuzzy.forEach((fm: any) => {
         if (!seenMeds.has(fm.id)) {
           seenMeds.add(fm.id);
           combinedMeds.push(fm);
