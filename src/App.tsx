@@ -882,10 +882,10 @@ ${currentQuery}
 ${medListSummaryText}
 `;
 
-      // 3. 升級至最新的 gemini-3.5-flash，並配合 generateContentStream (自動展現強大 Adaptive Thinking)。
+      // 3. 配合 gemini-3.1-flash-lite 及 generateContentStream。
       const responseStream = await retryWithBackoff<any>(() =>
         ai.models.generateContentStream({
-          model: "gemini-3.5-flash",
+          model: "gemini-3.1-flash-lite",
           contents: [{ parts: [{ text: prompt }] }],
         })
       );
