@@ -18,70 +18,25 @@ import {
   Search,
   Pill,
   Filter,
-  Plus,
   ChevronRight,
   ChevronDown,
-  Info,
-  Clock,
-  ExternalLink,
   Loader2,
   X,
   CheckCircle2,
   Trash2,
   Database,
   Menu,
-  Syringe,
-  Droplets,
-  Eye,
-  FlaskConical,
-  Wind,
   Sparkles,
-  CircleDot,
-  ArrowDown,
   ArrowRight,
   History,
   User,
-  Zap,
-  Beaker,
-  Bandage,
-  Gem,
-  ArrowDownToDot,
-  Container,
   Sun,
   Moon,
-  Settings,
   Smartphone,
-  Download,
   Copy,
   Check,
   HelpCircle,
-  AlertTriangle,
-  RefreshCw,
 } from "lucide-react";
-
-const getMedicationIcon = (code: string) => {
-  const firstChar = code?.charAt(0)?.toUpperCase();
-  switch (firstChar) {
-    case "E":
-      return Sparkles;
-    case "T":
-      return Pill;
-    case "I":
-      return Syringe;
-    case "L":
-      return Droplets;
-    case "O":
-      return Eye;
-    case "S":
-      return Wind;
-    case "Z":
-      return FlaskConical;
-    case "V":
-      return CircleDot;
-    default:
-      return Pill;
-  }
-};
 
 const getDosageColor = (code: string) => {
   const firstChar = code?.charAt(0)?.toUpperCase();
@@ -95,7 +50,6 @@ const getDosageColor = (code: string) => {
         accent: "text-blue-400",
         bg: "bg-blue-500/10",
         borderMain: "border-blue-500/20",
-        icon: Container,
       }; // 外用
     case "T":
       return {
@@ -105,7 +59,6 @@ const getDosageColor = (code: string) => {
         accent: "text-orange-400",
         bg: "bg-orange-500/10",
         borderMain: "border-orange-500/20",
-        icon: Pill,
       }; // 錠劑
     case "I":
       return {
@@ -115,7 +68,6 @@ const getDosageColor = (code: string) => {
         accent: "text-red-400",
         bg: "bg-red-500/10",
         borderMain: "border-red-500/20",
-        icon: Syringe,
       }; // 針劑
     case "L":
       return {
@@ -125,7 +77,6 @@ const getDosageColor = (code: string) => {
         accent: "text-teal-400",
         bg: "bg-teal-500/10",
         borderMain: "border-teal-500/20",
-        icon: FlaskConical,
       }; // 藥水
     case "O":
       return {
@@ -135,7 +86,6 @@ const getDosageColor = (code: string) => {
         accent: "text-emerald-400",
         bg: "bg-emerald-500/10",
         borderMain: "border-emerald-500/20",
-        icon: Eye,
       }; // 眼用
     case "S":
       return {
@@ -145,7 +95,6 @@ const getDosageColor = (code: string) => {
         accent: "text-amber-400",
         bg: "bg-amber-500/10",
         borderMain: "border-amber-500/20",
-        icon: Wind,
       }; // 噴劑
     case "Z":
       return {
@@ -155,7 +104,6 @@ const getDosageColor = (code: string) => {
         accent: "text-zinc-400",
         bg: "bg-zinc-500/10",
         borderMain: "border-zinc-500/20",
-        icon: Beaker,
       }; // 試驗
     case "V":
       return {
@@ -165,7 +113,6 @@ const getDosageColor = (code: string) => {
         accent: "text-violet-400",
         bg: "bg-violet-500/10",
         borderMain: "border-violet-500/20",
-        icon: ArrowDownToDot,
       }; // 塞劑
     default:
       return {
@@ -175,7 +122,6 @@ const getDosageColor = (code: string) => {
         accent: "text-brand-accent/80",
         bg: "bg-brand-accent/10",
         borderMain: "border-brand-accent/20",
-        icon: Pill,
       };
   }
 };
@@ -241,7 +187,6 @@ import {
 import { cn } from "./lib/utils";
 import { MEDICAL_ALIASES } from "./lib/medicalKeywords";
 
-// Helper function to retry Gemini API calls with exponential backoff on transient errors (429 Rate Limit, 503 Unavailable, etc.).
 const retryWithBackoff = async <T = any>(
   fn: () => Promise<T>,
   retries = 4,
@@ -278,50 +223,6 @@ const retryWithBackoff = async <T = any>(
   }
 };
 
-const formatAiError = (error: any): string => {
-  if (!error) return "AI 系統暫時無回應，請稍候重試。";
-  
-  const status = error.status || error.statusCode || error?.error?.code || 0;
-  const errMsg = (error.message || "").toLowerCase();
-  
-  if (status === 503 || errMsg.includes("503") || errMsg.includes("unavailable") || errMsg.includes("high demand") || errMsg.includes("temporary")) {
-    return "AI 模式目前處於極高負載狀態（503 Unavailable）。伺服器暫時繁忙，這通常是暫時性的。請稍候幾秒鐘，然後點擊「重新嘗試」按鈕。";
-  }
-  if (status === 429 || errMsg.includes("429") || errMsg.includes("too many requests") || errMsg.includes("quota") || errMsg.includes("exhausted")) {
-    return "已達到 AI 模式的調用頻率限制（429 Rate Limit）。請稍候幾秒鐘，然後點擊「重新嘗試」按鈕。";
-  }
-  if (status === 400 || errMsg.includes("400") || errMsg.includes("bad request") || errMsg.includes("invalid")) {
-    return "請求格式有誤或輸入內容不合適（400 Bad Request）。請嘗試修改或簡化您的諮詢描述後重試。";
-  }
-  if (status === 403 || errMsg.includes("403") || errMsg.includes("permission") || errMsg.includes("api key") || errMsg.includes("key is missing") || errMsg.includes("偵測不到")) {
-    return "AI 金鑰驗證失敗或權限不足（403 Forbidden）。請確認專案環境變數中的 GEMINI_API_KEY 已正確設定並生效。";
-  }
-  
-  // Try to parse raw nested error from JSON string in error.message (a typical SDK format)
-  try {
-    const errorStr = typeof error.message === "string" ? error.message : "";
-    if (errorStr.trim().startsWith("{")) {
-       const parsedJson = JSON.parse(errorStr);
-       const nestedError = parsedJson?.error;
-       if (nestedError) {
-         const code = nestedError.code;
-         const message = nestedError.message || "";
-         if (code === 503 || message.toLowerCase().includes("high demand") || message.toLowerCase().includes("unavailable")) {
-           return "AI 模式目前處於極高負載狀態（503 Unavailable）。伺服器暫時繁忙，這通常是暫時性的。請稍候幾秒鐘，然後點擊「重新嘗試」按鈕。";
-         }
-         if (code === 429 || message.toLowerCase().includes("rate limit") || message.toLowerCase().includes("too many requests")) {
-           return "已達到 AI 模式的調用頻率限制（429 Rate Limit）。請稍候幾秒鐘，然後點擊「重新嘗試」按鈕。";
-         }
-         return `AI 系統傳回錯誤 (${code})：${message}`;
-       }
-    }
-  } catch (e) {
-    // Ignore JSON parse error
-  }
-  
-  return `AI 系統發生未知錯誤，請稍候重試。機械訊息：${error.message || error}`;
-};
-
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -334,7 +235,6 @@ export default function App() {
   const [selectedClass, setSelectedClass] = useState("全部藥理");
   const [selectedDosageForms, setSelectedDosageForms] = useState<string[]>([]);
   const [selectedMed, setSelectedMed] = useState<Medication | null>(null);
-  const [isAdding, setIsAdding] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [gsheetUrl, setGsheetUrl] = useState(
     "https://script.google.com/macros/s/AKfycbxotfbc6-KsIn-_RoltpZl_vQhjUNDN-UrU9pWIARSCnWUCn_9iZ60J46zwr3b6laKBBw/exec",
@@ -346,7 +246,6 @@ export default function App() {
   const [isDosageFormOpen, setIsDosageFormOpen] = useState(false);
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [searchFocused, setSearchFocused] = useState(false);
   const [aiSymptomMapping, setAiSymptomMapping] = useState<{ classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] } | null>(null);
   const [isSymptomAnalyzing, setIsSymptomAnalyzing] = useState(false);
   const [isAiSymptomRequested, setIsAiSymptomRequested] = useState(false);
@@ -513,7 +412,6 @@ export default function App() {
 
   const [isAiMode, setIsAiMode] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
-  const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiHistory, setAiHistory] = useState<
     { query: string; response: string; timestamp: number; filteredCount?: number; totalCount?: number }[]
@@ -586,9 +484,6 @@ export default function App() {
   // Sync state changes to browser history with detailed state
   useEffect(() => {
     if (isNavigatingRef.current) return;
-
-    const state: any = { isAi: isAiMode };
-    if (selectedMed) state.medId = selectedMed.id;
 
     if (isAiMode && selectedMed) {
       window.history.pushState(
@@ -755,7 +650,6 @@ ${JSON.stringify(systemsList)}
       setMedications(meds);
 
       setImportStatus(`同步成功！已更新 ${meds.length} 筆資料`);
-      setIsUpdateAvailable(false);
     } catch (error) {
       setImportStatus("同步失敗，請檢查網路連線或資料格式");
       console.error(error);
@@ -793,20 +687,13 @@ ${JSON.stringify(systemsList)}
     if (!targetQuery.trim() || isAiLoading) return;
 
     setIsAiLoading(true);
-    setAiResponse(null);
 
     const currentQuery = targetQuery;
     const currentTimestamp = Date.now();
 
     // 立即將主要對話佔位符加入對話歷史
     setAiHistory((prev) => {
-      // If retraining, remove any past error items for the same query to keep history clean and uncluttered.
-      let list = prev;
-      if (directQuery !== undefined) {
-        list = prev.filter(item => !(item.query === currentQuery && item.response.includes("⚠️ 錯誤：")));
-      } else {
-        list = prev.filter(item => !(item.query === currentQuery && item.response.includes("⚠️ 錯誤：")));
-      }
+      const list = prev.filter(item => !(item.query === currentQuery && item.response.includes("⚠️ 錯誤：")));
       return [
         { 
           query: currentQuery, 
@@ -882,7 +769,6 @@ ${currentQuery}
 ${medListSummaryText}
 `;
 
-      // 3. 配合 gemini-3.1-flash-lite 及 generateContentStream。
       const responseStream = await retryWithBackoff<any>(() =>
         ai.models.generateContentStream({
           model: "gemini-3.1-flash-lite",
@@ -918,9 +804,6 @@ ${medListSummaryText}
       setIsAiLoading(false);
     }
   };
-
-
-
 
 
 
@@ -1902,9 +1785,6 @@ ${medListSummaryText}
                         value={searchQuery}
                         onChange={(e) => {
                           setSearchQuery(e.target.value);
-                        }}
-                        onFocus={() => {
-                          setSearchFocused(true);
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
