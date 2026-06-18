@@ -12,7 +12,7 @@ import {
   FormEvent,
 } from "react";
 import Fuse from "fuse.js";
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import { motion, AnimatePresence, useDragControls } from "motion/react";
 import {
   Search,
@@ -156,6 +156,43 @@ const getDosageName = (code: string) => {
     : char || "?";
 };
 
+// 給藥途徑 → 對應的劑型代碼字母（藥品碼首字母）。
+// 用於 AI 建議成分後，本地依「臨床途徑」挑選正確劑型（避免全身性疾病誤配外用劑型）。
+const ROUTE_FORM_LETTERS: Record<string, string[]> = {
+  口服: ["T", "A", "B", "C", "D", "F", "G", "H", "L", "Y"],
+  針劑: ["I"],
+  外用: ["E", "K", "W"],
+  眼用: ["O"],
+  吸入: ["S"],
+  栓劑: ["R", "V"],
+  貼片: ["P"],
+};
+// 全身性給藥途徑（口服 + 針劑）；全身性疾病不可用外用/局部劑型。
+const SYSTEMIC_FORM_LETTERS = new Set([
+  ...ROUTE_FORM_LETTERS["口服"],
+  ...ROUTE_FORM_LETTERS["針劑"],
+]);
+
+// 將 AI 寫的各種途徑用語正規化為標準途徑鍵。無法辨識回傳 ""。
+const ROUTE_ALIASES: [RegExp, string][] = [
+  [/針劑|注射|靜脈|靜注|肌肉?注射|肌注|點滴|輸注|IV|IM|injection/i, "針劑"],
+  [/口服|內服|PO|oral|錠|膠囊|糖漿|口含/i, "口服"],
+  [/外用|局部|塗抹|凝膠|軟膏|乳膏|藥膏|洗劑|gel|cream|ointment|topical/i, "外用"],
+  [/眼用|眼|耳用|滴眼|點眼/i, "眼用"],
+  [/吸入|噴霧|噴劑|inhal|spray|nebuli/i, "吸入"],
+  [/栓劑|塞劑|肛門|陰道|直腸|suppos/i, "栓劑"],
+  [/貼片|貼劑|穿皮|經皮|patch|transderm/i, "貼片"],
+];
+const normalizeRoute = (raw: string): string => {
+  const s = (raw || "").trim();
+  if (!s) return "";
+  if (ROUTE_FORM_LETTERS[s]) return s; // 已是標準鍵
+  for (const [re, key] of ROUTE_ALIASES) {
+    if (re.test(s)) return key;
+  }
+  return "";
+};
+
 const SharpStar = ({
   className,
   fill = "none",
@@ -215,7 +252,7 @@ const retryWithBackoff = async <T = any>(
       ));
 
     if (retries > 0 && isTransientError) {
-      console.warn(`Gemini API error (transient). Retrying in ${delay}ms... (${retries} retries left)`);
+      console.warn(`Groq API error (transient). Retrying in ${delay}ms... (${retries} retries left)`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       return retryWithBackoff(fn, retries - 1, delay * backoffFactor, backoffFactor);
     }
@@ -414,8 +451,20 @@ export default function App() {
   const [aiQuery, setAiQuery] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiHistory, setAiHistory] = useState<
-    { query: string; response: string; timestamp: number; filteredCount?: number; totalCount?: number }[]
+    {
+      query: string;
+      response: string;
+      timestamp: number;
+      filteredCount?: number;
+      totalCount?: number;
+      phase?: "decomposing" | "selecting" | "recommending" | "done";
+      mainProblems?: string[];
+      secondaryProblems?: string[];
+      selectedSecondary?: string[];
+    }[]
   >([]);
+  // 各筆對話的「其他伴隨症狀」自填輸入暫存
+  const [customSymptomInputs, setCustomSymptomInputs] = useState<Record<number, string>>({});
   const [aiVisibleLimits, setAiVisibleLimits] = useState<
     Record<string, number>
   >({});
@@ -516,16 +565,68 @@ export default function App() {
 
   const ai = useMemo(
     () =>
-      new GoogleGenAI({
-        apiKey: process.env.GEMINI_API_KEY || "",
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build-client",
-          },
-        },
+      new OpenAI({
+        apiKey: process.env.GROQ_API_KEY || "",
+        baseURL: "https://api.groq.com/openai/v1",
+        dangerouslyAllowBrowser: true,
       }),
     [],
   );
+
+  // 將 AI 建議的「成分名」比對院內藥庫，找出實際可用品項（含藥品碼）。
+  const formularyFuse = useMemo(
+    () =>
+      new Fuse(medications, {
+        keys: ["component", "genericName", "chineseName", "brandName"],
+        threshold: 0.3,
+        ignoreLocation: true,
+      }),
+    [medications],
+  );
+
+  // 依成分名 +（可選）給藥途徑比對院內藥庫，挑選臨床正確的劑型品項。
+  const findFormularyMatch = (
+    ingredient: string,
+    route?: string,
+  ): Medication | undefined => {
+    const q = ingredient.trim().toLowerCase();
+    if (!q) return undefined;
+    const letterOf = (m: Medication) => (m.code?.charAt(0) || "").toUpperCase();
+
+    // 1. 收集所有「成分名相符」的候選品項
+    let candidates = medications.filter((m) => {
+      const fields = [m.component, m.genericName, m.chineseName, m.brandName]
+        .filter(Boolean)
+        .map((f) => (f as string).toLowerCase());
+      return fields.some((f) => f.includes(q) || (f.length > 4 && q.includes(f)));
+    });
+    // 1.1 直接比對無結果 → 模糊比對補候選
+    if (candidates.length === 0) {
+      candidates = formularyFuse.search(ingredient).slice(0, 5).map((r) => r.item);
+    }
+    if (candidates.length === 0) return undefined;
+
+    // 2. 依臨床途徑挑選正確劑型
+    const r = normalizeRoute(route || "");
+    if (r) {
+      const wantLetters = ROUTE_FORM_LETTERS[r] || [];
+      const isSystemic = r === "口服" || r === "針劑";
+      // 全身性途徑：僅接受全身性劑型；其他途徑：僅接受該途徑劑型
+      const pool = candidates.filter((m) =>
+        isSystemic
+          ? SYSTEMIC_FORM_LETTERS.has(letterOf(m))
+          : wantLetters.includes(letterOf(m)),
+      );
+      // 院內無對應途徑品項 → 回傳 undefined（標示「院內無此品項」），
+      // 避免把全身性疾病錯配到外用劑型（如膽囊炎配到 MetroGel 外用凝膠）。
+      if (pool.length === 0) return undefined;
+      // 優先選途徑完全吻合者（例如指定口服時，口服優先於針劑）
+      const exact = pool.filter((m) => wantLetters.includes(letterOf(m)));
+      return exact[0] || pool[0];
+    }
+
+    return candidates[0];
+  };
 
   const isQueryValidForAi = useMemo(() => {
     const query = searchQuery.trim();
@@ -596,15 +697,13 @@ ${JSON.stringify(systemsList)}
 注意：如果沒有任何相關的，請回傳空陣列形式。`;
 
         const response = await retryWithBackoff<any>(() =>
-          ai.models.generateContent({
-            model: "gemini-3.1-flash-lite",
-            contents: prompt,
-            config: {
-              responseMimeType: "application/json",
-            },
+          ai.chat.completions.create({
+            model: "llama-3.1-8b-instant",
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
           })
         );
-        const resultText = response.text || "";
+        const resultText = response.choices?.[0]?.message?.content || "";
         const parsed = JSON.parse(resultText);
         aiSymptomCacheRef.current[query] = parsed;
         setAiSymptomMapping(parsed);
@@ -681,6 +780,193 @@ ${JSON.stringify(systemsList)}
     initData();
   }, [gsheetUrl]);
 
+  // 第一階段：拆解病患描述為「主要問題」與「次要問題/症狀」（快速 8B 模型，JSON）
+  const decomposeProblems = async (
+    query: string,
+  ): Promise<{ mainProblems: string[]; secondaryProblems: string[] }> => {
+    const prompt = `你是一位專業臨床藥師。請分析以下病患描述，拆解臨床問題，並回傳純 JSON（絕不要 Markdown 標籤，也不要任何前後說明）。
+規則：
+- "mainProblems"：病患「主動描述」的主要問題/主訴（疾病本身或明確不適），通常 1-3 個，每項簡短（2-12 字）。
+- "secondaryProblems"：由主要問題「臨床上可能伴隨或衍生、但描述中尚未明確提及」的次要症狀或併發問題，供病患勾選確認是否存在。請列出 3-8 個最常見且相關的項目，一個症狀一項，每項簡短（2-12 字），不要與 mainProblems 重複。
+- 疾病本身與各症狀必須分開。
+回傳格式：{"mainProblems":["..."],"secondaryProblems":["..."]}
+病患描述：「${query}」`;
+    const response = await retryWithBackoff<any>(() =>
+      ai.chat.completions.create({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+      }),
+    );
+    const text = response.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(text);
+    const clean = (arr: any): string[] =>
+      Array.isArray(arr)
+        ? arr.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)
+        : [];
+    return {
+      mainProblems: clean(parsed.mainProblems),
+      secondaryProblems: clean(parsed.secondaryProblems),
+    };
+  };
+
+  // 第二階段：針對「已確認的問題清單」產生用藥建議（70B 串流）
+  const runRecommendation = async (
+    timestamp: number,
+    query: string,
+    mainProblems: string[],
+    selectedSecondary: string[],
+  ) => {
+    setIsAiLoading(true);
+    setAiHistory((prev) =>
+      prev.map((it) =>
+        it.timestamp === timestamp ? { ...it, phase: "recommending", response: "" } : it,
+      ),
+    );
+    try {
+      const confirmedProblems = [
+        ...mainProblems.map((p) => `${p}（主要問題）`),
+        ...selectedSecondary.map((p) => `${p}（次要問題/症狀）`),
+      ];
+      const problemListText =
+        confirmedProblems.length > 0
+          ? confirmedProblems.map((p) => `- ${p}`).join("\n")
+          : `- ${query}`;
+
+      const prompt = `# Role
+你是一位全能且精通臨床藥理學的主治醫師，具備嚴謹的臨床推理能力與多重用藥（Polypharmacy）審視經驗。
+
+# Context
+用戶提供一段病患健康狀況描述，以及一份「已確認需要處理的臨床問題清單」。請依你的臨床藥理知識，僅針對清單中的問題給出用藥建議；系統會自動把你建議的成分名比對院內藥庫，找出實際可用品項與藥品碼。
+
+# Task
+針對「已確認的臨床問題清單」中的「每一個問題」分別給出建議：
+1. 若該問題可由特定藥物治療：建議最適切的藥物成分（generic/學名）並提供選擇理由。
+2. 若該問題（尤其是主要問題）並非由特定藥物直接解決（例如需要生活型態調整、飲食控制、手術、轉診或進一步檢查），「不要硬湊藥物」，改給臨床建議。
+最後撰寫一份整體用藥策略總結（80-150 字）。
+
+# Constraints & Safety [臨床重要指引與鐵律]
+- 【🚨 只處理清單內問題】：只能針對「已確認問題清單」中的問題給建議，絕對不要自行新增清單以外的問題。
+- 【🚨 非藥物問題給建議即可】：若某問題無特定藥物可直接治療，請在該問題下「不要列藥物」，改輸出一行以「※」開頭的臨床建議文字（例如：「※ 建議低脂飲食並安排腹部超音波評估，必要時外科會診」）。
+- 【🚨 問題絕不可混合】：每個「問題：」群組只能放專屬於該問題的藥物，嚴禁把不同問題（不同症狀、或疾病本身 vs 症狀）的藥物混在同一群組。若某藥可同時處理多個問題，請放在最主要的那個問題即可。
+- 【建議數量足夠】：對於可用藥的問題，請提供充分、多樣的藥物選擇（建議 5-10 個，甚至 8-12 個不同機制或劑型的替代成分），讓醫師有靈活的處方備選。
+- 【務必使用「成分名/學名」】：藥物行請以「藥物成分學名」開頭（優先通用英文學名，例如 Metformin、Amlodipine；可在括號附中文名）。「絕對不要」自行編造任何藥品代碼或編號，系統會自動比對。
+- 【🚨 必須指定「給藥途徑」且須符合臨床情境】：每個藥物建議都必須標明給藥途徑，從以下擇一：口服、針劑、外用、眼用、吸入、栓劑、貼片。途徑必須符合臨床！全身性疾病（如膽囊炎、肺炎、敗血症等）必須用「口服」或「針劑」，絕對不可建議「外用」等局部劑型（例如膽囊炎需全身性 Metronidazole 口服/針劑，而非 MetroGel 外用凝膠）；局部病灶（如皮膚感染、結膜炎）才用外用/眼用。
+- 【理由字數控制】：每個藥物建議的理由限制在 30 字內，精炼呈現機轉、優勢或重要副作用。
+- 藥物審視：嚴格審視藥物交互作用（DDI）、重複用藥及潛在副作用；所有建議須符合現行臨床指引。
+- 資訊邊界：若資訊不足以確立診斷，應指出需進一步評估的臨床指標（如肝腎功能、實驗室數據），不可憑空猜測。
+
+# Output Format (強制嚴格執行，以利系統解析)
+不要輸出「第一部分」「第二部分」等標題。
+
+[整體用藥策略與臨床總結段落]
+請直接在第一段輸出 80-150 字的整體臨床分析與用藥策略總結（重點式、可條列；此段中絕對不可包含「問題：」或「Problem:」字樣）。
+
+接著針對清單中每個問題各自一個「問題：」群組。藥物行固定三欄，用「 | 」分隔：「成分學名(中文名) | 途徑 | 理由」；非藥物建議則用「※ 建議內容」。
+
+問題：[問題名稱 1]
+成分學名(中文名) | 口服 | [理由（限30字內）]
+成分學名(中文名) | 針劑 | [理由（限30字內）]
+...
+
+問題：[非藥物可治療的問題名稱]
+※ [臨床建議文字，例如生活型態調整、轉診或進一步檢查]
+
+---
+已確認需要處理的臨床問題清單：
+${problemListText}
+
+病患狀況描述：
+${query}
+`;
+
+      const responseStream = await retryWithBackoff<any>(() =>
+        ai.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
+          stream: true,
+        }),
+      );
+
+      let fullResponse = "";
+      for await (const chunk of responseStream) {
+        const chunkText = chunk.choices?.[0]?.delta?.content || "";
+        if (chunkText) {
+          fullResponse += chunkText;
+          setAiHistory((prev) =>
+            prev.map((it) =>
+              it.timestamp === timestamp ? { ...it, response: fullResponse } : it,
+            ),
+          );
+        }
+      }
+      setAiHistory((prev) =>
+        prev.map((it) => (it.timestamp === timestamp ? { ...it, phase: "done" } : it)),
+      );
+    } catch (error: any) {
+      console.error("AI recommendation error:", error);
+      const errorMsg = error?.message || "AI 搜尋發生錯誤，請稍後再試。";
+      setAiHistory((prev) =>
+        prev.map((it) =>
+          it.timestamp === timestamp
+            ? { ...it, phase: "done", response: `⚠️ 錯誤：${errorMsg}` }
+            : it,
+        ),
+      );
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  // 切換次要問題勾選狀態
+  const toggleSecondaryProblem = (timestamp: number, problem: string) => {
+    setAiHistory((prev) =>
+      prev.map((it) => {
+        if (it.timestamp !== timestamp) return it;
+        const sel = it.selectedSecondary || [];
+        return {
+          ...it,
+          selectedSecondary: sel.includes(problem)
+            ? sel.filter((p) => p !== problem)
+            : [...sel, problem],
+        };
+      }),
+    );
+  };
+
+  // 新增自填的伴隨症狀（加入清單並預設勾選）
+  const addCustomSymptom = (timestamp: number) => {
+    const raw = (customSymptomInputs[timestamp] || "").trim();
+    if (!raw) return;
+    setAiHistory((prev) =>
+      prev.map((it) => {
+        if (it.timestamp !== timestamp) return it;
+        const secondary = it.secondaryProblems || [];
+        if (secondary.includes(raw)) return it; // 已存在則不重複新增
+        return {
+          ...it,
+          secondaryProblems: [...secondary, raw],
+          selectedSecondary: [...(it.selectedSecondary || []), raw],
+        };
+      }),
+    );
+    setCustomSymptomInputs((prev) => ({ ...prev, [timestamp]: "" }));
+  };
+
+  // 使用者勾選完畢，按「產生建議」→ 進入第二階段
+  const handleGenerateRecommendation = (timestamp: number) => {
+    if (isAiLoading) return;
+    const item = aiHistory.find((it) => it.timestamp === timestamp);
+    if (!item) return;
+    runRecommendation(
+      timestamp,
+      item.query,
+      item.mainProblems || [],
+      item.selectedSecondary || [],
+    );
+  };
+
+  // 入口：第一階段拆解問題
   const handleAiSearch = async (e?: FormEvent, directQuery?: string) => {
     if (e) e.preventDefault();
     const targetQuery = directQuery !== undefined ? directQuery : aiQuery;
@@ -691,14 +977,19 @@ ${JSON.stringify(systemsList)}
     const currentQuery = targetQuery;
     const currentTimestamp = Date.now();
 
-    // 立即將主要對話佔位符加入對話歷史
     setAiHistory((prev) => {
-      const list = prev.filter(item => !(item.query === currentQuery && item.response.includes("⚠️ 錯誤：")));
+      const list = prev.filter(
+        (item) => !(item.query === currentQuery && item.response.includes("⚠️ 錯誤：")),
+      );
       return [
-        { 
-          query: currentQuery, 
-          response: "", 
+        {
+          query: currentQuery,
+          response: "",
           timestamp: currentTimestamp,
+          phase: "decomposing",
+          mainProblems: [],
+          secondaryProblems: [],
+          selectedSecondary: [],
         },
         ...list,
       ];
@@ -709,99 +1000,48 @@ ${JSON.stringify(systemsList)}
     }
 
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error(
-          "偵測不到 GEMINI_API_KEY。請在專案中設定環境變數。",
-        );
+      if (!process.env.GROQ_API_KEY) {
+        throw new Error("偵測不到 GROQ_API_KEY。請在專案中設定環境變數。");
       }
 
-      // 1. 將藥物清單壓縮為標記清晰、利於 AI 高精度比對與 Token 解析的結構化格式
-      const medListSummaryText = medications
-        .map(
-          (m) =>
-            `- [${m.code}] 成分名(學名): ${m.component || m.genericName} | 藥名/廠牌: ${m.brandName || ""} | 中文名: ${m.chineseName || ""} | 藥理分類: ${m.pharmacologicalClass || "未知"} | 解剖學系統: ${m.anatomicalSystem || "未知"} | 適應症或ATC碼: ${m.indications || "無"}`
-        )
-        .join("\n");
+      const { mainProblems, secondaryProblems } = await decomposeProblems(currentQuery);
 
-      // 2. 優化系統提示詞，引導 AI 進行「精確、豐富、代碼 100% 準確」的臨床分析
-      const prompt = `# Role
-你是一位全能且精通臨床藥理學的主治醫師，具備嚴謹的臨床推理能力與多重用藥（Polypharmacy）審視經驗。
-
-# Context
-用戶將會提供一段關於病患的健康狀況描述（包含主訴、病史或症狀），以及一份合適的可用藥物清單。
-
-# Task
-請依據用戶提供的病患描述與可用藥物，進行以下三步驟的臨床分析：
-1. 臨床問題拆解：分析並識別出描述中健康問題（Problems），並區分為 active 與 underlying problems。
-2. 藥理決策與建議：綜合評估識別出的健康問題，針對每個使用者需要解決的問題 (active problems)，從可用藥物清單中篩選出最適切的藥物建議，並提供藥物功能與選擇理由。underlying disease 僅用來與 active problems 綜合評估病患情況，不需呈現 underlying problems 的藥物建議。
-3. 處方總結：撰寫一份整體用藥策略總結 (說明請精準扼要，以 80-150 字為限)。
-
-# Constraints & Safety [臨床重要指引與鐵律]
-- 【藥物建議數量足夠】：對於識別出的每個 active problem，必須提供充分、完整、多樣的藥物選擇建議（通常為 5 - 10 個，不嫌多，如果清單中有許多適用藥品，請至少列出 5-10 個，甚至 8-12 個不同機制、劑型的可用替代藥物），以便醫生面對各種臨床情境有靈活而充足的處方備選方案，絕不草率塞一兩個藥物了事。
-- 【理由字數控制】：每個藥物建議的「臨床選擇理由與主要功能」請限制在 30 個字以內！請以精炼、重點形式呈現，包含它的機轉、優勢或重要副作用。
-- 【🚨 絕對嚴格限定邊界 - 嚴禁捏造與錯配代碼】：你所推薦的每一個藥物，必須「100% 存在於」下方提供給你的「可用藥物清單」中！你「絕對不可以」憑空捏造、虛擬或推薦清單中未列出的任何藥物或代碼！
-- 【🚨 藥物碼與藥名完美配對】：當你列出推薦藥物行時，行首的 [藥品碼] 必須與該藥物在清單中的 [藥品碼] 完美一字不差一致。例如，如果清單中 Metformin 的代碼是 D04297，你推薦 Metformin 時，其行首代碼就「必須且只能是」D04297，絕對不允許錯配成其他藥物的代碼！這關係到系統解析跳轉！
-- 【無合適藥物時】：若清單中缺乏可用於治療某個臨床問題的藥品，請在该問題下寫明「（無符合此症狀之可用藥物）」，並於臨床總結段落中寫明「清單中缺乏可用於治療 XXX 之藥品」，绝对不可以用無關藥物代碼來湊數！
-- 藥物審視（Medication Review）：挑選藥物時，必須嚴格審視藥物交互作用（DDI）、重複用藥及潛在的副作用。
-- 實證醫學：所有藥物建議必須符合現行臨床指引。
-- 資訊邊界：若病患描述之資訊不足以確立診斷，應明確指出需進一步評估的臨床指標（如肝腎功能、實驗室數據），不可憑空猜測。
-
-# Output Format (強制嚴格執行，以利系統解析)
-請務必嚴格遵守以下結構輸出。請「絕對不要」輸出「【第一部分：整體用藥策略與總結建議】」、「第一部分」、「【第二部分：臨床問題與建議藥物清單】」、「第二部分」等標題：
-
-[整體用藥策略與臨床總結段落]
-請直接在此第一段輸出 80-150 字的整體臨床分析、用藥策略總結以及任何需要進一步評估的臨床指標（說明請精準扼要，重點式、邏輯清晰、可使用條列式，在此段中絕對不可包含「問題：」或「Problem:」字樣）。
-
-問題：[主動健康問題名稱 1]
-[藥品碼] [學名/成分名] [該藥之臨床選擇理由與主要功能說明（限30字內，例如：一線降血糖藥，對心血管具保護力）]
-[藥品碼] [學名/成分名] [該藥之臨床選擇理由與主要功能說明（限30字內）]
-... （針對此問題建議 5-10 個或更多藥物，每行一藥）
-
-問題：[主動健康問題名稱 2]
-[藥品碼] [學名/成分名] [該藥之臨床選擇理由與主要功能說明（限30字內）]
-...
-
----
-病患狀況描述：
-${currentQuery}
-
-以下是可用藥物清單：
-${medListSummaryText}
-`;
-
-      const responseStream = await retryWithBackoff<any>(() =>
-        ai.models.generateContentStream({
-          model: "gemini-3.1-flash-lite",
-          contents: [{ parts: [{ text: prompt }] }],
-        })
-      );
-
-      let fullResponse = "";
-      for await (const chunk of responseStream) {
-        const chunkText = chunk.text || "";
-        if (chunkText) {
-          fullResponse += chunkText;
-          setAiHistory((prev) =>
-            prev.map((item) =>
-              item.timestamp === currentTimestamp
-                ? { ...item, response: fullResponse }
-                : item,
-            ),
-          );
-        }
+      if (secondaryProblems.length === 0) {
+        // 無次要問題可確認 → 直接產生建議
+        setAiHistory((prev) =>
+          prev.map((it) =>
+            it.timestamp === currentTimestamp
+              ? { ...it, mainProblems, secondaryProblems: [], selectedSecondary: [] }
+              : it,
+          ),
+        );
+        await runRecommendation(currentTimestamp, currentQuery, mainProblems, []);
+      } else {
+        // 進入勾選階段，等待使用者確認
+        setAiHistory((prev) =>
+          prev.map((it) =>
+            it.timestamp === currentTimestamp
+              ? { ...it, phase: "selecting", mainProblems, secondaryProblems, selectedSecondary: [] }
+              : it,
+          ),
+        );
+        setIsAiLoading(false);
       }
     } catch (error: any) {
-      console.error("AI Search Error:", error);
-      const errorMsg = error?.message || "AI 搜尋發生錯誤，請稍後再試。";
-      setAiHistory((prev) =>
-        prev.map((item) =>
-          item.timestamp === currentTimestamp
-            ? { ...item, response: `⚠️ 錯誤：${errorMsg}` }
-            : item,
-        ),
-      );
-    } finally {
-      setIsAiLoading(false);
+      console.error("AI decompose error:", error);
+      // 拆解失敗 → 退化為直接以原始描述產生建議
+      try {
+        await runRecommendation(currentTimestamp, currentQuery, [], []);
+      } catch {
+        setAiHistory((prev) =>
+          prev.map((it) =>
+            it.timestamp === currentTimestamp
+              ? { ...it, phase: "done", response: `⚠️ 錯誤：${error?.message || "AI 分析發生錯誤，請稍後再試。"}` }
+              : it,
+          ),
+        );
+        setIsAiLoading(false);
+      }
     }
   };
 
@@ -1146,16 +1386,23 @@ ${medListSummaryText}
         return score;
       };
 
-      // 執行最終排序
-      baseMeds = [...combinedMeds].sort((a, b) => {
-        const scoreA = getSortingScore(a);
-        const scoreB = getSortingScore(b);
-        if (scoreB !== scoreA) {
-          return scoreB - scoreA;
-        }
-        // 分數相同時，將品牌藥名長度短的、或者常用藥名排在前面，以防偏僻特殊物料卡在首位
-        return (a.brandName || "").length - (b.brandName || "").length;
-      });
+      // 弱關聯門檻：低於此分視為純模糊雜訊予以剔除。
+      // 結構化匹配（完全/字首/詞邊界/醫學意圖/AI 關聯）皆 6000 起跳，
+      // 純 Fuse 模糊匹配僅 ~1000-2500，故切在 3000 可乾淨濾除雜訊。
+      const MIN_RELEVANCE_SCORE = 3000;
+
+      // 計算一次分數、剔除弱關聯、再排序（同時避免排序時重複計分）
+      baseMeds = combinedMeds
+        .map((m) => ({ m, score: getSortingScore(m) }))
+        .filter((x) => x.score >= MIN_RELEVANCE_SCORE)
+        .sort((a, b) => {
+          if (b.score !== a.score) {
+            return b.score - a.score;
+          }
+          // 分數相同時，將品牌藥名長度短的、或者常用藥名排在前面，以防偏僻特殊物料卡在首位
+          return (a.m.brandName || "").length - (b.m.brandName || "").length;
+        })
+        .map((x) => x.m);
     }
 
     return baseMeds.filter((med) => {
@@ -2748,6 +2995,117 @@ ${medListSummaryText}
                                           </span>
                                           <div className="h-[1px] flex-1 min-w-[20px] bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
                                         </div>
+
+                                        {item.phase === "decomposing" && (
+                                          <div className="flex items-center gap-2 text-xs text-brand-accent/80 px-1 py-2">
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            <span className="animate-pulse font-medium">正在拆解臨床問題…</span>
+                                          </div>
+                                        )}
+
+                                        {item.phase === "selecting" && (
+                                          <div className="w-full space-y-3.5">
+                                            {(item.mainProblems?.length ?? 0) > 0 && (
+                                              <div className="flex flex-col gap-1.5">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-brand-accent">
+                                                  主要問題（將自動提供建議）
+                                                </span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                  {item.mainProblems?.map((p) => (
+                                                    <span
+                                                      key={p}
+                                                      className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/25"
+                                                    >
+                                                      {p}
+                                                    </span>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            )}
+                                            <div className="flex flex-col gap-1.5">
+                                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                                伴隨症狀
+                                              </span>
+                                              <div className="flex flex-col gap-1.5">
+                                                {item.secondaryProblems?.map((p) => {
+                                                  const checked = item.selectedSecondary?.includes(p);
+                                                  return (
+                                                    <button
+                                                      key={p}
+                                                      onClick={() => toggleSecondaryProblem(item.timestamp, p)}
+                                                      className={cn(
+                                                        "flex items-center gap-2 px-3 py-2 rounded-lg border text-xs text-left transition-all",
+                                                        checked
+                                                          ? "bg-brand-accent/10 border-brand-accent/40 text-brand-accent font-bold"
+                                                          : theme === "dark"
+                                                            ? "bg-white/[0.02] border-white/10 text-zinc-300 hover:bg-white/[0.05]"
+                                                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-white",
+                                                      )}
+                                                    >
+                                                      <span
+                                                        className={cn(
+                                                          "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                                                          checked
+                                                            ? "bg-brand-accent border-brand-accent"
+                                                            : "border-current opacity-40",
+                                                        )}
+                                                      >
+                                                        {checked && <CheckCircle2 className="w-3 h-3 text-white" />}
+                                                      </span>
+                                                      <span>{p}</span>
+                                                    </button>
+                                                  );
+                                                })}
+                                              </div>
+                                              {/* 其他：自填伴隨症狀 */}
+                                              <div className="flex items-center gap-2 mt-0.5">
+                                                <input
+                                                  type="text"
+                                                  value={customSymptomInputs[item.timestamp] || ""}
+                                                  onChange={(e) =>
+                                                    setCustomSymptomInputs((prev) => ({
+                                                      ...prev,
+                                                      [item.timestamp]: e.target.value,
+                                                    }))
+                                                  }
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === "Enter") {
+                                                      e.preventDefault();
+                                                      addCustomSymptom(item.timestamp);
+                                                    }
+                                                  }}
+                                                  placeholder="其他：自行輸入伴隨症狀…"
+                                                  className={cn(
+                                                    "flex-1 min-w-0 px-3 py-2 rounded-lg border text-xs outline-none transition-all focus:border-brand-accent/50",
+                                                    theme === "dark"
+                                                      ? "bg-white/[0.02] border-white/10 text-zinc-200 placeholder:text-zinc-500"
+                                                      : "bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400",
+                                                  )}
+                                                />
+                                                <button
+                                                  type="button"
+                                                  onClick={() => addCustomSymptom(item.timestamp)}
+                                                  disabled={!(customSymptomInputs[item.timestamp] || "").trim()}
+                                                  className="shrink-0 px-3 py-2 rounded-lg text-xs font-bold border border-brand-accent/30 text-brand-accent hover:bg-brand-accent/10 transition-all disabled:opacity-40"
+                                                >
+                                                  新增
+                                                </button>
+                                              </div>
+                                            </div>
+                                            <button
+                                              onClick={() => handleGenerateRecommendation(item.timestamp)}
+                                              disabled={isAiLoading}
+                                              className="w-full py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 text-white shadow-lg hover:opacity-90 active:scale-[0.99] disabled:opacity-50"
+                                            >
+                                              <Sparkles className="w-3.5 h-3.5" />
+                                              產生用藥建議
+                                            </button>
+                                          </div>
+                                        )}
+
+                                        {(item.phase === "recommending" ||
+                                          item.phase === "done" ||
+                                          !item.phase) && (
                                         <div className="w-full space-y-4">
                                           {(() => {
                                             const lines = item.response
@@ -2843,68 +3201,58 @@ ${medListSummaryText}
                                                     <div className="grid gap-2 w-full max-w-full min-w-0 overflow-hidden box-border">
                                                       {visibleItems.map(
                                                         (line, lIdx) => {
-                                                          const normalizedLine = line
+                                                          // 非藥物的臨床建議行（以「※」開頭）→ 顯示為建議提示，不做藥物比對。
+                                                          const adviceText = line
+                                                            .replace(/^\s*[-*•]?\s*[※*]\s*/, "")
+                                                            .trim();
+                                                          if (/^\s*[-*•]?\s*※/.test(line)) {
+                                                            return (
+                                                              <div
+                                                                key={lIdx}
+                                                                className={cn(
+                                                                  "w-full max-w-full min-w-0 flex items-start gap-2 text-xs p-3 rounded-xl border overflow-hidden box-border break-words",
+                                                                  theme === "dark"
+                                                                    ? "bg-blue-500/[0.04] border-blue-400/20 text-zinc-300"
+                                                                    : "bg-blue-50 border-blue-200 text-slate-600",
+                                                                )}
+                                                              >
+                                                                <span className="text-blue-500 shrink-0 font-bold">※</span>
+                                                                <span className="leading-relaxed">{adviceText}</span>
+                                                              </div>
+                                                            );
+                                                          }
+                                                          // AI 藥物行格式為「成分學名(中文) | 途徑 | 理由」，不含藥品碼。
+                                                          // 去除行首編號/符號與括號標記，再依「|」拆成三欄。
+                                                          const cleanedLine = line
+                                                            .replace(/^\s*(\d+[\.\、\)]|\*|\-|\•)\s*/, "")
                                                             .replace(/\[([^\]]+)\]/g, "$1")
                                                             .replace(/【([^】]+)】/g, "$1")
                                                             .trim();
-                                                          // 更加彈性的藥品碼解析，自動跳過編號或點點
-                                                          const cleanedLine =
-                                                            normalizedLine
-                                                              .replace(
-                                                                /^\s*(\d+[\.\、\)]|\*|\-|\•)\s*/,
-                                                                "",
-                                                              )
-                                                              .trim();
-                                                          const parts =
-                                                            cleanedLine.split(
-                                                              /\s+/,
-                                                            );
-                                                          const rawCode = parts[0] || "";
-                                                          const code = rawCode.replace(/[\[\]]/g, "").toUpperCase();
-                                                          const med =
-                                                            medications.find(
-                                                              (m) =>
-                                                                m.code === code,
-                                                            );
-
-                                                          let name =
-                                                            parts[1] || "";
-                                                          let funcPart = parts
-                                                            .slice(2)
-                                                            .join(" ");
-
-                                                          if (med) {
-                                                            name =
-                                                              med.component;
-                                                            const lineWithoutCode =
-                                                              cleanedLine
-                                                                .substring(
-                                                                  cleanedLine.indexOf(
-                                                                    " ",
-                                                                  ) + 1,
-                                                                )
-                                                                .trim();
-                                                            if (
-                                                              lineWithoutCode.startsWith(
-                                                                med.component,
-                                                              )
-                                                            ) {
-                                                              funcPart =
-                                                                lineWithoutCode
-                                                                  .replace(
-                                                                    med.component,
-                                                                    "",
-                                                                  )
-                                                                  .trim();
+                                                          const segs = cleanedLine
+                                                            .split(/\s*[|｜]\s*/)
+                                                            .map((s) => s.trim())
+                                                            .filter(Boolean);
+                                                          const ingredientRaw = segs[0] || "";
+                                                          let routeRaw = "";
+                                                          let funcPart = "";
+                                                          if (segs.length >= 3) {
+                                                            routeRaw = segs[1];
+                                                            funcPart = segs.slice(2).join(" ");
+                                                          } else if (segs.length === 2) {
+                                                            // 只有兩欄：判斷第二欄是「途徑」還是「理由」
+                                                            if (segs[1].length <= 5 && normalizeRoute(segs[1])) {
+                                                              routeRaw = segs[1];
+                                                            } else {
+                                                              funcPart = segs[1];
                                                             }
                                                           }
-
-                                                          // Clean trailing or starting colons or brackets in the parsed parts
-                                                          name = name.replace(/^[\[】【]|[\]】]/g, "").trim();
+                                                          // 比對用的乾淨成分名（去除括號內中文/註記）
+                                                          const ingredientForMatch = ingredientRaw.replace(/[（(].*?[）)]/g, "").trim();
+                                                          // 本地比對院內藥庫，依「途徑」挑選臨床正確劑型
+                                                          const med = findFormularyMatch(ingredientForMatch || ingredientRaw, routeRaw);
+                                                          const code = med?.code || "";
+                                                          const name = med ? med.component : ingredientRaw;
                                                           funcPart = funcPart.replace(/^[\[】【]|[\]】]/g, "").trim();
-                                                          if (funcPart.startsWith(":") || funcPart.startsWith("：")) {
-                                                            funcPart = funcPart.substring(1).trim();
-                                                          }
 
                                                           const itemKey = `${hIdx}-${gIdx}-${lIdx}`;
                                                           const isExpanded =
@@ -2912,21 +3260,40 @@ ${medListSummaryText}
                                                               itemKey
                                                             ];
 
-                                                          if (!code || !name)
+                                                          // 比對不到院內品項：仍顯示 AI 建議成分與理由，並標示「院內無此品項」
+                                                          if (!code) {
+                                                            if (!name) return null;
                                                             return (
                                                               <div
                                                                 key={lIdx}
                                                                 className={cn(
-                                                                  "text-xs italic px-2 w-full max-w-full min-w-0 overflow-hidden break-words",
-                                                                  theme ===
-                                                                    "dark"
-                                                                    ? "text-zinc-500"
-                                                                    : "text-slate-400",
+                                                                  "w-full max-w-full min-w-0 flex flex-col gap-1 text-xs p-3 rounded-xl border border-dashed overflow-hidden box-border",
+                                                                  theme === "dark"
+                                                                    ? "bg-white/[0.01] border-white/10 text-zinc-400"
+                                                                    : "bg-slate-50/50 border-slate-200 text-slate-500",
                                                                 )}
                                                               >
-                                                                {line}
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                  <span className="font-bold text-xs md:text-sm break-words">
+                                                                    {name}
+                                                                  </span>
+                                                                  {normalizeRoute(routeRaw) && (
+                                                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-500/15 shrink-0">
+                                                                      {normalizeRoute(routeRaw)}
+                                                                    </span>
+                                                                  )}
+                                                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 shrink-0">
+                                                                    院內無此品項
+                                                                  </span>
+                                                                </div>
+                                                                {funcPart && (
+                                                                  <span className="text-[11px] leading-relaxed break-words opacity-80">
+                                                                    {funcPart}
+                                                                  </span>
+                                                                )}
                                                               </div>
                                                             );
+                                                          }
 
                                                           return (
                                                             <div
@@ -3166,6 +3533,7 @@ ${medListSummaryText}
                                             </div>
                                           )}
                                         </div>
+                                        )}
                                       </div>
                                     </motion.div>
                                   ))}

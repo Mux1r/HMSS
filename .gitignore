@@ -1,8 +1,33 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 build/
 dist/
+out/
+
+# Test & coverage
 coverage/
-.DS_Store
+.nyc_output/
+
+# Logs
 *.log
-.env*
+logs/
+
+# Environment variables
+.env
+.env.*
 !.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Misc
+*.local

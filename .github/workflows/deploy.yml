@@ -31,7 +31,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}  # 沒用到 AI 功能可刪這行
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}  # 沒用到 AI 功能可刪這行
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact
