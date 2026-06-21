@@ -17,6 +17,7 @@ export interface Medication {
   anatomicalSystem: string;
   pharmacologicalClass: string;
   indications?: string;
+  atcCode?: string;
   searchKeywords: string[];
 }
 
@@ -35,14 +36,21 @@ export const localMedicationService = {
         meds = INITIAL_MEDICATIONS;
       }
 
-      // 數據遷移/校正：確保所有項目都有 dosageForm
+      // 數據遷移/校正：確保所有項目都有 dosageForm 與 atcCode
       return meds.map(m => {
-        if (!m.dosageForm) {
-          const code = (m.code || m.id || '').toString().trim();
+        let next = m;
+        if (!next.dosageForm) {
+          const code = (next.code || next.id || '').toString().trim();
           const dosageForm = code.charAt(0).toUpperCase();
-          return { ...m, dosageForm: dosageForm || '?' };
+          next = { ...next, dosageForm: dosageForm || '?' };
         }
-        return m;
+        // 舊快取沒有結構化 atcCode → 從 indications 已存的「ATC碼: XXX」補回，
+        // 使既有使用者不必重新同步即可使用 ATC 比對。
+        if (!next.atcCode && next.indications) {
+          const match = next.indications.match(/ATC碼:\s*([A-Z0-9]+)/i);
+          if (match) next = { ...next, atcCode: match[1].toUpperCase() };
+        }
+        return next;
       });
     } catch (e) {
       console.error('Failed to get stored medications:', e);
@@ -136,6 +144,7 @@ export const localMedicationService = {
             anatomicalSystem: anatomicalSystem || '未分類系統',
             pharmacologicalClass: pharmacologicalClass || '未分類藥理',
             indications: item['ATC碼'] ? `ATC碼: ${item['ATC碼']}` : (item['適應症'] || ''),
+            atcCode: (item['ATC碼'] || '').toString().trim().toUpperCase(),
             searchKeywords: [
               code,
               item['學名'], 

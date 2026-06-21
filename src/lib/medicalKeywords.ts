@@ -13,7 +13,8 @@ export const MEDICAL_ALIASES: Record<string, string[]> = {
   'nsaid': ['non-steroidal anti-inflammatory drug', 'ibuprofen', 'naproxen', 'diclofenac', 'mefenamic', 'celecoxib', 'etoricoxib', 'aspirin', 'asa'],
   'bb': ['beta blocker', 'bisoprolol', 'metoprolol', 'atenolol', 'carvedilol', 'propranolol', 'nebivolol'],
   'h2ra': ['h2 receptor antagonist', 'famotidine', 'ranitidine', 'cimetidine'],
-  'sglti': ['sglto inhibitor', 'dapagliflozin', 'empagliflozin', 'canagliflozin'],
+  'sglt2': ['sglt2 inhibitor', 'dapagliflozin', 'empagliflozin', 'canagliflozin'],
+  'sglt2i': ['sglt2 inhibitor', 'dapagliflozin', 'empagliflozin', 'canagliflozin'],
   'dpp4i': ['dpp-4 inhibitor', 'sitagliptin', 'vildagliptin', 'saxagliptin', 'linagliptin', 'alogliptin'],
   
   // 縮寫類 (Abbreviations)

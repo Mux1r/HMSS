@@ -7,12 +7,12 @@ import {
   useState,
   useEffect,
   useMemo,
+  useCallback,
   useRef,
   useDeferredValue,
   FormEvent,
 } from "react";
 import Fuse from "fuse.js";
-import OpenAI from "openai";
 import { motion, AnimatePresence, useDragControls } from "motion/react";
 import {
   Search,
@@ -159,7 +159,8 @@ const getDosageName = (code: string) => {
 // 給藥途徑 → 對應的劑型代碼字母（藥品碼首字母）。
 // 用於 AI 建議成分後，本地依「臨床途徑」挑選正確劑型（避免全身性疾病誤配外用劑型）。
 const ROUTE_FORM_LETTERS: Record<string, string[]> = {
-  口服: ["T", "A", "B", "C", "D", "F", "G", "H", "L", "Y"],
+  // 順序＝臨床常用偏好：錠劑/膜衣錠/腸溶錠 → 膠囊 → 顆粒/粉末 → 藥水/糖漿（液體最後）。
+  口服: ["T", "A", "F", "G", "B", "H", "C", "D", "L", "Y"],
   針劑: ["I"],
   外用: ["E", "K", "W"],
   眼用: ["O"],
@@ -172,6 +173,20 @@ const SYSTEMIC_FORM_LETTERS = new Set([
   ...ROUTE_FORM_LETTERS["口服"],
   ...ROUTE_FORM_LETTERS["針劑"],
 ]);
+
+// 劑型常用度分數：體現臨床「全身性給藥(口服/針劑)優先於其他局部劑型」原則。
+// 口服固體(錠/膜衣/腸溶/膠囊) > 口服液體(顆粒/粉末/藥水/糖漿) ≈ 針劑 > 外用/眼用/吸入等。
+// 用於搜尋排序與「AI 未指定途徑」時的劑型挑選。
+const FORM_PREFERENCE_SCORE: Record<string, number> = {
+  T: 400, A: 400, F: 400, G: 400, B: 400, H: 400, // 口服固體
+  C: 250, D: 250, L: 250, Y: 250,                 // 口服液體/顆粒/粉末
+  I: 250,                                         // 針劑
+};
+const formPrefScore = (code?: string): number =>
+  FORM_PREFERENCE_SCORE[(code?.charAt(0) || "").toUpperCase()] ?? 0;
+
+// 口服液劑：L=內服液/藥水、Y=糖漿。除兒科外不主動推薦（有其他劑型時降級剔除）。
+const LIQUID_FORM_LETTERS = new Set(["L", "Y"]);
 
 // 將 AI 寫的各種途徑用語正規化為標準途徑鍵。無法辨識回傳 ""。
 const ROUTE_ALIASES: [RegExp, string][] = [
@@ -223,6 +238,7 @@ import {
 } from "./services/medicationService";
 import { cn } from "./lib/utils";
 import { MEDICAL_ALIASES } from "./lib/medicalKeywords";
+import { atcMatches, parseDrugLine, isPediatricContext } from "./lib/formulary";
 
 const retryWithBackoff = async <T = any>(
   fn: () => Promise<T>,
@@ -259,6 +275,15 @@ const retryWithBackoff = async <T = any>(
     throw error;
   }
 };
+
+// Groq 模型：REASONING 用於症狀理解/問題拆解/用藥建議（準確度優先）；
+// FAST 留給未來純格式化等輕量任務。要換模型改這裡即可。
+const GROQ_MODEL_REASONING = "llama-3.3-70b-versatile";
+
+// Groq 代理端點（Apps Script doPost，key 藏在後端）。與藥物資料(doGet)分屬不同
+// Apps Script 專案，故獨立一條網址。此網址非機密，可放前端。
+const GROQ_PROXY_URL =
+  "https://script.google.com/macros/s/AKfycby-RlIM41-muVbHmYQFNncbfSkBryCwGzJfGFXu66ExMWKXnqdrxKhVP-lKDtVghU7s9Q/exec";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -563,13 +588,21 @@ export default function App() {
     document.documentElement.setAttribute("data-mode", isAiMode ? "ai" : "hmss");
   }, [isAiMode]);
 
-  const ai = useMemo(
-    () =>
-      new OpenAI({
-        apiKey: process.env.GROQ_API_KEY || "",
-        baseURL: "https://api.groq.com/openai/v1",
-        dangerouslyAllowBrowser: true,
-      }),
+  // 透過 Apps Script 後端代打 Groq：key 藏在 Apps Script，瀏覽器看不到。
+  // 用 text/plain 送 POST 以避開 CORS preflight（Apps Script 不處理 OPTIONS）。
+  // Apps Script 不支援串流，故一律非串流；回傳即標準 Groq/OpenAI completions JSON。
+  const groqViaProxy = useCallback(
+    async (body: Record<string, any>): Promise<any> => {
+      const res = await fetch(GROQ_PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ ...body, stream: false }),
+      });
+      if (!res.ok) throw new Error(`AI 代理錯誤: ${res.status}`);
+      const data = await res.json();
+      if (data?.error) throw new Error(`AI 代理錯誤: ${JSON.stringify(data.error)}`);
+      return data;
+    },
     [],
   );
 
@@ -584,48 +617,87 @@ export default function App() {
     [medications],
   );
 
-  // 依成分名 +（可選）給藥途徑比對院內藥庫，挑選臨床正確的劑型品項。
-  const findFormularyMatch = (
+  // 依 ATC 碼（為主）或成分名（後備）+（可選）給藥途徑比對院內藥庫，
+  // 回傳「所有」臨床正確劑型的相符品項（依劑型偏好排序，去重，上限 8 筆）。
+  const FORMULARY_MATCH_CAP = 8;
+  const findFormularyMatches = (
+    atcCode: string,
     ingredient: string,
-    route?: string,
-  ): Medication | undefined => {
-    const q = ingredient.trim().toLowerCase();
-    if (!q) return undefined;
+    route: string | undefined,
+    allowLiquid: boolean,
+  ): Medication[] => {
     const letterOf = (m: Medication) => (m.code?.charAt(0) || "").toUpperCase();
+    // 非兒科 → 有非液劑替代時，剔除藥水/糖漿（液劑為唯一選擇時仍保留）。
+    const demoteLiquid = (list: Medication[]): Medication[] => {
+      if (allowLiquid) return list;
+      const nonLiquid = list.filter((m) => !LIQUID_FORM_LETTERS.has(letterOf(m)));
+      return nonLiquid.length > 0 ? nonLiquid : list;
+    };
 
-    // 1. 收集所有「成分名相符」的候選品項
-    let candidates = medications.filter((m) => {
-      const fields = [m.component, m.genericName, m.chineseName, m.brandName]
-        .filter(Boolean)
-        .map((f) => (f as string).toLowerCase());
-      return fields.some((f) => f.includes(q) || (f.length > 4 && q.includes(f)));
-    });
-    // 1.1 直接比對無結果 → 模糊比對補候選
-    if (candidates.length === 0) {
-      candidates = formularyFuse.search(ingredient).slice(0, 5).map((r) => r.item);
+    // 1. 建立候選池：ATC 為主，比不到（或無碼）才退回成分名。
+    let candidates: Medication[] = [];
+    const atc = (atcCode || "").trim();
+    if (atc) {
+      candidates = medications.filter((m) => atcMatches(m.atcCode, atc));
     }
-    if (candidates.length === 0) return undefined;
+    if (candidates.length === 0) {
+      const q = ingredient.trim().toLowerCase();
+      if (q) {
+        candidates = medications.filter((m) => {
+          const fields = [m.component, m.genericName, m.chineseName, m.brandName]
+            .filter(Boolean)
+            .map((f) => (f as string).toLowerCase());
+          return fields.some((f) => f.includes(q) || (f.length > 4 && q.includes(f)));
+        });
+        if (candidates.length === 0) {
+          candidates = formularyFuse.search(ingredient).slice(0, 5).map((r) => r.item);
+        }
+      }
+    }
+    if (candidates.length === 0) return [];
 
-    // 2. 依臨床途徑挑選正確劑型
+    // 去重（依藥品碼）並截斷的小工具
+    const finalize = (list: Medication[]): Medication[] => {
+      const seen = new Set<string>();
+      const out: Medication[] = [];
+      for (const m of list) {
+        const key = m.code || m.id;
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push(m);
+        }
+        if (out.length >= FORMULARY_MATCH_CAP) break;
+      }
+      return out;
+    };
+
+    // 2. 依臨床途徑過濾並排序劑型
     const r = normalizeRoute(route || "");
     if (r) {
       const wantLetters = ROUTE_FORM_LETTERS[r] || [];
       const isSystemic = r === "口服" || r === "針劑";
-      // 全身性途徑：僅接受全身性劑型；其他途徑：僅接受該途徑劑型
+      // 全身性途徑：僅接受全身性劑型；其他途徑：僅接受該途徑劑型。
+      // 避免把全身性疾病錯配到外用劑型（如膽囊炎配到 MetroGel 外用凝膠）。
       const pool = candidates.filter((m) =>
         isSystemic
           ? SYSTEMIC_FORM_LETTERS.has(letterOf(m))
           : wantLetters.includes(letterOf(m)),
       );
-      // 院內無對應途徑品項 → 回傳 undefined（標示「院內無此品項」），
-      // 避免把全身性疾病錯配到外用劑型（如膽囊炎配到 MetroGel 外用凝膠）。
-      if (pool.length === 0) return undefined;
-      // 優先選途徑完全吻合者（例如指定口服時，口服優先於針劑）
-      const exact = pool.filter((m) => wantLetters.includes(letterOf(m)));
-      return exact[0] || pool[0];
+      if (pool.length === 0) return []; // 院內無對應途徑品項 → 標示「院內無此品項」
+      // 依 wantLetters 的臨床偏好順序排（口服優先於針劑；同途徑內錠劑/膠囊優先於藥水/糖漿）。
+      const rank = (m: Medication) => {
+        const i = wantLetters.indexOf(letterOf(m));
+        return i === -1 ? 999 : i;
+      };
+      return finalize(demoteLiquid([...pool].sort((a, b) => rank(a) - rank(b))));
     }
 
-    return candidates[0];
+    // AI 未指定途徑 → 仍依劑型偏好排：全身性(口服/針劑)優先於局部劑型。
+    return finalize(
+      demoteLiquid(
+        [...candidates].sort((a, b) => formPrefScore(b.code) - formPrefScore(a.code)),
+      ),
+    );
   };
 
   const isQueryValidForAi = useMemo(() => {
@@ -697,8 +769,8 @@ ${JSON.stringify(systemsList)}
 注意：如果沒有任何相關的，請回傳空陣列形式。`;
 
         const response = await retryWithBackoff<any>(() =>
-          ai.chat.completions.create({
-            model: "llama-3.1-8b-instant",
+          groqViaProxy({
+            model: GROQ_MODEL_REASONING,
             messages: [{ role: "user", content: prompt }],
             response_format: { type: "json_object" },
           })
@@ -715,7 +787,7 @@ ${JSON.stringify(systemsList)}
     }, 450);
 
     return () => clearTimeout(delayTimer);
-  }, [isAiSymptomRequested, searchQuery, medications, ai]);
+  }, [isAiSymptomRequested, searchQuery, medications, groqViaProxy]);
 
   // Remove global click listener in favor of local onBlur for better focus management
   useEffect(() => {
@@ -792,8 +864,8 @@ ${JSON.stringify(systemsList)}
 回傳格式：{"mainProblems":["..."],"secondaryProblems":["..."]}
 病患描述：「${query}」`;
     const response = await retryWithBackoff<any>(() =>
-      ai.chat.completions.create({
-        model: "llama-3.1-8b-instant",
+      groqViaProxy({
+        model: GROQ_MODEL_REASONING,
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
       }),
@@ -849,10 +921,19 @@ ${JSON.stringify(systemsList)}
 - 【🚨 只處理清單內問題】：只能針對「已確認問題清單」中的問題給建議，絕對不要自行新增清單以外的問題。
 - 【🚨 非藥物問題給建議即可】：若某問題無特定藥物可直接治療，請在該問題下「不要列藥物」，改輸出一行以「※」開頭的臨床建議文字（例如：「※ 建議低脂飲食並安排腹部超音波評估，必要時外科會診」）。
 - 【🚨 問題絕不可混合】：每個「問題：」群組只能放專屬於該問題的藥物，嚴禁把不同問題（不同症狀、或疾病本身 vs 症狀）的藥物混在同一群組。若某藥可同時處理多個問題，請放在最主要的那個問題即可。
-- 【建議數量足夠】：對於可用藥的問題，請提供充分、多樣的藥物選擇（建議 5-10 個，甚至 8-12 個不同機制或劑型的替代成分），讓醫師有靈活的處方備選。
+- 【🚨 每個問題至少 5 種藥物】：對於可用藥的問題，「每一個問題」都必須列出「至少 5 種」藥物成分（盡量 8-12 種不同機制或劑型的替代成分），數量不足視為未完成。讓醫師有充分備選。
+- 【🚨 盡量命中院內藥庫】：系統會以你提供的「ATC 碼」為主比對一份院內藥庫清單並呈現所有庫內相符品項。故請「優先選擇臨床常用、各級醫院藥局普遍會備的標準成分」（用通用英文學名），避免冷門、罕用或已淘汰的成分，以提高命中、盡量讓更多建議能對應到院內實際品項。同一機轉若有多個常用成分，可一併列出以增加命中機會。
 - 【務必使用「成分名/學名」】：藥物行請以「藥物成分學名」開頭（優先通用英文學名，例如 Metformin、Amlodipine；可在括號附中文名）。「絕對不要」自行編造任何藥品代碼或編號，系統會自動比對。
+- 【🚨 必須附 WHO ATC 碼】：每個藥物行都要填入該成分的 WHO ATC 碼（5-7 碼，例如 Acetaminophen=N02BE01、Amlodipine=C08CA01、Metformin=A10BA02）。系統用它精準對到院內品項。若你不確定正確 ATC 碼，請將該欄「留空」（系統會改用成分名比對）——「絕對不要杜撰」錯誤的 ATC 碼。
 - 【🚨 必須指定「給藥途徑」且須符合臨床情境】：每個藥物建議都必須標明給藥途徑，從以下擇一：口服、針劑、外用、眼用、吸入、栓劑、貼片。途徑必須符合臨床！全身性疾病（如膽囊炎、肺炎、敗血症等）必須用「口服」或「針劑」，絕對不可建議「外用」等局部劑型（例如膽囊炎需全身性 Metronidazole 口服/針劑，而非 MetroGel 外用凝膠）；局部病灶（如皮膚感染、結膜炎）才用外用/眼用。
-- 【理由字數控制】：每個藥物建議的理由限制在 30 字內，精炼呈現機轉、優勢或重要副作用。
+- 【🚨 劑型須由綜合臨床因素判斷】：每個藥物的給藥途徑/劑型，請依以下因素「綜合判斷」，而非套公式：
+  (1) 病灶範圍：全身性疾病用全身性劑型（口服/針劑）；單純局部病灶（皮膚、眼、外耳、局部黏膜）才用對應局部劑型。
+  (2) 嚴重度與急迫性：病情穩定/輕中度/門診可處理者「優先口服」；重症、敗血、需快速起效或高血中濃度、無法吞嚥/禁食/嘔吐者用「針劑」。
+  (3) 疾病本身特性與臨床指引：依該疾病的標準治療途徑（如氣喘控制用吸入、嚴重感染用靜脈、慢性病維持用口服）。
+  (4) 病人可行性：意識、吞嚥能力、腸胃吸收狀況。
+  原則：全身性問題一律以口服/針劑為主，能口服則優先口服，不得用外用等局部劑型替代全身治療。請在「理由」中簡述為何選此劑型（如「重症需靜脈」「門診可口服」）。
+- 【🚨 成人避免口服液劑】：除非病患描述為「兒科/嬰幼兒/吞嚥困難」，否則「不要建議口服液劑（藥水、糖漿、internal solution、syrup）」，口服一律以錠劑/膠囊為主。
+- 【🚨 理由須詳細且為一段敘述】：每個藥物的「理由」欄寫成「一段連貫的文字」（約 40-90 字），自然融合藥理機轉與此情境的選擇理由（臨床首選地位／指引建議／療效優勢／安全性或副作用考量／適應症契合），可帶出關鍵注意事項（如腎功能、低血鉀、出血風險）。「絕對不要」出現「作用機轉」「選擇理由」等標題字樣，也不要編號或分點，直接以臨床語言一段帶過。例如：「選擇性阻斷 β1 受體、降低心率與心肌耗氧，為心衰竭與心絞痛的指引首選，須留意心搏過緩與氣喘禁忌」。
 - 藥物審視：嚴格審視藥物交互作用（DDI）、重複用藥及潛在副作用；所有建議須符合現行臨床指引。
 - 資訊邊界：若資訊不足以確立診斷，應指出需進一步評估的臨床指標（如肝腎功能、實驗室數據），不可憑空猜測。
 
@@ -862,12 +943,12 @@ ${JSON.stringify(systemsList)}
 [整體用藥策略與臨床總結段落]
 請直接在第一段輸出 80-150 字的整體臨床分析與用藥策略總結（重點式、可條列；此段中絕對不可包含「問題：」或「Problem:」字樣）。
 
-接著針對清單中每個問題各自一個「問題：」群組。藥物行固定三欄，用「 | 」分隔：「成分學名(中文名) | 途徑 | 理由」；非藥物建議則用「※ 建議內容」。
+接著針對清單中每個問題各自一個「問題：」群組。藥物行固定四欄，用「 | 」分隔：「成分學名(中文名) | 途徑 | ATC碼 | 理由」；ATC 碼不確定時該欄可留空但分隔符仍保留；非藥物建議則用「※ 建議內容」。
 
 問題：[問題名稱 1]
-成分學名(中文名) | 口服 | [理由（限30字內）]
-成分學名(中文名) | 針劑 | [理由（限30字內）]
-...
+成分學名(中文名) | 口服 | N02BE01 | [機轉＋選擇理由，約40-90字]
+成分學名(中文名) | 針劑 | [ATC碼或留空] | [機轉＋選擇理由，約40-90字]
+...（每個可用藥問題至少 5 行）
 
 問題：[非藥物可治療的問題名稱]
 ※ [臨床建議文字，例如生活型態調整、轉診或進一步檢查]
@@ -880,26 +961,19 @@ ${problemListText}
 ${query}
 `;
 
-      const responseStream = await retryWithBackoff<any>(() =>
-        ai.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
+      // Apps Script 不支援串流 → 一次取回完整結果。ponytail: 失去逐字跳出，換到 key 不外洩。
+      const response = await retryWithBackoff<any>(() =>
+        groqViaProxy({
+          model: GROQ_MODEL_REASONING,
           messages: [{ role: "user", content: prompt }],
-          stream: true,
         }),
       );
-
-      let fullResponse = "";
-      for await (const chunk of responseStream) {
-        const chunkText = chunk.choices?.[0]?.delta?.content || "";
-        if (chunkText) {
-          fullResponse += chunkText;
-          setAiHistory((prev) =>
-            prev.map((it) =>
-              it.timestamp === timestamp ? { ...it, response: fullResponse } : it,
-            ),
-          );
-        }
-      }
+      const fullResponse = response.choices?.[0]?.message?.content || "";
+      setAiHistory((prev) =>
+        prev.map((it) =>
+          it.timestamp === timestamp ? { ...it, response: fullResponse } : it,
+        ),
+      );
       setAiHistory((prev) =>
         prev.map((it) => (it.timestamp === timestamp ? { ...it, phase: "done" } : it)),
       );
@@ -1000,10 +1074,6 @@ ${query}
     }
 
     try {
-      if (!process.env.GROQ_API_KEY) {
-        throw new Error("偵測不到 GROQ_API_KEY。請在專案中設定環境變數。");
-      }
-
       const { mainProblems, secondaryProblems } = await decomposeProblems(currentQuery);
 
       if (secondaryProblems.length === 0) {
@@ -1247,8 +1317,18 @@ ${query}
           const pool = `${m.component} ${m.brandName} ${m.genericName} ${m.chineseName} ${m.indications} ${m.pharmacologicalClass}`.toLowerCase();
           return pool.includes(kw);
         });
+        // 成分名比對：AI 推薦的首選成分若實際存在於院內藥庫就撈進來。
+        // 這條比 class 精確字串比對可靠得多 —— 8B/70B 都難一字不差複製院內分類字串，
+        // 但成分學名是穩定的。ponytail: 成分名是主訊號，class/system 只是輔助。
+        const nameFields = [m.component, m.genericName, m.chineseName, m.brandName]
+          .filter(Boolean)
+          .map((f) => (f as string).toLowerCase());
+        const isIngredientMatch = aiSymptomMapping.recommendedIngredients.some((ing) => {
+          const q = ing.toLowerCase().trim();
+          return q.length > 2 && nameFields.some((f) => f.includes(q) || q.includes(f));
+        });
 
-        return isClassMatch || isSystemMatch || isKeywordMatch;
+        return isClassMatch || isSystemMatch || isKeywordMatch || isIngredientMatch;
       });
 
       // 整合與去重，保持基礎匹配類別 (使用 Set 保證完全無重複 key)
@@ -1382,6 +1462,10 @@ ${query}
         if (isCommonComponent) {
           score += 500;
         }
+
+        // 5. 劑型常用度微調：全身性(口服/針劑)優先於局部劑型，口服固體又優先於液體。
+        //    分數刻意小，僅打破同分，不影響臨床匹配大權重。
+        score += formPrefScore(m.code);
 
         return score;
       };
@@ -3221,47 +3305,30 @@ ${query}
                                                               </div>
                                                             );
                                                           }
-                                                          // AI 藥物行格式為「成分學名(中文) | 途徑 | 理由」，不含藥品碼。
-                                                          // 去除行首編號/符號與括號標記，再依「|」拆成三欄。
-                                                          const cleanedLine = line
-                                                            .replace(/^\s*(\d+[\.\、\)]|\*|\-|\•)\s*/, "")
-                                                            .replace(/\[([^\]]+)\]/g, "$1")
-                                                            .replace(/【([^】]+)】/g, "$1")
+                                                          // AI 藥物行：成分學名(中文) | 途徑 | ATC碼 | 理由（樣式判斷解析）。
+                                                          const parsed = parseDrugLine(
+                                                            line,
+                                                            (s) => !!normalizeRoute(s),
+                                                          );
+                                                          const ingredientRaw = parsed.ingredient;
+                                                          const routeRaw = parsed.route;
+                                                          const funcPart = parsed.reason
+                                                            .replace(/^[\[】【]|[\]】]/g, "")
                                                             .trim();
-                                                          const segs = cleanedLine
-                                                            .split(/\s*[|｜]\s*/)
-                                                            .map((s) => s.trim())
-                                                            .filter(Boolean);
-                                                          const ingredientRaw = segs[0] || "";
-                                                          let routeRaw = "";
-                                                          let funcPart = "";
-                                                          if (segs.length >= 3) {
-                                                            routeRaw = segs[1];
-                                                            funcPart = segs.slice(2).join(" ");
-                                                          } else if (segs.length === 2) {
-                                                            // 只有兩欄：判斷第二欄是「途徑」還是「理由」
-                                                            if (segs[1].length <= 5 && normalizeRoute(segs[1])) {
-                                                              routeRaw = segs[1];
-                                                            } else {
-                                                              funcPart = segs[1];
-                                                            }
-                                                          }
                                                           // 比對用的乾淨成分名（去除括號內中文/註記）
                                                           const ingredientForMatch = ingredientRaw.replace(/[（(].*?[）)]/g, "").trim();
-                                                          // 本地比對院內藥庫，依「途徑」挑選臨床正確劑型
-                                                          const med = findFormularyMatch(ingredientForMatch || ingredientRaw, routeRaw);
-                                                          const code = med?.code || "";
-                                                          const name = med ? med.component : ingredientRaw;
-                                                          funcPart = funcPart.replace(/^[\[】【]|[\]】]/g, "").trim();
-
-                                                          const itemKey = `${hIdx}-${gIdx}-${lIdx}`;
-                                                          const isExpanded =
-                                                            !!aiExpandedMeds[
-                                                              itemKey
-                                                            ];
+                                                          // 以 ATC 為主、成分名後備，比對院內藥庫，回傳所有相符品項。
+                                                          // 非兒科病患不主動推薦口服液劑（藥水/糖漿）。
+                                                          const matches = findFormularyMatches(
+                                                            parsed.atc,
+                                                            ingredientForMatch || ingredientRaw,
+                                                            routeRaw,
+                                                            isPediatricContext(item.query),
+                                                          );
 
                                                           // 比對不到院內品項：仍顯示 AI 建議成分與理由，並標示「院內無此品項」
-                                                          if (!code) {
+                                                          if (matches.length === 0) {
+                                                            const name = ingredientRaw;
                                                             if (!name) return null;
                                                             return (
                                                               <div
@@ -3295,9 +3362,15 @@ ${query}
                                                             );
                                                           }
 
-                                                          return (
+                                                          return matches.map((med, mIdx) => {
+                                                            const code = med.code;
+                                                            const name =
+                                                              med.component || med.brandName || med.genericName || ingredientRaw;
+                                                            const itemKey = `${hIdx}-${gIdx}-${lIdx}-${code}`;
+                                                            const isExpanded = !!aiExpandedMeds[itemKey];
+                                                            return (
                                                             <div
-                                                              key={lIdx}
+                                                              key={`${lIdx}-${code}-${mIdx}`}
                                                               onMouseDown={() => startLongPress(code)}
                                                               onMouseUp={cancelLongPress}
                                                               onMouseLeave={cancelLongPress}
@@ -3422,6 +3495,7 @@ ${query}
                                                                 )}
                                                             </div>
                                                           );
+                                                          });
                                                         },
                                                       )}
                                                     </div>
