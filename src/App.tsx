@@ -3903,7 +3903,7 @@ ${query}
                       className={cn(
                         "leading-relaxed text-sm md:text-base font-sans backdrop-blur-sm p-4 rounded-lg border shadow-sm break-all",
                         theme === "dark"
-                          ? "text-zinc-300 bg-white/[0.01] border-white/[0.03]"
+                          ? "text-zinc-300 bg-white/[0.06] border-white/[0.10]"
                           : "text-slate-700 bg-slate-50 border-slate-100",
                       )}
                     >
@@ -3917,7 +3917,7 @@ ${query}
                     <div className={cn("text-[10px] uppercase font-semibold tracking-[0.15em]", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
                       不良反應
                     </div>
-                    <p className={cn("leading-relaxed text-sm md:text-base p-4 rounded-lg border", theme === "dark" ? "text-zinc-300 bg-red-900/10 border-red-900/20" : "text-slate-700 bg-red-50 border-red-100")}>
+                    <p className={cn("leading-relaxed text-sm md:text-base p-4 rounded-lg border", theme === "dark" ? "text-zinc-300 bg-red-500/10 border-red-500/20" : "text-slate-700 bg-red-50 border-red-100")}>
                       {selectedMed.sideEffects}
                     </p>
                   </section>
@@ -4121,7 +4121,7 @@ ${query}
                       className={cn(
                         "p-2.5 rounded-xl border",
                         theme === "dark"
-                          ? "bg-white/[0.02] border-white/5"
+                          ? "bg-white/[0.07] border-white/[0.12]"
                           : "bg-slate-50 border-slate-100",
                       )}
                     >
@@ -4146,7 +4146,7 @@ ${query}
                       className={cn(
                         "p-2.5 rounded-xl border",
                         theme === "dark"
-                          ? "bg-white/[0.02] border-white/5"
+                          ? "bg-white/[0.07] border-white/[0.12]"
                           : "bg-slate-50 border-slate-100",
                       )}
                     >
@@ -4181,7 +4181,7 @@ ${query}
                   {selectedMed.indications && (
                     <div className="space-y-1">
                       <span className={cn("text-[8px] uppercase tracking-wider", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>適應症</span>
-                      <div className={cn("p-3 rounded-xl border text-[11px] leading-relaxed", theme === "dark" ? "bg-white/[0.02] border-white/5 text-zinc-400" : "bg-slate-50 border-slate-100 text-slate-600")}>
+                      <div className={cn("p-3 rounded-xl border text-[11px] leading-relaxed", theme === "dark" ? "bg-white/[0.07] border-white/[0.12] text-zinc-300" : "bg-slate-50 border-slate-100 text-slate-600")}>
                         {selectedMed.indications}
                       </div>
                     </div>
@@ -4190,7 +4190,7 @@ ${query}
                   {selectedMed.sideEffects && (
                     <div className="space-y-1">
                       <span className={cn("text-[8px] uppercase tracking-wider", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>不良反應</span>
-                      <div className={cn("p-3 rounded-xl border text-[11px] leading-relaxed", theme === "dark" ? "bg-red-900/10 border-red-900/20 text-zinc-400" : "bg-red-50 border-red-100 text-slate-600")}>
+                      <div className={cn("p-3 rounded-xl border text-[11px] leading-relaxed", theme === "dark" ? "bg-red-500/10 border-red-500/20 text-zinc-300" : "bg-red-50 border-red-100 text-slate-600")}>
                         {selectedMed.sideEffects}
                       </div>
                     </div>
