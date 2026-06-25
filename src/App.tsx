@@ -4169,16 +4169,50 @@ ${query}
                     </div>
                   </div>
 
+                  {selectedMed.content && (
+                    <div className="space-y-1">
+                      <span className={cn("text-[8px] uppercase tracking-wider", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>含量劑型</span>
+                      <p className={cn("text-[11px] font-medium pl-2 border-l-2", theme === "dark" ? "text-zinc-200 border-zinc-700" : "text-slate-700 border-slate-300")}>
+                        {selectedMed.content}
+                      </p>
+                    </div>
+                  )}
+
                   {selectedMed.indications && (
-                    <div
-                      className={cn(
-                        "p-3 rounded-xl border text-[11px] leading-relaxed",
-                        theme === "dark"
-                          ? "bg-white/[0.02] border-white/5 text-zinc-400"
-                          : "bg-slate-50 border-slate-100 text-slate-600",
-                      )}
-                    >
-                      {selectedMed.indications}
+                    <div className="space-y-1">
+                      <span className={cn("text-[8px] uppercase tracking-wider", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>適應症</span>
+                      <div className={cn("p-3 rounded-xl border text-[11px] leading-relaxed", theme === "dark" ? "bg-white/[0.02] border-white/5 text-zinc-400" : "bg-slate-50 border-slate-100 text-slate-600")}>
+                        {selectedMed.indications}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedMed.sideEffects && (
+                    <div className="space-y-1">
+                      <span className={cn("text-[8px] uppercase tracking-wider", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>不良反應</span>
+                      <div className={cn("p-3 rounded-xl border text-[11px] leading-relaxed", theme === "dark" ? "bg-red-900/10 border-red-900/20 text-zinc-400" : "bg-red-50 border-red-100 text-slate-600")}>
+                        {selectedMed.sideEffects}
+                      </div>
+                    </div>
+                  )}
+
+                  {(selectedMed.priceNhi || selectedMed.priceRegular) && (
+                    <div className="space-y-1">
+                      <span className={cn("text-[8px] uppercase tracking-wider", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>價格</span>
+                      <div className="flex gap-2">
+                        {selectedMed.priceNhi ? (
+                          <div className={cn("flex-1 p-2.5 rounded-xl border text-center", theme === "dark" ? "bg-blue-900/20 border-blue-800/30" : "bg-blue-50 border-blue-100")}>
+                            <div className={cn("text-[8px] font-semibold mb-0.5", theme === "dark" ? "text-blue-400" : "text-blue-500")}>健保價</div>
+                            <div className={cn("text-sm font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>${selectedMed.priceNhi.toFixed(1)}</div>
+                          </div>
+                        ) : null}
+                        {selectedMed.priceRegular ? (
+                          <div className={cn("flex-1 p-2.5 rounded-xl border text-center", theme === "dark" ? "bg-zinc-800/50 border-zinc-700/50" : "bg-slate-50 border-slate-200")}>
+                            <div className={cn("text-[8px] font-semibold mb-0.5", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>自費價</div>
+                            <div className={cn("text-sm font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>${selectedMed.priceRegular.toFixed(1)}</div>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   )}
 
