@@ -234,6 +234,7 @@ const SharpStar = ({
 
 import {
   localMedicationService,
+  hasSupabase,
   Medication,
 } from "./services/medicationService";
 import { cn } from "./lib/utils";
@@ -311,6 +312,7 @@ export default function App() {
   const [aiSymptomMapping, setAiSymptomMapping] = useState<{ classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] } | null>(null);
   const [isSymptomAnalyzing, setIsSymptomAnalyzing] = useState(false);
   const [isAiSymptomRequested, setIsAiSymptomRequested] = useState(false);
+  const [aiSymptomError, setAiSymptomError] = useState<string | null>(null);
   const aiSymptomCacheRef = useRef<Record<string, { classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] }>>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
@@ -700,23 +702,30 @@ export default function App() {
     );
   };
 
+  const medicationCodeSet = useMemo(
+    () => new Set(medications.map((m) => m.code?.trim().toUpperCase()).filter(Boolean)),
+    [medications],
+  );
+
   const isQueryValidForAi = useMemo(() => {
     const query = searchQuery.trim();
     if (!query || query.length < 2) return false;
-    const looksLikeCode = /^[A-Z0-9.\-\s%]{1,7}$/i.test(query);
-    return !looksLikeCode;
-  }, [searchQuery]);
+    // 完全吻合已知藥品碼 → 不顯示 AI 按鈕；其他一律顯示
+    return !medicationCodeSet.has(query.toUpperCase());
+  }, [searchQuery, medicationCodeSet]);
 
   // Reset AI request when search query changes
   useEffect(() => {
     setIsAiSymptomRequested(false);
     setAiSymptomMapping(null);
+    setAiSymptomError(null);
   }, [searchQuery]);
 
   useEffect(() => {
     if (!isAiSymptomRequested) {
       setAiSymptomMapping(null);
       setIsSymptomAnalyzing(false);
+      setAiSymptomError(null);
       return;
     }
 
@@ -727,9 +736,7 @@ export default function App() {
       return;
     }
 
-    // Checking if query matches simple codes or short alpha characters to skip AI request
-    const looksLikeCode = /^[A-Z0-9.\-\s%]{1,7}$/i.test(query);
-    if (looksLikeCode) {
+    if (medicationCodeSet.has(query.toUpperCase())) {
       setAiSymptomMapping(null);
       setIsSymptomAnalyzing(false);
       return;
@@ -779,15 +786,16 @@ ${JSON.stringify(systemsList)}
         const parsed = JSON.parse(resultText);
         aiSymptomCacheRef.current[query] = parsed;
         setAiSymptomMapping(parsed);
-      } catch (error) {
+      } catch (error: any) {
         console.error("AI Symptom mapping error:", error);
+        setAiSymptomError(error?.message || "AI 分析失敗，請稍後再試");
       } finally {
         setIsSymptomAnalyzing(false);
       }
     }, 450);
 
     return () => clearTimeout(delayTimer);
-  }, [isAiSymptomRequested, searchQuery, medications, groqViaProxy]);
+  }, [isAiSymptomRequested, searchQuery, medications, medicationCodeSet, groqViaProxy]);
 
   // Remove global click listener in favor of local onBlur for better focus management
   useEffect(() => {
@@ -809,17 +817,15 @@ ${JSON.stringify(systemsList)}
 
   const handleSyncGoogleSheet = async () => {
     setIsSyncing(true);
-    setImportStatus("正在連線至雲端資料庫...");
+    setImportStatus(hasSupabase ? "正在連線至 Supabase 資料庫..." : "正在連線至雲端資料庫...");
 
     try {
-      const { meds, hash } =
-        await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
+      const { meds, hash } = hasSupabase
+        ? await localMedicationService.fetchFromSupabase()
+        : await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
       setImportStatus(`正在存儲 ${meds.length} 筆資料至本地庫...`);
-
-      // 直接覆蓋現有清單，並儲存原始資料的雜湊以供未來比對
       await localMedicationService.saveAll(meds, hash);
       setMedications(meds);
-
       setImportStatus(`同步成功！已更新 ${meds.length} 筆資料`);
     } catch (error) {
       setImportStatus("同步失敗，請檢查網路連線或資料格式");
@@ -837,9 +843,18 @@ ${JSON.stringify(systemsList)}
         const stored = await localMedicationService.getAll();
         if (stored.length > 0) {
           setMedications(stored);
+          // 背景靜默比對遠端筆數，有差異自動更新（不阻塞 UI）
+          if (hasSupabase) {
+            localMedicationService.getSupabaseCount().then(remoteCount => {
+              if (remoteCount > 0 && remoteCount !== stored.length) {
+                handleSyncGoogleSheet();
+              }
+            }).catch(() => {});
+          }
         } else {
-          const { meds, hash } =
-            await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
+          const { meds, hash } = hasSupabase
+            ? await localMedicationService.fetchFromSupabase()
+            : await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
           await localMedicationService.saveAll(meds, hash);
           setMedications(meds);
         }
@@ -1255,7 +1270,7 @@ ${query}
         });
       });
 
-      // 第四層： 其他單字開頭 (Word Boundary Match - 單字字首開頭) - 滿足「每個單字開頭權重都調高」
+      // 第四層： 其他單字開頭 (Word Boundary Match - 單字字首開頭)
       const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const wordBoundaryRegex = new RegExp(`\\b${escapedQuery}`, "i");
       const wordBoundaryMatches = medications.filter((m) => {
@@ -1267,6 +1282,17 @@ ${query}
         const searchPool = `${m.component} ${m.brandName} ${m.genericName} ${m.chineseName} ${m.searchKeywords || ""}`;
         return wordBoundaryRegex.test(searchPool);
       });
+
+      // 第五層： 字串包含（含字尾匹配）
+      const containsMatches = queryLen >= minPrefixLength ? medications.filter((m) => {
+        if (exactMatches.some((em) => em.id === m.id)) return false;
+        if (medicalIntentMatches.some((mm) => mm.id === m.id)) return false;
+        if (stringStartMatches.some((sm) => sm.id === m.id)) return false;
+        if (firstAlphaStartMatches.some((am) => am.id === m.id)) return false;
+        if (wordBoundaryMatches.some((wm) => wm.id === m.id)) return false;
+        const targets = [m.component, m.brandName, m.genericName, m.chineseName, m.code];
+        return targets.some((t) => t?.toLowerCase().includes(query));
+      }) : [];
 
       // 第五層： 全域模糊搜尋 (Global Fuzzy Match) - 僅在符合特定條件時顯示
       const fuzzyResults = fuse.search(query);
@@ -1350,6 +1376,7 @@ ${query}
       addUniqueMeds(stringStartMatches);
       addUniqueMeds(firstAlphaStartMatches);
       addUniqueMeds(wordBoundaryMatches);
+      addUniqueMeds(containsMatches);
 
       // 合併模糊匹配結果 (去重)
       constrainedFuzzy.forEach((fm: any) => {
@@ -1377,7 +1404,7 @@ ${query}
       const getSortingScore = (m: Medication) => {
         let score = 0;
 
-        // 1. 各層級之基礎匹配權重 (調整排序：字首開頭/首字匹配優先權大幅調高，高於症狀關聯與一般適應症，確保字首重要性)
+        // 1. 各層級之基礎匹配權重
         if (exactMatches.some((em) => em.id === m.id)) {
           score += 12000;
         } else if (stringStartMatches.some((sm) => sm.id === m.id)) {
@@ -1390,6 +1417,8 @@ ${query}
           score += 7000;
         } else if (aiSymptomMatches.some((sm) => sm.id === m.id)) {
           score += 6000;
+        } else if (containsMatches.some((cm) => cm.id === m.id)) {
+          score += 5000;
         } else {
           score += 1000;
         }
@@ -1429,7 +1458,7 @@ ${query}
         };
 
         if (checkPrefix(m.component) || checkPrefix(m.brandName) || checkPrefix(m.chineseName) || checkPrefix(m.genericName) || checkPrefix(m.code)) {
-          score += 5000; // 給予超高額外字首分數，強調字首的絕對重要性！
+          score += 1000;
         }
 
         // 3. 整合 AI 臨床首選與推薦藥物成分 (與臨床最常用、治療契合度排序對接)
@@ -1470,9 +1499,8 @@ ${query}
         return score;
       };
 
-      // 弱關聯門檻：低於此分視為純模糊雜訊予以剔除。
-      // 結構化匹配（完全/字首/詞邊界/醫學意圖/AI 關聯）皆 6000 起跳，
-      // 純 Fuse 模糊匹配僅 ~1000-2500，故切在 3000 可乾淨濾除雜訊。
+      // 弱關聯門檻：純 Fuse 模糊雜訊（~1000）低於此值即剔除；
+      // 字串包含（含字尾）5000、詞邊界 8000 以上均可通過。
       const MIN_RELEVANCE_SCORE = 3000;
 
       // 計算一次分數、剔除弱關聯、再排序（同時避免排序時重複計分）
@@ -2612,15 +2640,19 @@ ${query}
                     </motion.button>
                   )}
 
-                  {isAiSymptomRequested && (isSymptomAnalyzing || aiSymptomMapping) && (
+                  {isAiSymptomRequested && (isSymptomAnalyzing || aiSymptomMapping || aiSymptomError) && (
                     <motion.div
                       initial={{ opacity: 0, y: -6 }}
                       animate={{ opacity: 1, y: 0 }}
                       className={cn(
                         "mb-3.5 px-3.5 py-2.5 rounded-xl border flex flex-wrap items-center gap-2 text-xs shadow-sm shadow-brand-accent/5",
-                        theme === "dark"
-                          ? "bg-brand-accent/[0.03] border-brand-accent/20 text-zinc-300"
-                          : "bg-brand-accent/[0.015] border-brand-accent/15 text-slate-700",
+                        aiSymptomError
+                          ? theme === "dark"
+                            ? "bg-red-500/[0.05] border-red-500/20 text-zinc-300"
+                            : "bg-red-500/[0.04] border-red-500/15 text-slate-700"
+                          : theme === "dark"
+                            ? "bg-brand-accent/[0.03] border-brand-accent/20 text-zinc-300"
+                            : "bg-brand-accent/[0.015] border-brand-accent/15 text-slate-700",
                       )}
                     >
                       <div className="flex items-center gap-1.5 shrink-0 font-bold text-brand-accent">
@@ -2630,6 +2662,14 @@ ${query}
 
                       {isSymptomAnalyzing ? (
                         <span className="text-[11px] text-brand-accent/70 animate-pulse font-medium">分析中...</span>
+                      ) : aiSymptomError ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-red-400 font-medium">{aiSymptomError}</span>
+                          <button
+                            onClick={() => { setAiSymptomError(null); setIsAiSymptomRequested(false); setTimeout(() => setIsAiSymptomRequested(true), 0); }}
+                            className="text-[10px] font-bold text-brand-accent underline underline-offset-2"
+                          >重試</button>
+                        </div>
                       ) : (aiSymptomMapping && (aiSymptomMapping.classes.length > 0 || aiSymptomMapping.systems.length > 0)) ? (
                         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                           {aiSymptomMapping?.classes.map((cls) => (
@@ -3838,6 +3878,17 @@ ${query}
                   </div>
                 </div>
 
+                {selectedMed.content && (
+                  <section className="space-y-3">
+                    <div className={cn("text-[10px] uppercase font-semibold tracking-[0.15em]", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
+                      含量劑型
+                    </div>
+                    <p className={cn("text-sm md:text-base font-medium pl-2.5 border-l-2", theme === "dark" ? "text-zinc-200 border-zinc-700" : "text-slate-700 border-slate-300")}>
+                      {selectedMed.content}
+                    </p>
+                  </section>
+                )}
+
                 {selectedMed.indications && (
                   <section className="space-y-3">
                     <div
@@ -3858,6 +3909,43 @@ ${query}
                     >
                       {selectedMed.indications}
                     </p>
+                  </section>
+                )}
+
+                {selectedMed.sideEffects && (
+                  <section className="space-y-3">
+                    <div className={cn("text-[10px] uppercase font-semibold tracking-[0.15em]", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
+                      不良反應
+                    </div>
+                    <p className={cn("leading-relaxed text-sm md:text-base p-4 rounded-lg border", theme === "dark" ? "text-zinc-300 bg-red-900/10 border-red-900/20" : "text-slate-700 bg-red-50 border-red-100")}>
+                      {selectedMed.sideEffects}
+                    </p>
+                  </section>
+                )}
+
+                {(selectedMed.priceNhi || selectedMed.priceRegular) && (
+                  <section className="space-y-3">
+                    <div className={cn("text-[10px] uppercase font-semibold tracking-[0.15em]", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
+                      價格
+                    </div>
+                    <div className="flex gap-4">
+                      {selectedMed.priceNhi ? (
+                        <div className={cn("flex-1 p-3 rounded-lg border text-center", theme === "dark" ? "bg-blue-900/20 border-blue-800/30" : "bg-blue-50 border-blue-100")}>
+                          <div className={cn("text-[10px] font-semibold mb-1", theme === "dark" ? "text-blue-400" : "text-blue-500")}>健保價</div>
+                          <div className={cn("text-base font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>
+                            ${selectedMed.priceNhi.toFixed(1)}
+                          </div>
+                        </div>
+                      ) : null}
+                      {selectedMed.priceRegular ? (
+                        <div className={cn("flex-1 p-3 rounded-lg border text-center", theme === "dark" ? "bg-zinc-800/50 border-zinc-700/50" : "bg-slate-50 border-slate-200")}>
+                          <div className={cn("text-[10px] font-semibold mb-1", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>自費價</div>
+                          <div className={cn("text-base font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>
+                            ${selectedMed.priceRegular.toFixed(1)}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   </section>
                 )}
 
