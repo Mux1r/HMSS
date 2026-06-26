@@ -43,86 +43,23 @@ const getDosageColor = (code: string) => {
   const base = "border-l";
   switch (firstChar) {
     case "E":
-      return {
-        border: `${base} border-l-blue-500`,
-        glow: "bg-blue-500",
-        text: "text-blue-500",
-        accent: "text-blue-400",
-        bg: "bg-blue-500/10",
-        borderMain: "border-blue-500/20",
-      }; // 外用
+      return { border: `${base} border-l-blue-500`, glow: "bg-blue-500", text: "text-blue-500", accent: "text-blue-400", bg: "bg-blue-500/10", borderMain: "border-blue-500/20", gradientRgb: "59,130,246" }; // 外用
     case "T":
-      return {
-        border: `${base} border-l-orange-500`,
-        glow: "bg-orange-500",
-        text: "text-orange-500",
-        accent: "text-orange-400",
-        bg: "bg-orange-500/10",
-        borderMain: "border-orange-500/20",
-      }; // 錠劑
+      return { border: `${base} border-l-orange-500`, glow: "bg-orange-500", text: "text-orange-500", accent: "text-orange-400", bg: "bg-orange-500/10", borderMain: "border-orange-500/20", gradientRgb: "249,115,22" }; // 錠劑
     case "I":
-      return {
-        border: `${base} border-l-red-500`,
-        glow: "bg-red-500",
-        text: "text-red-500",
-        accent: "text-red-400",
-        bg: "bg-red-500/10",
-        borderMain: "border-red-500/20",
-      }; // 針劑
+      return { border: `${base} border-l-red-500`, glow: "bg-red-500", text: "text-red-500", accent: "text-red-400", bg: "bg-red-500/10", borderMain: "border-red-500/20", gradientRgb: "239,68,68" }; // 針劑
     case "L":
-      return {
-        border: `${base} border-l-teal-500`,
-        glow: "bg-teal-500",
-        text: "text-teal-500",
-        accent: "text-teal-400",
-        bg: "bg-teal-500/10",
-        borderMain: "border-teal-500/20",
-      }; // 藥水
+      return { border: `${base} border-l-teal-500`, glow: "bg-teal-500", text: "text-teal-500", accent: "text-teal-400", bg: "bg-teal-500/10", borderMain: "border-teal-500/20", gradientRgb: "20,184,166" }; // 藥水
     case "O":
-      return {
-        border: `${base} border-l-emerald-500`,
-        glow: "bg-emerald-500",
-        text: "text-emerald-500",
-        accent: "text-emerald-400",
-        bg: "bg-emerald-500/10",
-        borderMain: "border-emerald-500/20",
-      }; // 眼用
+      return { border: `${base} border-l-emerald-500`, glow: "bg-emerald-500", text: "text-emerald-500", accent: "text-emerald-400", bg: "bg-emerald-500/10", borderMain: "border-emerald-500/20", gradientRgb: "16,185,129" }; // 眼用
     case "S":
-      return {
-        border: `${base} border-l-amber-500`,
-        glow: "bg-amber-500",
-        text: "text-amber-500",
-        accent: "text-amber-400",
-        bg: "bg-amber-500/10",
-        borderMain: "border-amber-500/20",
-      }; // 噴劑
+      return { border: `${base} border-l-amber-500`, glow: "bg-amber-500", text: "text-amber-500", accent: "text-amber-400", bg: "bg-amber-500/10", borderMain: "border-amber-500/20", gradientRgb: "245,158,11" }; // 噴劑
     case "Z":
-      return {
-        border: `${base} border-l-zinc-500`,
-        glow: "bg-zinc-500",
-        text: "text-zinc-500",
-        accent: "text-zinc-400",
-        bg: "bg-zinc-500/10",
-        borderMain: "border-zinc-500/20",
-      }; // 試驗
+      return { border: `${base} border-l-zinc-500`, glow: "bg-zinc-500", text: "text-zinc-500", accent: "text-zinc-400", bg: "bg-zinc-500/10", borderMain: "border-zinc-500/20", gradientRgb: "113,113,122" }; // 試驗
     case "V":
-      return {
-        border: `${base} border-l-violet-500`,
-        glow: "bg-violet-500",
-        text: "text-violet-500",
-        accent: "text-violet-400",
-        bg: "bg-violet-500/10",
-        borderMain: "border-violet-500/20",
-      }; // 塞劑
+      return { border: `${base} border-l-violet-500`, glow: "bg-violet-500", text: "text-violet-500", accent: "text-violet-400", bg: "bg-violet-500/10", borderMain: "border-violet-500/20", gradientRgb: "139,92,246" }; // 塞劑
     default:
-      return {
-        border: `${base} border-l-brand-accent`,
-        glow: "bg-brand-accent",
-        text: "text-brand-accent",
-        accent: "text-brand-accent/80",
-        bg: "bg-brand-accent/10",
-        borderMain: "border-brand-accent/20",
-      };
+      return { border: `${base} border-l-brand-accent`, glow: "bg-brand-accent", text: "text-brand-accent", accent: "text-brand-accent/80", bg: "bg-brand-accent/10", borderMain: "border-brand-accent/20", gradientRgb: "13,148,136" };
   }
 };
 
@@ -3680,9 +3617,12 @@ ${query}
                 mass: 1,
               }}
               className={cn(
-                "hidden md:flex flex-col border-l relative z-[60] overflow-hidden bg-brand-sidebar shadow-2xl shrink-0 w-[400px] lg:w-[480px]",
-                theme === "dark" ? "border-white/10" : "border-slate-200",
+                "hidden md:flex flex-col border-l relative z-[60] overflow-hidden shadow-2xl shrink-0 w-[400px] lg:w-[480px]",
+                theme === "dark" ? "border-white/10" : "border-slate-200 bg-white",
               )}
+              style={theme === "dark" && selectedMed ? {
+                background: `linear-gradient(160deg, rgba(${getDosageColor(selectedMed.code).gradientRgb},0.13) 0%, rgba(18,18,20,1) 50%)`,
+              } : undefined}
             >
               <div
                 className={cn(
@@ -3757,7 +3697,7 @@ ${query}
                 className={cn(
                   "flex-1 overflow-y-auto p-6 md:p-8 space-y-8 scrollbar-thin",
                   theme === "dark"
-                    ? "bg-brand-card scrollbar-thumb-white/10"
+                    ? "bg-transparent scrollbar-thumb-white/10"
                     : "bg-white scrollbar-thumb-slate-200",
                 )}
               >
@@ -4007,10 +3947,11 @@ ${query}
               transition={{ type: "spring", damping: 32, stiffness: 300 }}
               className={cn(
                 "md:hidden fixed inset-x-0 bottom-0 h-[38vh] border-t z-[100] overflow-hidden flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.3)]",
-                theme === "dark"
-                  ? "bg-brand-card border-white/10"
-                  : "bg-white border-slate-200",
+                theme === "dark" ? "border-white/10" : "bg-white border-slate-200",
               )}
+              style={theme === "dark" ? {
+                background: `linear-gradient(160deg, rgba(${getDosageColor(selectedMed.code).gradientRgb},0.13) 0%, rgba(18,18,20,1) 55%)`,
+              } : undefined}
             >
               <div
                 onPointerDown={(e) => dragControls.start(e)}
