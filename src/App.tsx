@@ -3757,7 +3757,7 @@ ${query}
                 className={cn(
                   "flex-1 overflow-y-auto p-6 md:p-8 space-y-8 scrollbar-thin",
                   theme === "dark"
-                    ? "bg-gradient-to-b from-brand-sidebar to-brand-bg scrollbar-thumb-white/10"
+                    ? "bg-brand-card scrollbar-thumb-white/10"
                     : "bg-white scrollbar-thumb-slate-200",
                 )}
               >
@@ -4008,7 +4008,7 @@ ${query}
               className={cn(
                 "md:hidden fixed inset-x-0 bottom-0 h-[38vh] border-t z-[100] overflow-hidden flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.3)]",
                 theme === "dark"
-                  ? "bg-brand-sidebar border-white/10"
+                  ? "bg-brand-card border-white/10"
                   : "bg-white border-slate-200",
               )}
             >
