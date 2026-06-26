@@ -13,7 +13,7 @@ import {
   FormEvent,
 } from "react";
 import Fuse from "fuse.js";
-import { motion, AnimatePresence, useDragControls } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Search,
   Pill,
@@ -263,7 +263,6 @@ export default function App() {
     }
     return [];
   });
-  const dragControls = useDragControls();
 
   useEffect(() => {
     localStorage.setItem("favorites", JSON.stringify(favorites));
@@ -463,7 +462,7 @@ export default function App() {
         if (state.type === "ai_with_med") {
           setIsAiMode(true);
           const med = medications.find((m) => m.id === state.medId);
-          if (med) setSelectedMed(med);
+          if (med) setSelectedMed(med); setMobileExpanded(false);
         } else if (state.type === "ai") {
           setIsAiMode(true);
           // If the state says it's just AI, but we came from a med selection,
@@ -471,14 +470,14 @@ export default function App() {
           // or just follow the state exactly.
           if (state.medId) {
             const med = medications.find((m) => m.id === state.medId);
-            if (med) setSelectedMed(med);
+            if (med) setSelectedMed(med); setMobileExpanded(false);
           } else {
             setSelectedMed(null);
           }
         } else if (state.type === "med") {
           setIsAiMode(false);
           const med = medications.find((m) => m.id === state.id);
-          if (med) setSelectedMed(med);
+          if (med) setSelectedMed(med); setMobileExpanded(false);
         } else if (state.type === "hmss") {
           setIsAiMode(false);
           setSelectedMed(null);
@@ -513,8 +512,10 @@ export default function App() {
     }
   }, [selectedMed, isAiMode]);
 
+  const [mobileExpanded, setMobileExpanded] = useState(false);
+
   // Manual close handlers
-  const closeDetail = () => setSelectedMed(null);
+  const closeDetail = () => { setSelectedMed(null); setMobileExpanded(false); };
   const exitAiMode = () => setIsAiMode(false);
   // -----------------------------------
 
@@ -2672,7 +2673,7 @@ ${query}
                                   isLongPressRef.current = false;
                                   return;
                                 }
-                                setSelectedMed(med);
+                                setSelectedMed(med); setMobileExpanded(false);
                               }}
                               onMouseDown={() => startLongPress(med.code)}
                               onMouseUp={cancelLongPress}
@@ -3695,225 +3696,108 @@ ${query}
 
               <div
                 className={cn(
-                  "flex-1 overflow-y-auto p-6 md:p-8 space-y-8 scrollbar-thin",
+                  "flex-1 overflow-y-auto px-6 md:px-8 pt-6 pb-16 scrollbar-thin",
                   theme === "dark"
                     ? "bg-transparent scrollbar-thumb-white/10"
                     : "bg-white scrollbar-thumb-slate-200",
                 )}
               >
-                <div className="space-y-4">
+                {/* ── Hero ── */}
+                <div className="mb-6">
                   <button
                     onClick={() => handleCopyCode(selectedMed.code)}
                     className={cn(
-                      "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border transition-all active:scale-95 group/code cursor-pointer",
+                      "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border mb-3 transition-all active:scale-95 group/code cursor-pointer",
                       getDosageColor(selectedMed.code).bg,
                       getDosageColor(selectedMed.code).borderMain,
-                      "hover:bg-brand-accent/5 hover:border-brand-accent/30"
                     )}
-                    title="點擊複製藥物代碼"
+                    title="點擊複製"
                   >
-                    <span
-                      className={cn(
-                        "font-mono font-black text-[15px] tracking-widest",
-                        getDosageColor(selectedMed.code).text,
-                      )}
-                    >
-                      {selectedMed.code}
-                    </span>
-                    <Copy className="w-3.5 h-3.5 opacity-40 group-hover/code:opacity-100 transition-opacity text-brand-muted shrink-0" />
+                    <span className={cn("font-mono font-black text-sm tracking-widest", getDosageColor(selectedMed.code).text)}>{selectedMed.code}</span>
+                    <Copy className="w-3 h-3 opacity-30 group-hover/code:opacity-80 transition-opacity text-brand-muted" />
                   </button>
-
-                  <div className="space-y-1">
-                    <h1
-                      className={cn(
-                        "text-xl md:text-2xl font-bold leading-tight tracking-tight break-words",
-                        theme === "dark" ? "text-zinc-100" : "text-slate-900",
-                      )}
-                    >
-                      {selectedMed.component}
-                    </h1>
-                    <p
-                      className={cn(
-                        "text-sm md:text-base font-medium tracking-tight break-words",
-                        getDosageColor(selectedMed.code).accent,
-                      )}
-                    >
-                      {selectedMed.genericName}
+                  <h1 className={cn("text-2xl font-bold leading-tight mb-1", theme === "dark" ? "text-white" : "text-slate-900")}>
+                    {selectedMed.component}
+                  </h1>
+                  <p className={cn("text-base font-medium", getDosageColor(selectedMed.code).accent)}>{selectedMed.genericName}</p>
+                  {(selectedMed.brandName || selectedMed.chineseName) && (
+                    <p className={cn("text-sm mt-0.5", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
+                      {[selectedMed.brandName, selectedMed.chineseName].filter(Boolean).join(" · ")}
                     </p>
-                  </div>
-
-                  <div
-                    className={cn(
-                      "flex flex-col gap-1 pt-2 border-l-2 pl-4",
-                      getDosageColor(selectedMed.code).borderMain,
-                    )}
-                  >
-                    <p
-                      className={cn(
-                        "text-xs md:text-sm font-medium leading-snug",
-                        theme === "dark" ? "text-zinc-300" : "text-slate-700",
-                      )}
-                    >
-                      {selectedMed.brandName}
-                    </p>
-                    {selectedMed.chineseName && (
-                      <p
-                        className={cn(
-                          "text-[10px] md:text-xs font-normal",
-                          theme === "dark" ? "text-zinc-500" : "text-slate-400",
-                        )}
-                      >
-                        {selectedMed.chineseName}
-                      </p>
-                    )}
-                  </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 gap-6">
-                  <div className="space-y-2">
-                    <label
-                      className={cn(
-                        "text-[9px] uppercase font-semibold tracking-[0.15em] flex items-center gap-2",
-                        theme === "dark" ? "text-zinc-500" : "text-slate-400",
-                      )}
-                    >
-                      Anatomical System
-                    </label>
-                    <button
-                      onClick={() => {
-                        setSearchQuery(selectedMed.anatomicalSystem);
-                      }}
-                      className={cn(
-                        "font-medium leading-relaxed text-xs md:text-sm pl-2.5 border-l-2 hover:text-brand-accent hover:border-brand-accent transition-all text-left w-full",
-                        theme === "dark"
-                          ? "text-zinc-300 border-zinc-800/60"
-                          : "text-slate-600 border-slate-200",
-                      )}
-                    >
+                {/* ── 資訊列 ── */}
+                <div className={cn("divide-y text-sm", theme === "dark" ? "divide-white/[0.07]" : "divide-slate-100")}>
+                  {selectedMed.content && (
+                    <div className="flex gap-4 py-3">
+                      <span className={cn("w-14 shrink-0 text-xs pt-0.5", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>含量</span>
+                      <span className={cn("flex-1 leading-relaxed", theme === "dark" ? "text-zinc-200" : "text-slate-700")}>{selectedMed.content}</span>
+                    </div>
+                  )}
+                  <div className="flex gap-4 py-3">
+                    <span className={cn("w-14 shrink-0 text-xs pt-0.5", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>系統</span>
+                    <button onClick={() => setSearchQuery(selectedMed.anatomicalSystem)} className={cn("flex-1 text-left leading-relaxed hover:text-brand-accent transition-colors", theme === "dark" ? "text-zinc-200" : "text-slate-700")}>
                       {selectedMed.anatomicalSystem}
                     </button>
                   </div>
-                  <div className="space-y-2">
-                    <label
-                      className={cn(
-                        "text-[10px] uppercase font-semibold tracking-[0.15em] flex items-center gap-2",
-                        theme === "dark" ? "text-zinc-500" : "text-slate-400",
-                      )}
-                    >
-                      Pharmacological Class
-                    </label>
-                    <button
-                      onClick={() => {
-                        setSearchQuery(selectedMed.pharmacologicalClass);
-                      }}
-                      className={cn(
-                        "font-medium leading-relaxed text-sm md:text-base pl-2.5 border-l-2 hover:text-brand-accent hover:border-brand-accent transition-all text-left w-full",
-                        theme === "dark"
-                          ? "text-zinc-200 border-zinc-700"
-                          : "text-slate-700 border-slate-200",
-                      )}
-                    >
+                  <div className="flex gap-4 py-3">
+                    <span className={cn("w-14 shrink-0 text-xs pt-0.5", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>藥理</span>
+                    <button onClick={() => setSearchQuery(selectedMed.pharmacologicalClass)} className={cn("flex-1 text-left leading-relaxed hover:text-brand-accent transition-colors", theme === "dark" ? "text-zinc-200" : "text-slate-700")}>
                       {selectedMed.pharmacologicalClass}
                     </button>
                   </div>
                 </div>
 
-                {selectedMed.content && (
-                  <section className="space-y-3">
-                    <div className={cn("text-[10px] uppercase font-semibold tracking-[0.15em]", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
-                      含量劑型
-                    </div>
-                    <p className={cn("text-sm md:text-base font-medium pl-2.5 border-l-2", theme === "dark" ? "text-zinc-200 border-zinc-700" : "text-slate-700 border-slate-300")}>
-                      {selectedMed.content}
-                    </p>
-                  </section>
-                )}
-
+                {/* ── 適應症 ── */}
                 {selectedMed.indications && (
-                  <section className="space-y-3">
-                    <div
-                      className={cn(
-                        "flex items-center gap-3 font-semibold text-[10px] uppercase tracking-[0.15em]",
-                        theme === "dark" ? "text-zinc-500" : "text-slate-400",
-                      )}
-                    >
-                      ATC Info / Indications
-                    </div>
-                    <p
-                      className={cn(
-                        "leading-relaxed text-sm md:text-base font-sans backdrop-blur-sm p-4 rounded-lg border shadow-sm break-all",
-                        theme === "dark"
-                          ? "text-zinc-300 bg-white/[0.06] border-white/[0.10]"
-                          : "text-slate-700 bg-slate-50 border-slate-100",
-                      )}
-                    >
-                      {selectedMed.indications}
-                    </p>
-                  </section>
+                  <div className={cn("border-t mt-6 pt-5", theme === "dark" ? "border-white/[0.07]" : "border-slate-100")}>
+                    <p className={cn("text-xs uppercase tracking-wider mb-2", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>適應症</p>
+                    <p className={cn("text-sm leading-relaxed", theme === "dark" ? "text-zinc-300" : "text-slate-600")}>{selectedMed.indications}</p>
+                  </div>
                 )}
 
+                {/* ── 不良反應 ── */}
                 {selectedMed.sideEffects && (
-                  <section className="space-y-3">
-                    <div className={cn("text-[10px] uppercase font-semibold tracking-[0.15em]", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
-                      不良反應
-                    </div>
-                    <p className={cn("leading-relaxed text-sm md:text-base p-4 rounded-lg border", theme === "dark" ? "text-zinc-300 bg-red-500/10 border-red-500/20" : "text-slate-700 bg-red-50 border-red-100")}>
-                      {selectedMed.sideEffects}
-                    </p>
-                  </section>
+                  <div className={cn("border-t mt-6 pt-5", theme === "dark" ? "border-white/[0.07]" : "border-slate-100")}>
+                    <p className={cn("text-xs uppercase tracking-wider mb-2", theme === "dark" ? "text-red-400/70" : "text-red-400")}>不良反應</p>
+                    <p className={cn("text-sm leading-relaxed", theme === "dark" ? "text-red-300/80" : "text-red-600/80")}>{selectedMed.sideEffects}</p>
+                  </div>
                 )}
 
+                {/* ── 價格 ── */}
                 {(selectedMed.priceNhi || selectedMed.priceRegular) && (
-                  <section className="space-y-3">
-                    <div className={cn("text-[10px] uppercase font-semibold tracking-[0.15em]", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
-                      價格
-                    </div>
-                    <div className="flex gap-4">
+                  <div className={cn("border-t mt-6 pt-5", theme === "dark" ? "border-white/[0.07]" : "border-slate-100")}>
+                    <p className={cn("text-xs uppercase tracking-wider mb-3", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>價格</p>
+                    <div className="flex gap-8">
                       {selectedMed.priceNhi ? (
-                        <div className={cn("flex-1 p-3 rounded-lg border text-center", theme === "dark" ? "bg-blue-900/20 border-blue-800/30" : "bg-blue-50 border-blue-100")}>
-                          <div className={cn("text-[10px] font-semibold mb-1", theme === "dark" ? "text-blue-400" : "text-blue-500")}>健保價</div>
-                          <div className={cn("text-base font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>
-                            ${selectedMed.priceNhi.toFixed(1)}
-                          </div>
+                        <div>
+                          <p className={cn("text-xs mb-1", theme === "dark" ? "text-blue-400" : "text-blue-500")}>健保</p>
+                          <p className={cn("text-2xl font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>${selectedMed.priceNhi.toFixed(1)}</p>
                         </div>
                       ) : null}
                       {selectedMed.priceRegular ? (
-                        <div className={cn("flex-1 p-3 rounded-lg border text-center", theme === "dark" ? "bg-zinc-800/50 border-zinc-700/50" : "bg-slate-50 border-slate-200")}>
-                          <div className={cn("text-[10px] font-semibold mb-1", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>自費價</div>
-                          <div className={cn("text-base font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>
-                            ${selectedMed.priceRegular.toFixed(1)}
-                          </div>
+                        <div>
+                          <p className={cn("text-xs mb-1", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>自費</p>
+                          <p className={cn("text-2xl font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>${selectedMed.priceRegular.toFixed(1)}</p>
                         </div>
                       ) : null}
                     </div>
-                  </section>
+                  </div>
                 )}
 
-                <div className="space-y-6 pt-6 pb-20">
-                  <h3
-                    className={cn(
-                      "text-[10px] font-bold uppercase tracking-[0.2em] flex items-center gap-2",
-                      theme === "dark" ? "text-zinc-500" : "text-slate-400",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "w-1.5 h-1.5 rounded-full animate-pulse",
-                        getDosageColor(selectedMed.code).glow,
-                      )}
-                    ></span>
-                    Index Metadata
-                  </h3>
-                  <div className="flex flex-wrap gap-2.5">
+                {/* ── Keywords ── */}
+                <div className={cn("border-t mt-6 pt-5", theme === "dark" ? "border-white/[0.07]" : "border-slate-100")}>
+                  <div className="flex flex-wrap gap-2">
                     {selectedMed.searchKeywords.map((k, i) => (
                       <button
                         key={`${k}-${i}`}
                         onClick={() => setSearchQuery(k)}
                         className={cn(
-                          "px-4 py-1.5 border rounded-lg text-[10px] font-mono transition-all cursor-pointer uppercase tracking-tight",
+                          "px-3 py-1 border rounded text-[10px] font-mono transition-all cursor-pointer",
                           theme === "dark"
-                            ? "bg-brand-secondary/50 border-brand-border text-zinc-500 hover:border-brand-accent/50 hover:bg-brand-accent/5 hover:text-brand-accent"
-                            : "bg-slate-50 border-slate-200 text-slate-500 hover:border-brand-accent/50 hover:bg-slate-100 hover:text-brand-accentShadow",
+                            ? "border-white/10 text-zinc-500 hover:border-brand-accent/50 hover:text-brand-accent"
+                            : "border-slate-200 text-slate-400 hover:border-brand-accent/50 hover:text-brand-accentShadow",
                         )}
                       >
                         {k}
@@ -3926,255 +3810,188 @@ ${query}
           )}
         </AnimatePresence>
 
-        {/* Mobile Detail Panel - Persistent 1/3 bottom sheet */}
+        {/* Mobile: 統一形變元素 — Dynamic Island pill ↔ full sheet */}
         <AnimatePresence>
           {selectedMed && (
             <motion.div
-              key="mobile-panel"
-              drag="y"
-              dragControls={dragControls}
-              dragListener={false}
-              dragConstraints={{ top: 0, bottom: 0 }}
-              dragElastic={{ top: 0, bottom: 0.8 }}
-              onDragEnd={(_e, info) => {
-                if (info.offset.y > 100 || info.velocity.y > 500) {
-                  closeDetail();
-                }
-              }}
-              initial={{ y: "100%", opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: "100%", opacity: 0 }}
+              key="mobile-container"
+              className="md:hidden fixed inset-x-0 bottom-0 z-[100] flex justify-center items-end pointer-events-none"
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "120%", opacity: 0 }}
               transition={{ type: "spring", damping: 32, stiffness: 300 }}
-              className={cn(
-                "md:hidden fixed inset-x-0 bottom-0 h-[38vh] border-t z-[100] overflow-hidden flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.3)]",
-                theme === "dark" ? "border-white/10" : "bg-white border-slate-200",
-              )}
-              style={theme === "dark" ? {
-                background: `linear-gradient(160deg, rgba(${getDosageColor(selectedMed.code).gradientRgb},0.13) 0%, rgba(18,18,20,1) 55%)`,
-              } : undefined}
             >
-              <div
-                onPointerDown={(e) => dragControls.start(e)}
-                className="w-full pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none shrink-0"
+              <motion.div
+                layout
+                transition={{ layout: { type: "spring", damping: 36, stiffness: 420 } }}
+                className={cn(
+                  "pointer-events-auto overflow-hidden flex flex-col border",
+                  "shadow-[0_-8px_50px_rgba(0,0,0,0.55)]",
+                  mobileExpanded
+                    ? "w-full rounded-t-3xl mb-0"
+                    : "rounded-full mb-5",
+                  theme === "dark"
+                    ? "border-white/[0.12]"
+                    : mobileExpanded ? "bg-white border-slate-200" : "bg-white/95 border-slate-200",
+                )}
+                style={{
+                  height: mobileExpanded ? "84vh" : undefined,
+                  ...(theme === "dark" ? {
+                    background: `linear-gradient(150deg, rgba(${getDosageColor(selectedMed.code).gradientRgb},0.20) 0%, rgba(12,12,14,0) 55%), #0c0c0e`,
+                  } : {}),
+                }}
               >
-                <div
-                  className={cn(
-                    "w-12 h-1.5 rounded-full mx-auto shadow-sm",
-                    theme === "dark" ? "bg-zinc-700" : "bg-slate-300",
+                {/* ── 收起：膠囊內容 ── */}
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {!mobileExpanded && (
+                    <motion.div
+                      key="pill-content"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.08 }}
+                      onClick={() => setMobileExpanded(true)}
+                      className="flex items-center gap-2.5 px-4 py-3 cursor-pointer select-none"
+                    >
+                      <span className={cn("font-mono font-black text-sm tracking-widest px-2 py-0.5 rounded border shrink-0", getDosageColor(selectedMed.code).bg, getDosageColor(selectedMed.code).text, getDosageColor(selectedMed.code).borderMain)}>
+                        {selectedMed.code.trim()}
+                      </span>
+                      <span className={cn("text-sm font-semibold max-w-[160px] truncate", theme === "dark" ? "text-white" : "text-slate-900")}>
+                        {selectedMed.component || selectedMed.genericName}
+                      </span>
+                      <ChevronDown className={cn("w-4 h-4 shrink-0 rotate-180", theme === "dark" ? "text-zinc-500" : "text-slate-400")} />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeDetail(); }}
+                        className={cn("p-0.5 shrink-0 rounded-full transition-colors", theme === "dark" ? "text-zinc-500 hover:text-white" : "text-slate-400 hover:text-slate-700")}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </motion.div>
                   )}
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-5 scrollbar-none">
-                <div className="flex justify-between items-start sticky top-0 bg-inherit pt-1 pb-2 z-10">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleCopyCode(selectedMed.code)}
-                      className={cn(
-                        "flex items-center gap-1.5 px-2 py-0.5 rounded border text-[15px] font-mono font-black tracking-widest transition-all active:scale-95 cursor-pointer group/mobile-code",
-                        getDosageColor(selectedMed.code).bg,
-                        getDosageColor(selectedMed.code).text,
-                        getDosageColor(selectedMed.code).borderMain,
-                        "hover:bg-brand-accent/5"
-                      )}
-                      title="點擊複製藥物代碼"
+                </AnimatePresence>
+
+                {/* ── 展開：完整詳情 ── */}
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {mobileExpanded && (
+                    <motion.div
+                      key="sheet-content"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1, transition: { duration: 0.15 } }}
+                      exit={{ opacity: 0, transition: { duration: 0.06 } }}
+                      className="flex flex-col flex-1 min-h-0 overflow-hidden"
                     >
+                      <div className="flex justify-center pt-3 pb-1 shrink-0">
+                        <button
+                          onClick={() => setMobileExpanded(false)}
+                          className={cn(
+                            "flex items-center justify-center w-8 h-8 rounded-full transition-colors active:scale-95",
+                            theme === "dark"
+                              ? "text-zinc-400 hover:text-white hover:bg-white/10"
+                              : "text-slate-400 hover:text-slate-700 hover:bg-slate-100",
+                          )}
+                          aria-label="收起"
+                        >
+                          <ChevronDown className="w-5 h-5" />
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto px-5 pt-1 pb-10 scrollbar-none">
+                {/* sticky top bar: close + fav */}
+                <div className="flex justify-between items-center sticky top-0 bg-inherit pb-3 z-10">
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => handleCopyCode(selectedMed.code)} className={cn("flex items-center gap-1 px-2 py-0.5 rounded border font-mono font-black text-sm tracking-widest transition-all active:scale-95 group/mc", getDosageColor(selectedMed.code).bg, getDosageColor(selectedMed.code).text, getDosageColor(selectedMed.code).borderMain)} title="複製">
                       <span>{selectedMed.code}</span>
-                      <Copy className="w-3.5 h-3.5 opacity-40 group-hover/mobile-code:opacity-100 transition-opacity text-brand-muted shrink-0" />
+                      <Copy className="w-3 h-3 opacity-30 group-hover/mc:opacity-80 transition-opacity" />
                     </button>
-                    <button
-                      onClick={() => toggleFavorite(selectedMed.id)}
-                      className="p-2 rounded-full cursor-pointer transition-colors group"
-                    >
-                      <SharpStar
-                        className={cn(
-                          "w-[18px] h-[18px] transition-colors",
-                          isFavorite(selectedMed.id)
-                            ? "fill-amber-400 text-amber-500"
-                            : theme === "dark"
-                              ? "text-zinc-700 group-hover:text-amber-400/75"
-                              : "text-slate-200 group-hover:text-amber-400/75",
-                        )}
-                      />
+                    <button onClick={() => toggleFavorite(selectedMed.id)} className="p-1.5 cursor-pointer group">
+                      <SharpStar className={cn("w-4 h-4 transition-colors", isFavorite(selectedMed.id) ? "fill-amber-400 text-amber-500" : theme === "dark" ? "text-zinc-600 group-hover:text-amber-400" : "text-slate-300 group-hover:text-amber-400")} />
                     </button>
                   </div>
-                  <button
-                    onClick={closeDetail}
-                    className="p-1 -mr-2 opacity-60 hover:opacity-100 transition-opacity"
-                  >
-                    <X className="w-5 h-5 text-zinc-500" />
+                  <button onClick={closeDetail} className="p-1 opacity-50 hover:opacity-100 transition-opacity">
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="space-y-1">
-                  <h1
-                    className={cn(
-                      "text-lg font-bold leading-tight",
-                      theme === "dark" ? "text-white" : "text-slate-900",
-                    )}
-                  >
-                    {selectedMed.component}
-                  </h1>
-                  <p
-                    className={cn(
-                      "text-xs font-medium",
-                      getDosageColor(selectedMed.code).accent,
-                    )}
-                  >
-                    {selectedMed.genericName}
-                  </p>
+                {/* Hero */}
+                <div className="mb-5">
+                  <h1 className={cn("text-xl font-bold leading-tight mb-1", theme === "dark" ? "text-white" : "text-slate-900")}>{selectedMed.component}</h1>
+                  <p className={cn("text-sm font-medium", getDosageColor(selectedMed.code).accent)}>{selectedMed.genericName}</p>
+                  {(selectedMed.brandName || selectedMed.chineseName) && (
+                    <p className={cn("text-xs mt-0.5", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
+                      {[selectedMed.brandName, selectedMed.chineseName].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
                 </div>
 
-                <div className="space-y-4">
-                  <div
-                    className="flex flex-col gap-0.5 border-l-2 pl-3"
-                    style={{
-                      borderColor:
-                        getDosageColor(selectedMed.code)
-                          .borderMain.split("-")
-                          .slice(1)
-                          .join("-") === "border-white/20"
-                          ? "rgba(255,255,255,0.1)"
-                          : undefined,
-                    }}
-                  >
-                    <p
-                      className={cn(
-                        "text-xs",
-                        theme === "dark" ? "text-zinc-400" : "text-slate-600",
-                      )}
-                    >
-                      {selectedMed.brandName}
-                    </p>
-                    {selectedMed.chineseName && (
-                      <p
-                        className={cn(
-                          "text-[10px]",
-                          theme === "dark" ? "text-zinc-500" : "text-slate-400",
-                        )}
-                      >
-                        {selectedMed.chineseName}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div
-                      className={cn(
-                        "p-2.5 rounded-xl border",
-                        theme === "dark"
-                          ? "bg-white/[0.07] border-white/[0.12]"
-                          : "bg-slate-50 border-slate-100",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "block text-[8px] uppercase tracking-wider mb-1",
-                          theme === "dark" ? "text-zinc-500" : "text-slate-400",
-                        )}
-                      >
-                        System
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[10px] font-medium block leading-tight",
-                          theme === "dark" ? "text-zinc-300" : "text-slate-700",
-                        )}
-                      >
-                        {selectedMed.anatomicalSystem}
-                      </span>
-                    </div>
-                    <div
-                      className={cn(
-                        "p-2.5 rounded-xl border",
-                        theme === "dark"
-                          ? "bg-white/[0.07] border-white/[0.12]"
-                          : "bg-slate-50 border-slate-100",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "block text-[8px] uppercase tracking-wider mb-1",
-                          theme === "dark" ? "text-zinc-500" : "text-slate-400",
-                        )}
-                      >
-                        Class
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[10px] font-medium block leading-tight",
-                          theme === "dark" ? "text-zinc-300" : "text-slate-700",
-                        )}
-                      >
-                        {selectedMed.pharmacologicalClass}
-                      </span>
-                    </div>
-                  </div>
-
+                {/* 資訊列 */}
+                <div className={cn("divide-y text-sm", theme === "dark" ? "divide-white/[0.07]" : "divide-slate-100")}>
                   {selectedMed.content && (
-                    <div className="space-y-1">
-                      <span className={cn("text-[8px] uppercase tracking-wider", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>含量劑型</span>
-                      <p className={cn("text-[11px] font-medium pl-2 border-l-2", theme === "dark" ? "text-zinc-200 border-zinc-700" : "text-slate-700 border-slate-300")}>
-                        {selectedMed.content}
-                      </p>
+                    <div className="flex gap-3 py-2.5">
+                      <span className={cn("w-12 shrink-0 text-xs pt-0.5", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>含量</span>
+                      <span className={cn("flex-1 leading-relaxed", theme === "dark" ? "text-zinc-200" : "text-slate-700")}>{selectedMed.content}</span>
                     </div>
                   )}
+                  <div className="flex gap-3 py-2.5">
+                    <span className={cn("w-12 shrink-0 text-xs pt-0.5", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>系統</span>
+                    <button onClick={() => setSearchQuery(selectedMed.anatomicalSystem)} className={cn("flex-1 text-left leading-relaxed hover:text-brand-accent transition-colors", theme === "dark" ? "text-zinc-200" : "text-slate-700")}>{selectedMed.anatomicalSystem}</button>
+                  </div>
+                  <div className="flex gap-3 py-2.5">
+                    <span className={cn("w-12 shrink-0 text-xs pt-0.5", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>藥理</span>
+                    <button onClick={() => setSearchQuery(selectedMed.pharmacologicalClass)} className={cn("flex-1 text-left leading-relaxed hover:text-brand-accent transition-colors", theme === "dark" ? "text-zinc-200" : "text-slate-700")}>{selectedMed.pharmacologicalClass}</button>
+                  </div>
+                </div>
 
-                  {selectedMed.indications && (
-                    <div className="space-y-1">
-                      <span className={cn("text-[8px] uppercase tracking-wider", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>適應症</span>
-                      <div className={cn("p-3 rounded-xl border text-[11px] leading-relaxed", theme === "dark" ? "bg-white/[0.07] border-white/[0.12] text-zinc-300" : "bg-slate-50 border-slate-100 text-slate-600")}>
-                        {selectedMed.indications}
-                      </div>
+                {/* 適應症 */}
+                {selectedMed.indications && (
+                  <div className={cn("border-t mt-5 pt-4", theme === "dark" ? "border-white/[0.07]" : "border-slate-100")}>
+                    <p className={cn("text-[11px] uppercase tracking-wider mb-2", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>適應症</p>
+                    <p className={cn("text-sm leading-relaxed", theme === "dark" ? "text-zinc-300" : "text-slate-600")}>{selectedMed.indications}</p>
+                  </div>
+                )}
+
+                {/* 不良反應 */}
+                {selectedMed.sideEffects && (
+                  <div className={cn("border-t mt-5 pt-4", theme === "dark" ? "border-white/[0.07]" : "border-slate-100")}>
+                    <p className={cn("text-[11px] uppercase tracking-wider mb-2", theme === "dark" ? "text-red-400/70" : "text-red-400")}>不良反應</p>
+                    <p className={cn("text-sm leading-relaxed", theme === "dark" ? "text-red-300/80" : "text-red-600/80")}>{selectedMed.sideEffects}</p>
+                  </div>
+                )}
+
+                {/* 價格 */}
+                {(selectedMed.priceNhi || selectedMed.priceRegular) && (
+                  <div className={cn("border-t mt-5 pt-4", theme === "dark" ? "border-white/[0.07]" : "border-slate-100")}>
+                    <p className={cn("text-[11px] uppercase tracking-wider mb-3", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>價格</p>
+                    <div className="flex gap-8">
+                      {selectedMed.priceNhi ? (
+                        <div>
+                          <p className={cn("text-xs mb-0.5", theme === "dark" ? "text-blue-400" : "text-blue-500")}>健保</p>
+                          <p className={cn("text-xl font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>${selectedMed.priceNhi.toFixed(1)}</p>
+                        </div>
+                      ) : null}
+                      {selectedMed.priceRegular ? (
+                        <div>
+                          <p className={cn("text-xs mb-0.5", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>自費</p>
+                          <p className={cn("text-xl font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>${selectedMed.priceRegular.toFixed(1)}</p>
+                        </div>
+                      ) : null}
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {selectedMed.sideEffects && (
-                    <div className="space-y-1">
-                      <span className={cn("text-[8px] uppercase tracking-wider", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>不良反應</span>
-                      <div className={cn("p-3 rounded-xl border text-[11px] leading-relaxed", theme === "dark" ? "bg-red-500/10 border-red-500/20 text-zinc-300" : "bg-red-50 border-red-100 text-slate-600")}>
-                        {selectedMed.sideEffects}
-                      </div>
-                    </div>
-                  )}
-
-                  {(selectedMed.priceNhi || selectedMed.priceRegular) && (
-                    <div className="space-y-1">
-                      <span className={cn("text-[8px] uppercase tracking-wider", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>價格</span>
-                      <div className="flex gap-2">
-                        {selectedMed.priceNhi ? (
-                          <div className={cn("flex-1 p-2.5 rounded-xl border text-center", theme === "dark" ? "bg-blue-900/20 border-blue-800/30" : "bg-blue-50 border-blue-100")}>
-                            <div className={cn("text-[8px] font-semibold mb-0.5", theme === "dark" ? "text-blue-400" : "text-blue-500")}>健保價</div>
-                            <div className={cn("text-sm font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>${selectedMed.priceNhi.toFixed(1)}</div>
-                          </div>
-                        ) : null}
-                        {selectedMed.priceRegular ? (
-                          <div className={cn("flex-1 p-2.5 rounded-xl border text-center", theme === "dark" ? "bg-zinc-800/50 border-zinc-700/50" : "bg-slate-50 border-slate-200")}>
-                            <div className={cn("text-[8px] font-semibold mb-0.5", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>自費價</div>
-                            <div className={cn("text-sm font-bold", theme === "dark" ? "text-zinc-100" : "text-slate-800")}>${selectedMed.priceRegular.toFixed(1)}</div>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {selectedMed.searchKeywords.slice(0, 5).map((k, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setSearchQuery(k)}
-                        className={cn(
-                          "px-2 py-1 rounded text-[9px] font-mono border",
-                          theme === "dark"
-                            ? "bg-white/5 border-white/10 text-zinc-500"
-                            : "bg-slate-50 border-slate-100 text-slate-400",
-                        )}
-                      >
+                {/* Keywords */}
+                <div className={cn("border-t mt-5 pt-4", theme === "dark" ? "border-white/[0.07]" : "border-slate-100")}>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedMed.searchKeywords.slice(0, 6).map((k, i) => (
+                      <button key={i} onClick={() => setSearchQuery(k)} className={cn("px-2.5 py-1 border rounded text-[10px] font-mono transition-all", theme === "dark" ? "border-white/10 text-zinc-500 hover:text-brand-accent hover:border-brand-accent/40" : "border-slate-200 text-slate-400 hover:text-brand-accentShadow")}>
                         {k}
                       </button>
                     ))}
                   </div>
                 </div>
-              </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -4362,7 +4179,7 @@ ${query}
                                 exit={{ opacity: 0, scale: 0.95 }}
                                 transition={{ duration: 0.2 }}
                                 onClick={() => {
-                                  setSelectedMed(med);
+                                  setSelectedMed(med); setMobileExpanded(false);
                                   setIsFavoritesManagerOpen(false);
                                   setFavoritesSearchQuery("");
                                 }}
