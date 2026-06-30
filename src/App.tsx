@@ -250,6 +250,7 @@ const [isSyncing, setIsSyncing] = useState(false);
   const [isAiSymptomRequested, setIsAiSymptomRequested] = useState(false);
   const [aiSymptomError, setAiSymptomError] = useState<string | null>(null);
   const aiSymptomCacheRef = useRef<Record<string, { classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] }>>({});
+  const aiRecommendCacheRef = useRef<Map<string, string>>(new Map());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -855,6 +856,17 @@ ${JSON.stringify(systemsList)}
         ...mainProblems.map((p) => `${p}（主要問題）`),
         ...selectedSecondary.map((p) => `${p}（次要問題/症狀）`),
       ];
+      const cacheKey = query + "\x00" + [...confirmedProblems].sort().join("\x01");
+      const cached = aiRecommendCacheRef.current.get(cacheKey);
+      if (cached) {
+        setAiHistory((prev) =>
+          prev.map((it) =>
+            it.timestamp === timestamp ? { ...it, response: cached, phase: "done" } : it,
+          ),
+        );
+        setIsAiLoading(false);
+        return;
+      }
       const problemListText =
         confirmedProblems.length > 0
           ? confirmedProblems.map((p) => `- ${p}`).join("\n")
@@ -924,13 +936,11 @@ ${query}
         }),
       );
       const fullResponse = response.choices?.[0]?.message?.content || "";
+      aiRecommendCacheRef.current.set(cacheKey, fullResponse);
       setAiHistory((prev) =>
         prev.map((it) =>
-          it.timestamp === timestamp ? { ...it, response: fullResponse } : it,
+          it.timestamp === timestamp ? { ...it, response: fullResponse, phase: "done" } : it,
         ),
-      );
-      setAiHistory((prev) =>
-        prev.map((it) => (it.timestamp === timestamp ? { ...it, phase: "done" } : it)),
       );
     } catch (error: any) {
       console.error("AI recommendation error:", error);
@@ -982,6 +992,15 @@ ${query}
     setCustomSymptomInputs((prev) => ({ ...prev, [timestamp]: "" }));
   };
 
+  // 從建議結果退回問題勾選階段
+  const handleBackToSelecting = (timestamp: number) => {
+    setAiHistory((prev) =>
+      prev.map((it) =>
+        it.timestamp === timestamp ? { ...it, phase: "selecting", response: "" } : it,
+      ),
+    );
+  };
+
   // 使用者勾選完畢，按「產生建議」→ 進入第二階段
   const handleGenerateRecommendation = (timestamp: number) => {
     if (isAiLoading) return;
@@ -1021,7 +1040,7 @@ ${query}
           selectedSecondary: [],
         },
         ...list,
-      ];
+      ].slice(0, 20);
     });
 
     if (directQuery === undefined) {
@@ -3556,6 +3575,29 @@ ${query}
                                               </div>
                                             );
                                           })()}
+                                          {item.phase === "done" && item.response.startsWith("⚠️ 錯誤：") && (
+                                            <button
+                                              onClick={() => handleAiSearch(undefined, item.query)}
+                                              disabled={isAiLoading}
+                                              className="w-full py-2 rounded-xl font-bold text-xs border border-red-400/30 text-red-400 hover:bg-red-400/10 transition-all disabled:opacity-50"
+                                            >
+                                              重試
+                                            </button>
+                                          )}
+                                          {item.phase === "done" && !item.response.startsWith("⚠️ 錯誤：") && (item.mainProblems?.length ?? 0) > 0 && (
+                                            <button
+                                              onClick={() => handleBackToSelecting(item.timestamp)}
+                                              disabled={isAiLoading}
+                                              className={cn(
+                                                "w-full py-2 rounded-xl font-bold text-xs border transition-all disabled:opacity-50",
+                                                theme === "dark"
+                                                  ? "border-white/10 text-zinc-400 hover:bg-white/5"
+                                                  : "border-slate-200 text-slate-400 hover:bg-slate-50",
+                                              )}
+                                            >
+                                              ↩ 重新選擇問題
+                                            </button>
+                                          )}
                                           {hIdx === 0 && isAiLoading && (
                                             <div
                                               className={cn(
