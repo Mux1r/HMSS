@@ -179,6 +179,7 @@ const mapSupabaseRow = (row: any): Medication => {
       code, row.generic_name, row.brand_name, row.chinese_name,
       row.component, row.bag_label_name, atcCode, dosageForm,
       anatomicalSystem, pharmacologicalClass,
+      row.indications, row.side_effects,
     ].filter(Boolean).map((s: any) => s.toString().toLowerCase().trim().replace(/\s+/g, '')),
   };
 };

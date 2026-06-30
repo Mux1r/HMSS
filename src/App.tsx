@@ -1155,7 +1155,7 @@ ${query}
       const queryLen = query.length;
 
       const fuse = new Fuse(baseMeds, {
-        keys: ["code", "component", "brandName", "genericName", "chineseName", "searchKeywords"],
+        keys: ["code", "component", "brandName", "genericName", "chineseName", "bagLabelName", "indications", "sideEffects", "searchKeywords"],
         threshold: 0.45,
       });
 
@@ -1184,12 +1184,11 @@ ${query}
         const pharmacological = m.pharmacologicalClass?.toLowerCase() || "";
         const system = m.anatomicalSystem?.toLowerCase() || "";
         const indications = m.indications?.toLowerCase() || "";
+        const sideEffects = m.sideEffects?.toLowerCase() || "";
 
-        // 如果查詢命中分類或機轉關鍵字
-        if (pharmacological.includes(query) || system.includes(query))
+        if (pharmacological.includes(query) || system.includes(query) || indications.includes(query) || sideEffects.includes(query))
           return true;
 
-        // 別名命中機轉 (例如 ACEI 命中藥理分類中含有相關字眼的藥物)
         if (synonyms.length > 0) {
           return synonyms.some(
             (s) =>
@@ -1212,7 +1211,7 @@ ${query}
       const stringStartMatches = medications.filter((m) => {
         if (exactMatches.some((em) => em.id === m.id)) return false;
         if (medicalIntentMatches.some((mm) => mm.id === m.id)) return false;
-        const targets = [m.code, m.component, m.brandName, m.genericName, m.chineseName];
+        const targets = [m.code, m.component, m.brandName, m.genericName, m.chineseName, m.bagLabelName];
         return targets.some((t) => t?.toLowerCase().startsWith(query));
       });
 
@@ -1221,7 +1220,7 @@ ${query}
         if (exactMatches.some((em) => em.id === m.id)) return false;
         if (medicalIntentMatches.some((mm) => mm.id === m.id)) return false;
         if (stringStartMatches.some((sm) => sm.id === m.id)) return false;
-        const targets = [m.component, m.brandName, m.genericName, m.chineseName];
+        const targets = [m.component, m.brandName, m.genericName, m.chineseName, m.bagLabelName];
         return targets.some((t) => {
           if (!t) return false;
           const alphaT = getAlphaStart(t);
@@ -1238,7 +1237,7 @@ ${query}
         if (stringStartMatches.some((sm) => sm.id === m.id)) return false;
         if (firstAlphaStartMatches.some((am) => am.id === m.id)) return false;
 
-        const searchPool = `${m.component} ${m.brandName} ${m.genericName} ${m.chineseName} ${m.searchKeywords || ""}`;
+        const searchPool = `${m.component} ${m.brandName} ${m.genericName} ${m.chineseName} ${m.bagLabelName || ""} ${m.searchKeywords || ""}`;
         return wordBoundaryRegex.test(searchPool);
       });
 
@@ -1249,7 +1248,7 @@ ${query}
         if (stringStartMatches.some((sm) => sm.id === m.id)) return false;
         if (firstAlphaStartMatches.some((am) => am.id === m.id)) return false;
         if (wordBoundaryMatches.some((wm) => wm.id === m.id)) return false;
-        const targets = [m.component, m.brandName, m.genericName, m.chineseName, m.code];
+        const targets = [m.component, m.brandName, m.genericName, m.chineseName, m.bagLabelName, m.code];
         return targets.some((t) => t?.toLowerCase().includes(query));
       }) : [];
 
