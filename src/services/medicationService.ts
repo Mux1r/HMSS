@@ -3,16 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 
 const STORAGE_KEY = 'hosp_medications_v2';
 const HASH_KEY = 'hosp_medications_hash';
-const SYNC_URL_KEY = 'gsheet_sync_url';
 
 const INITIAL_MEDICATIONS: any[] = [];
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-export const hasSupabase = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
-// ponytail: singleton; null when env vars absent
-const supabase = hasSupabase ? createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!) : null;
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL as string,
+  import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+);
 
 export interface Medication {
   id: string;
@@ -266,84 +263,9 @@ export const localMedicationService = {
   },
 
   /**
-   * 從 Google Sheets 同步大型資料集
-   */
-  async fetchFromGoogleSheet(url: string): Promise<{ meds: Medication[], hash: string }> {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('雲端連線失敗，請檢查 URL');
-      const data = await response.json();
-      const rawHash = this.generateHash(data); // 儲存原始資料的雜湊，用於下次對比
-      
-      if (!Array.isArray(data)) {
-        throw new Error('資料格式錯誤: 預期為陣列');
-      }
-
-      // 使用 Web Worker 式的非同步處理 (分批次處理，避免阻塞主線程)
-      const CHUNK_SIZE = 500;
-      const processed: Medication[] = [];
-      
-      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-        const chunk = data.slice(i, i + CHUNK_SIZE);
-        const chunkProcessed = chunk.map((rawItem: any, index: number) => {
-          // 清理 Key 名稱
-          const item: any = {};
-          Object.keys(rawItem).forEach(key => {
-            item[key.trim()] = rawItem[key];
-          });
-
-          const baseId = (item['藥品碼'] || item.code || `gsheet-${i + index}`).toString().trim();
-          const code = (item['藥品碼'] || item.code || '').toString().trim();
-          const pharmacologicalClass = (item['藥理分類'] || '').toString().trim();
-          const anatomicalSystem = (item['解剖學系統'] || '').toString().trim();
-          const dosageForm = code.charAt(0).toUpperCase();
-          
-          return {
-            id: `${baseId}-${index}-${i}`,
-            code: code || baseId,
-            genericName: (item['學名'] || '').toString().trim(),
-            brandName: (item['實際藥名'] || '').toString().trim(),
-            chineseName: (item['中文藥名'] || '').toString().trim(),
-            component: (item['常用藥名'] || '').toString().trim(),
-            dosageForm: dosageForm || '?',
-            anatomicalSystem: anatomicalSystem || '未分類系統',
-            pharmacologicalClass: pharmacologicalClass || '未分類藥理',
-            indications: item['ATC碼'] ? `ATC碼: ${item['ATC碼']}` : (item['適應症'] || ''),
-            atcCode: (item['ATC碼'] || '').toString().trim().toUpperCase(),
-            searchKeywords: [
-              code,
-              item['學名'], 
-              item['實際藥名'], 
-              item['中文藥名'], 
-              item['常用藥名'],
-              item['ATC碼'],
-              dosageForm,
-              anatomicalSystem,
-              pharmacologicalClass
-            ].filter(Boolean).map((s: any) => s.toString().toLowerCase().trim().replace(/\s+/g, ''))
-          };
-        });
-        
-        processed.push(...chunkProcessed);
-        
-        // 給予瀏覽器喘息時間 (讓出 CPU)
-        if (i + CHUNK_SIZE < data.length) {
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
-      }
-
-      return { meds: processed, hash: rawHash };
-    } catch (error) {
-      console.error('Sync error:', error);
-      throw error;
-    }
-  },
-
-  /**
    * 取得 Supabase 目前筆數（HEAD request，不傳資料，極快）
    */
   async getSupabaseCount(): Promise<number> {
-    if (!supabase) return 0;
     const { count } = await supabase.from('medications').select('id', { count: 'exact', head: true });
     return count ?? 0;
   },
@@ -352,7 +274,6 @@ export const localMedicationService = {
    * 從 Supabase 同步（含豐富欄位），自動分頁處理大型資料集
    */
   async fetchFromSupabase(): Promise<{ meds: Medication[], hash: string }> {
-    if (!supabase) throw new Error('Supabase 未設定：請在 .env 加入 VITE_SUPABASE_URL 與 VITE_SUPABASE_ANON_KEY');
     const PAGE = 1000;
     const all: any[] = [];
     let from = 0;
@@ -378,7 +299,6 @@ export const localMedicationService = {
   async reset() {
     await del(STORAGE_KEY);
     await del(HASH_KEY);
-    localStorage.removeItem(SYNC_URL_KEY);
     return [...INITIAL_MEDICATIONS];
   }
 };

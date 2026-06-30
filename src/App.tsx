@@ -174,7 +174,6 @@ const SharpStar = ({
 
 import {
   localMedicationService,
-  hasSupabase,
   Medication,
 } from "./services/medicationService";
 import { cn } from "./lib/utils";
@@ -239,10 +238,7 @@ export default function App() {
   const [selectedDosageForms, setSelectedDosageForms] = useState<string[]>([]);
   const [selectedMed, setSelectedMed] = useState<Medication | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
-  const [gsheetUrl, setGsheetUrl] = useState(
-    "https://script.google.com/macros/s/AKfycbxotfbc6-KsIn-_RoltpZl_vQhjUNDN-UrU9pWIARSCnWUCn_9iZ60J46zwr3b6laKBBw/exec",
-  );
-  const [isSyncing, setIsSyncing] = useState(false);
+const [isSyncing, setIsSyncing] = useState(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [isSystemOpen, setIsSystemOpen] = useState(false);
   const [isClassOpen, setIsClassOpen] = useState(false);
@@ -766,20 +762,17 @@ ${JSON.stringify(systemsList)}
     return () => window.removeEventListener("click", handleClick);
   }, []);
 
-  const handleSyncGoogleSheet = async () => {
+  const handleSync = async () => {
     setIsSyncing(true);
-    setImportStatus(hasSupabase ? "正在連線至 Supabase 資料庫..." : "正在連線至雲端資料庫...");
-
+    setImportStatus("正在連線至 Supabase 資料庫...");
     try {
-      const { meds, hash } = hasSupabase
-        ? await localMedicationService.fetchFromSupabase()
-        : await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
+      const { meds, hash } = await localMedicationService.fetchFromSupabase();
       setImportStatus(`正在存儲 ${meds.length} 筆資料至本地庫...`);
       await localMedicationService.saveAll(meds, hash);
       setMedications(meds);
       setImportStatus(`同步成功！已更新 ${meds.length} 筆資料`);
     } catch (error) {
-      setImportStatus("同步失敗，請檢查網路連線或資料格式");
+      setImportStatus("同步失敗，請檢查網路連線");
       console.error(error);
     } finally {
       setIsSyncing(false);
@@ -795,17 +788,13 @@ ${JSON.stringify(systemsList)}
         if (stored.length > 0) {
           setMedications(stored);
           // 背景靜默比對遠端筆數，有差異自動更新（不阻塞 UI）
-          if (hasSupabase) {
-            localMedicationService.getSupabaseCount().then(remoteCount => {
-              if (remoteCount > 0 && remoteCount !== stored.length) {
-                handleSyncGoogleSheet();
-              }
-            }).catch(() => {});
-          }
+          localMedicationService.getSupabaseCount().then(remoteCount => {
+            if (remoteCount > 0 && remoteCount !== stored.length) {
+              handleSync();
+            }
+          }).catch(() => {});
         } else {
-          const { meds, hash } = hasSupabase
-            ? await localMedicationService.fetchFromSupabase()
-            : await localMedicationService.fetchFromGoogleSheet(gsheetUrl);
+          const { meds, hash } = await localMedicationService.fetchFromSupabase();
           await localMedicationService.saveAll(meds, hash);
           setMedications(meds);
         }
@@ -816,7 +805,7 @@ ${JSON.stringify(systemsList)}
       }
     };
     initData();
-  }, [gsheetUrl]);
+  }, []);
 
   // 第一階段：拆解病患描述為「主要問題」與「次要問題/症狀」（快速 8B 模型，JSON）
   const decomposeProblems = async (
@@ -1677,7 +1666,7 @@ ${query}
                 <div className="pt-6 border-t border-inherit flex flex-col items-center gap-4">
                   <div className="relative group">
                     <button
-                      onClick={handleSyncGoogleSheet}
+                      onClick={handleSync}
                       disabled={isSyncing}
                       className={cn(
                         "w-12 h-12 rounded-full flex items-center justify-center transition-all relative overflow-hidden",
