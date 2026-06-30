@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// ponytail: bare identifier so Vite define replaces it at build time
+declare const __BUILD_TIME__: string;
+
 import {
   useState,
   useEffect,
@@ -286,10 +289,7 @@ export default function App() {
 
   const buildVersion = useMemo(() => {
     try {
-      const time =
-        typeof (globalThis as any).__BUILD_TIME__ !== "undefined"
-          ? (globalThis as any).__BUILD_TIME__
-          : new Date().toISOString();
+      const time = typeof __BUILD_TIME__ !== "undefined" ? __BUILD_TIME__ : new Date().toISOString();
       const date = new Date(time);
       // Force conversion to UTC+8 (Taiwan Time) for a consistent, precise version completion string
       const utcTime = date.getTime() + date.getTimezoneOffset() * 60000;
