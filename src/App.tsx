@@ -574,19 +574,32 @@ export default function App() {
       return nonLiquid.length > 0 ? nonLiquid : list;
     };
 
-    // 1. 建立候選池：ATC 為主，比不到（或無碼）才退回成分名。
+    // 成分名正規化：去除 salt form 後綴，讓 "Metformin HCl" 能比到 "Metformin Hydrochloride"
+    const normalizeIngredient = (s: string) =>
+      s.toLowerCase()
+        .replace(/\s*(hydrochloride|hcl|sodium|chloride|sulfate|maleate|tartrate|fumarate|acetate|phosphate|bromide|mesylate|besylate|monohydrate|potassium|calcium)\b/g, "")
+        .replace(/[/＋+]/g, " ")  // Ampicillin/Sulbactam → Ampicillin Sulbactam
+        .replace(/\s+/g, " ")
+        .trim();
+
+    // 1. 建立候選池：ATC 為主，5碼 prefix 緩衝，比不到才退回成分名。
     let candidates: Medication[] = [];
     const atc = (atcCode || "").trim();
     if (atc) {
       candidates = medications.filter((m) => atcMatches(m.atcCode, atc));
+      // ATC 後兩碼可能給錯 → 試 5 碼 subgroup prefix
+      if (candidates.length === 0 && atc.length > 5) {
+        const prefix = atc.slice(0, 5);
+        candidates = medications.filter((m) => atcMatches(m.atcCode, prefix));
+      }
     }
     if (candidates.length === 0) {
-      const q = ingredient.trim().toLowerCase();
+      const q = normalizeIngredient(ingredient);
       if (q) {
         candidates = medications.filter((m) => {
           const fields = [m.component, m.genericName, m.chineseName, m.brandName]
             .filter(Boolean)
-            .map((f) => (f as string).toLowerCase());
+            .map((f) => normalizeIngredient(f as string));
           return fields.some((f) => f.includes(q) || (f.length > 4 && q.includes(f)));
         });
         if (candidates.length === 0) {
@@ -877,7 +890,7 @@ ${JSON.stringify(systemsList)}
 - 【🚨 每個問題至少 5 種藥物】：對於可用藥的問題，「每一個問題」都必須列出「至少 5 種」藥物成分（盡量 8-12 種不同機制或劑型的替代成分），數量不足視為未完成。讓醫師有充分備選。
 - 【🚨 盡量命中院內藥庫】：系統會以你提供的「ATC 碼」為主比對一份院內藥庫清單並呈現所有庫內相符品項。故請「優先選擇臨床常用、各級醫院藥局普遍會備的標準成分」（用通用英文學名），避免冷門、罕用或已淘汰的成分，以提高命中、盡量讓更多建議能對應到院內實際品項。同一機轉若有多個常用成分，可一併列出以增加命中機會。
 - 【務必使用「成分名/學名」】：藥物行請以「藥物成分學名」開頭（優先通用英文學名，例如 Metformin、Amlodipine；可在括號附中文名）。「絕對不要」自行編造任何藥品代碼或編號，系統會自動比對。
-- 【🚨 必須附 WHO ATC 碼】：每個藥物行都要填入該成分的 WHO ATC 碼（5-7 碼，例如 Acetaminophen=N02BE01、Amlodipine=C08CA01、Metformin=A10BA02）。系統用它精準對到院內品項。若你不確定正確 ATC 碼，請將該欄「留空」（系統會改用成分名比對）——「絕對不要杜撰」錯誤的 ATC 碼。
+- 【🚨 必須附 WHO ATC 碼】：每個藥物行都要填入該成分的 WHO ATC 碼（5-7 碼，例如 Acetaminophen=N02BE01、Amlodipine=C08CA01、Metformin=A10BA02）。系統用它精準對到院內品項。若確定 5 碼 subgroup 但不確定後 2 碼，可只填 5 碼（如 A10BA）——系統支援 prefix 比對。若連 5 碼都不確定，請將該欄「留空」（系統會改用成分名比對）——「絕對不要杜撰」錯誤的 ATC 碼。
 - 【🚨 必須指定「給藥途徑」且須符合臨床情境】：每個藥物建議都必須標明給藥途徑，從以下擇一：口服、針劑、外用、眼用、吸入、栓劑、貼片。途徑必須符合臨床！全身性疾病（如膽囊炎、肺炎、敗血症等）必須用「口服」或「針劑」，絕對不可建議「外用」等局部劑型（例如膽囊炎需全身性 Metronidazole 口服/針劑，而非 MetroGel 外用凝膠）；局部病灶（如皮膚感染、結膜炎）才用外用/眼用。
 - 【🚨 劑型須由綜合臨床因素判斷】：每個藥物的給藥途徑/劑型，請依以下因素「綜合判斷」，而非套公式：
   (1) 病灶範圍：全身性疾病用全身性劑型（口服/針劑）；單純局部病灶（皮膚、眼、外耳、局部黏膜）才用對應局部劑型。

@@ -13,7 +13,8 @@ export function atcMatches(formularyAtc: string | undefined, aiAtc: string): boo
   const a = (aiAtc || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!f || !a) return false;
   if (f === a) return true;
-  return a.length >= 5 && f.includes(a);
+  // AI 碼是院內碼的前綴（AI 給群組碼），或院內碼是 AI 碼的前綴（院內存群組碼）
+  return (a.length >= 5 && f.includes(a)) || (f.length >= 5 && a.includes(f));
 }
 
 /**
