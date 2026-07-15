@@ -717,7 +717,7 @@ ${JSON.stringify(systemsList)}
 {
   "classes": [匹配的最相關藥理分類名稱列表，必須完全吻合上述列表中的字串項目],
   "systems": [匹配的最相關生理系統名稱列表，必須完全吻合上述列表中的字串項目],
-  "keywords": [擴展的1~2個相關中文或英文藥理同義詞/關鍵字，可用於模糊搜尋輔助，例如 "止咳", "抗過敏"],
+  "keywords": [3~8個可能出現在藥品「適應症」欄位中的中文病名/症狀/治療用語，中英文皆可，用於比對藥品適應症文字，例如查咳嗽 → "咳嗽", "鎮咳", "祛痰", "化痰", "感冒"],
   "recommendedIngredients": [最合適、最常用且最符合適應症的首選西藥成分名稱列表，建議用常見英文學名如 "dextromethorphan"、或是常用中文成分名稱，依據常用度及臨床首選順序由高到低排列]
 }
 
@@ -1362,6 +1362,25 @@ ${query}
       const getSortingScore = (m: Medication) => {
         let score = 0;
 
+        const indicationsLower = (m.indications || "").toLowerCase();
+        const chineseNameLower = (m.chineseName || "").toLowerCase();
+        const componentLower = (m.component || "").toLowerCase();
+        const brandNameLower = (m.brandName || "").toLowerCase();
+        const pharmacologicalLower = (m.pharmacologicalClass || "").toLowerCase();
+        const genericLower = (m.genericName || "").toLowerCase();
+
+        // AI 佐證訊號：機轉分類/系統匹配的藥，還需適應症命中 AI 關鍵詞或被 AI 點名成分，
+        // 才算真正符合需求；否則降權排後（不排除）。
+        const recoIndex = aiSymptomMapping
+          ? aiSymptomMapping.recommendedIngredients.findIndex((ing) => {
+              const cleanIng = ing.toLowerCase();
+              return componentLower.includes(cleanIng) || genericLower.includes(cleanIng) || cleanIng.includes(componentLower);
+            })
+          : -1;
+        const aiIndicationHit = !!aiSymptomMapping &&
+          aiSymptomMapping.keywords.some((kw) => indicationsLower.includes(kw.toLowerCase()));
+        const aiCorroborated = aiIndicationHit || recoIndex !== -1;
+
         // 1. 各層級之基礎匹配權重
         if (exactMatches.some((em) => em.id === m.id)) {
           score += 12000;
@@ -1374,7 +1393,8 @@ ${query}
         } else if (medicalIntentMatches.some((mm) => mm.id === m.id)) {
           score += 7000;
         } else if (aiSymptomMatches.some((sm) => sm.id === m.id)) {
-          score += 6000;
+          // 有適應症佐證維持高分；僅分類/系統吻合者降至 contains(5000) 之後、門檻(3000)之上
+          score += aiCorroborated ? 6000 : 3500;
         } else if (containsMatches.some((cm) => cm.id === m.id)) {
           score += 5000;
         } else {
@@ -1382,12 +1402,6 @@ ${query}
         }
 
         // 2. 適應症(Indications)之精確契合度優選分數 (解決「最符合使用 indication 的藥物作排序」)
-        const indicationsLower = (m.indications || "").toLowerCase();
-        const chineseNameLower = (m.chineseName || "").toLowerCase();
-        const componentLower = (m.component || "").toLowerCase();
-        const brandNameLower = (m.brandName || "").toLowerCase();
-        const pharmacologicalLower = (m.pharmacologicalClass || "").toLowerCase();
-        const genericLower = (m.genericName || "").toLowerCase();
 
         // 2.1 主治適應症欄位包含搜尋關鍵字，大幅度提升其排序
         if (indicationsLower.includes(query)) {
@@ -1421,24 +1435,20 @@ ${query}
 
         // 3. 整合 AI 臨床首選與推薦藥物成分 (與臨床最常用、治療契合度排序對接)
         if (aiSymptomMapping) {
-          // 3.1 AI 主動推薦的特效/常用成分
-          const recoIndex = aiSymptomMapping.recommendedIngredients.findIndex((ing) => {
-            const cleanIng = ing.toLowerCase();
-            return componentLower.includes(cleanIng) || genericLower.includes(cleanIng) || cleanIng.includes(componentLower);
-          });
-
+          // 3.1 AI 主動推薦的特效/常用成分 (recoIndex 已於上方計算)
           if (recoIndex !== -1) {
             // 排名越靠前(recoIndex越小)，分數加成越高
             score += Math.max(200, 3000 - recoIndex * 400);
           }
 
-          // 3.2 AI 推薦的相關藥理分類符合
-          if (aiSymptomMapping.classes.includes(m.pharmacologicalClass)) {
-            score += 1500;
-          }
-          // 3.3 AI 推薦的相關生理系統符合
-          if (aiSymptomMapping.systems.includes(m.anatomicalSystem)) {
-            score += 800;
+          // 3.2 / 3.3 分類與系統加成僅在有適應症佐證時給予，避免無佐證藥靠加成回升
+          if (aiCorroborated) {
+            if (aiSymptomMapping.classes.includes(m.pharmacologicalClass)) {
+              score += 1500;
+            }
+            if (aiSymptomMapping.systems.includes(m.anatomicalSystem)) {
+              score += 800;
+            }
           }
         }
 
