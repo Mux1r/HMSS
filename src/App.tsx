@@ -1156,7 +1156,7 @@ ${query}
       const queryLen = query.length;
 
       const fuse = new Fuse(baseMeds, {
-        keys: ["code", "component", "brandName", "genericName", "chineseName", "bagLabelName", "indications", "sideEffects", "searchKeywords"],
+        keys: ["code", "component", "brandName", "genericName", "chineseName", "bagLabelName", "indications", "searchKeywords"],
         threshold: 0.45,
       });
 
@@ -1194,9 +1194,8 @@ ${query}
         const pharmacological = m.pharmacologicalClass?.toLowerCase() || "";
         const system = m.anatomicalSystem?.toLowerCase() || "";
         const indications = m.indications?.toLowerCase() || "";
-        const sideEffects = m.sideEffects?.toLowerCase() || "";
-
-        if (pharmacological.includes(query) || system.includes(query) || indications.includes(query) || sideEffects.includes(query))
+        // 刻意不比對 sideEffects：症狀查詢應撈「治療該症狀」的藥，而非「會引起該症狀」的藥。
+        if (pharmacological.includes(query) || system.includes(query) || indications.includes(query))
           return true;
 
         if (synonyms.length > 0) {
