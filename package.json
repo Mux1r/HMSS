@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "node src/lib/formulary.test.ts"
+    "test": "node src/lib/formulary.test.ts && node src/lib/medicalKeywords.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

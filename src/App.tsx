@@ -177,7 +177,7 @@ import {
   Medication,
 } from "./services/medicationService";
 import { cn } from "./lib/utils";
-import { MEDICAL_ALIASES } from "./lib/medicalKeywords";
+import { MEDICAL_ALIASES, MECHANISM_ATC } from "./lib/medicalKeywords";
 import { atcMatches, parseDrugLine, isPediatricContext } from "./lib/formulary";
 
 const retryWithBackoff = async <T = any>(
@@ -1147,6 +1147,7 @@ ${query}
 
     const query = deferredSearchQuery.toLowerCase().trim();
     const synonyms = MEDICAL_ALIASES[query] || [];
+    const atcPrefixes = MECHANISM_ATC[query] || [];
 
     let baseMeds = medications;
 
@@ -1176,6 +1177,15 @@ ${query}
         }
         return false;
       });
+
+      // 1.05 機轉 ATC 前綴匹配：打 acei/statin/ppi 等縮寫時，用 ATC 碼撈到該類在庫每一顆藥
+      // （比自訂學名清單窮盡，且可到 5~7 碼細粒度隔出如 statin C10AA）
+      const atcClassMatches = atcPrefixes.length > 0
+        ? medications.filter((m) => {
+            const atc = (m.atcCode || "").toUpperCase();
+            return atc.length > 0 && atcPrefixes.some((p) => p && atc.startsWith(p));
+          })
+        : [];
 
       // 1.1 醫學屬性匹配 (機轉、分類等)
       const medicalIntentMatches = medications.filter((m) => {
@@ -1329,6 +1339,7 @@ ${query}
       };
 
       addUniqueMeds(exactMatches);
+      addUniqueMeds(atcClassMatches);
       addUniqueMeds(medicalIntentMatches);
       addUniqueMeds(aiSymptomMatches);
       addUniqueMeds(stringStartMatches);
@@ -1384,6 +1395,9 @@ ${query}
         // 1. 各層級之基礎匹配權重
         if (exactMatches.some((em) => em.id === m.id)) {
           score += 12000;
+        } else if (atcClassMatches.some((am) => am.id === m.id)) {
+          // 明確機轉縮寫 → 該類藥為主要結果，僅次於精確名稱/代碼匹配
+          score += 9500;
         } else if (stringStartMatches.some((sm) => sm.id === m.id)) {
           score += 10000;
         } else if (firstAlphaStartMatches.some((am) => am.id === m.id)) {
