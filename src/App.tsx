@@ -239,7 +239,6 @@ export default function App() {
   const [selectedMed, setSelectedMed] = useState<Medication | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 const [isSyncing, setIsSyncing] = useState(false);
-  const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [isSystemOpen, setIsSystemOpen] = useState(false);
   const [isClassOpen, setIsClassOpen] = useState(false);
   const [isDosageFormOpen, setIsDosageFormOpen] = useState(false);
@@ -1720,9 +1719,6 @@ ${query}
                         <Loader2 className="w-5 h-5 animate-spin" />
                       ) : (
                         <Database className="w-5 h-5" />
-                      )}
-                      {!isSyncing && isUpdateAvailable && (
-                        <div className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border-2 border-inherit animate-pulse" />
                       )}
                     </button>
                   </div>

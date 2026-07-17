@@ -1,10 +1,8 @@
-import { get, set, del } from 'idb-keyval';
+import { get, set } from 'idb-keyval';
 import { createClient } from '@supabase/supabase-js';
 
 const STORAGE_KEY = 'hosp_medications_v2';
 const HASH_KEY = 'hosp_medications_hash';
-
-const INITIAL_MEDICATIONS: any[] = [];
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL as string,
@@ -192,13 +190,7 @@ export const localMedicationService = {
   async getAll(): Promise<Medication[]> {
     try {
       const stored = await get(STORAGE_KEY);
-      let meds: Medication[] = [];
-      
-      if (stored && Array.isArray(stored)) {
-        meds = stored;
-      } else {
-        meds = INITIAL_MEDICATIONS;
-      }
+      const meds: Medication[] = stored && Array.isArray(stored) ? stored : [];
 
       // 數據遷移/校正：確保所有項目都有 dosageForm 與 atcCode
       return meds.map(m => {
@@ -218,7 +210,7 @@ export const localMedicationService = {
       });
     } catch (e) {
       console.error('Failed to get stored medications:', e);
-      return INITIAL_MEDICATIONS;
+      return [];
     }
   },
 
@@ -246,22 +238,6 @@ export const localMedicationService = {
       hash = hash & hash; // Convert to 32bit integer
     }
     return hash.toString(36) + str.length;
-  },
-
-  /**
-   * 檢查是否有更新
-   */
-  async checkForUpdates(url: string): Promise<boolean> {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) return false;
-      const data = await response.json();
-      const newHash = this.generateHash(data);
-      const currentHash = await get(HASH_KEY);
-      return currentHash !== newHash;
-    } catch (e) {
-      return false;
-    }
   },
 
   /**
@@ -294,13 +270,4 @@ export const localMedicationService = {
     const meds = all.map(mapSupabaseRow);
     return { meds, hash: this.generateHash(all) };
   },
-
-  /**
-   * 重置本地資料庫
-   */
-  async reset() {
-    await del(STORAGE_KEY);
-    await del(HASH_KEY);
-    return [...INITIAL_MEDICATIONS];
-  }
 };
