@@ -218,7 +218,8 @@ const retryWithBackoff = async <T = any>(
 
 // Groq 模型：REASONING 用於症狀理解/問題拆解/用藥建議（準確度優先）；
 // FAST 留給未來純格式化等輕量任務。要換模型改這裡即可。
-const GROQ_MODEL_REASONING = "llama-3.3-70b-versatile";
+// llama-3.3-70b-versatile 已於 2026-08-16 被 Groq 下架，改用官方建議替代模型。
+const GROQ_MODEL_REASONING = "openai/gpt-oss-120b";
 
 // Groq 代理端點（Apps Script doPost，key 藏在後端）。與藥物資料(doGet)分屬不同
 // Apps Script 專案，故獨立一條網址。此網址非機密，可放前端。
@@ -837,7 +838,7 @@ ${JSON.stringify(systemsList)}
     };
   };
 
-  // 第二階段：針對「已確認的問題清單」產生用藥建議（70B 串流）
+  // 第二階段：針對「已確認的問題清單」產生用藥建議（非串流）
   const runRecommendation = async (
     timestamp: number,
     query: string,
