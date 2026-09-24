@@ -21,17 +21,12 @@ const versionFile = (): Plugin => ({
   },
 });
 
-const buildTime = fs.existsSync('.commit-time')
-  ? fs.readFileSync('.commit-time', 'utf-8').trim()
-  : new Date().toISOString();
-
 export default defineConfig(() => {
   return {
     base: './',
     plugins: [react(), tailwindcss(), versionFile()],
     define: {
       // Groq 金鑰由使用者在前端自行設定，不在 build 時注入。
-      '__BUILD_TIME__': JSON.stringify(buildTime),
       '__APP_VERSION__': JSON.stringify(appVersion),
       '__BUILD_ID__': JSON.stringify(buildId),
     },
