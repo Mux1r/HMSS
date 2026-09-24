@@ -6,8 +6,10 @@ import assert from "node:assert";
 import {
   atcMatches,
   looksLikeAtc,
-  parseDrugLine,
   isPediatricContext,
+  normalizeIngredient,
+  ingredientMatches,
+  parseRecommendation,
 } from "./formulary.ts";
 
 // --- atcMatches ---
@@ -23,26 +25,47 @@ assert.equal(looksLikeAtc("D10"), true);
 assert.equal(looksLikeAtc("口服"), false);
 assert.equal(looksLikeAtc("Acetaminophen"), false);
 
-// --- parseDrugLine ---
-const isRoute = (s: string) => ["口服", "針劑", "外用", "吸入", "眼用"].includes(s);
+// --- normalizeIngredient / ingredientMatches ---
+assert.equal(normalizeIngredient("Metformin HCl"), "metformin", "去鹽類");
+assert.equal(normalizeIngredient("Amlodipine(脈優)"), "amlodipine", "去括號註記");
+assert.equal(normalizeIngredient("Valproic acid"), "valproate", "-ic acid → -ate");
+assert.equal(normalizeIngredient("Paracetamol"), "acetaminophen", "INN → 標準名");
+assert.equal(normalizeIngredient("Co-amoxiclav"), "amoxicillin clavulanate", "複方別名");
+assert.equal(normalizeIngredient("Sodium Chloride"), "sodium chloride", "去鹽後為空則保留");
+assert.equal(normalizeIngredient("Metformin 500 mg"), "metformin", "去劑量");
+assert.equal(normalizeIngredient("Vitamin K1"), "phytonadione", "字母後數字保留");
 
-const four = parseDrugLine("Acetaminophen(乙醯胺酚) | 口服 | N02BE01 | 退燒首選", isRoute);
-assert.equal(four.ingredient, "Acetaminophen(乙醯胺酚)");
-assert.equal(four.route, "口服");
-assert.equal(four.atc, "N02BE01");
-assert.equal(four.reason, "退燒首選");
+assert.equal(ingredientMatches(["Amoxicillin + Clavulanic acid"], "Amoxicillin/Clavulanate"), true, "複方寫法不同");
+assert.equal(ingredientMatches(["Salbutamol sulfate"], "Albuterol"), true, "USAN ↔ INN");
+assert.equal(ingredientMatches(["Metformin Hydrochloride"], "Metformin"), true, "鹽類不同");
+assert.equal(ingredientMatches(["Sodium Chloride 0.9%"], "Sodium chloride"), true, "純鹽類成分");
+assert.equal(ingredientMatches(["Hydralazine"], "Hydroxyzine"), false, "名稱相近但不同藥");
+assert.equal(ingredientMatches(["Amlodipine"], "Nifedipine"), false, "同類不同藥");
+assert.equal(ingredientMatches([undefined, ""], "Metformin"), false, "空欄位");
 
-// 三欄（AI 漏給 ATC）：仍能解析途徑與理由
-const three = parseDrugLine("Amlodipine(脈優) | 口服 | 降血壓控制", isRoute);
-assert.equal(three.ingredient, "Amlodipine(脈優)");
-assert.equal(three.route, "口服");
-assert.equal(three.atc, "");
-assert.equal(three.reason, "降血壓控制");
-
-// 行首編號去除
-const numbered = parseDrugLine("1. Metformin | 口服 | A10BA02 | 第一線", isRoute);
-assert.equal(numbered.ingredient, "Metformin");
-assert.equal(numbered.atc, "A10BA02");
+// --- parseRecommendation ---
+const ndjson = [
+  '```json',
+  '{"type":"summary","text":"整體策略"}',
+  '{"type":"problem","name":"高血壓"}',
+  '{"type":"drug","name":"Amlodipine","zh":"脈優","route":"口服","atc":"c08ca01","tier":"首選","reason":"CCB"},',
+  '{"type":"drug","name":"Losartan","route":"口服","atc":"N/A","tier":"替代","reason":"ARB"}',
+  '{"type":"problem","name":"脂肪肝"}',
+  '{"type":"advice","text":"減重與飲食控制"}',
+  '{"type":"drug","name":"Metfor',
+].join("\n");
+const rec = parseRecommendation(ndjson);
+assert.deepEqual(rec.summary, ["整體策略"]);
+assert.equal(rec.groups.length, 2);
+assert.equal(rec.groups[0].problem, "高血壓");
+assert.equal(rec.groups[0].drugs.length, 2);
+assert.equal(rec.groups[0].drugs[0].atc, "C08CA01", "ATC 轉大寫");
+assert.equal(rec.groups[0].drugs[0].zh, "脈優");
+assert.equal(rec.groups[0].drugs[1].atc, "", "非 ATC 樣式清空");
+assert.equal(rec.groups[0].drugs[1].tier, "替代");
+assert.deepEqual(rec.groups[1].advice, ["減重與飲食控制"]);
+assert.equal(rec.groups[1].drugs.length, 0, "串流中未完成的行略過");
+assert.equal(parseRecommendation('{"type":"drug","name":"X"}').groups[0].problem, "整體建議", "無問題時歸入整體建議");
 
 // --- isPediatricContext ---
 assert.equal(isPediatricContext("3歲男童發燒"), true, "幼齡");

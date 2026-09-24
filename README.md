@@ -6,7 +6,7 @@
 
 - React 19 + Vite + Tailwind CSS v4
 - 藥品資料:Supabase(前端以 anon key 讀取,首次載入後快取於本地)
-- AI:Groq `openai/gpt-oss-120b`,使用者自備免費金鑰(App 內有逐步設定引導),金鑰只存在使用者瀏覽器,由前端直連 Groq
+- AI:Groq `openai/gpt-oss-120b`(用藥建議)與 `openai/gpt-oss-20b`(問題拆解),使用者自備免費金鑰(App 內有逐步設定引導),金鑰只存在使用者瀏覽器,由前端直連 Groq
 
 ## 本地開發
 
