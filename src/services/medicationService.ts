@@ -1,13 +1,8 @@
 import { get, set } from 'idb-keyval';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 
 const STORAGE_KEY = 'hosp_medications_v2';
 const HASH_KEY = 'hosp_medications_hash';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL as string,
-  import.meta.env.VITE_SUPABASE_ANON_KEY as string,
-);
 
 export interface Medication {
   id: string;

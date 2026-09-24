@@ -30,6 +30,22 @@ npm run build  # 產出 dist/
 SUPABASE_URL=... SERVICE_ROLE_KEY=... node scripts/import-excel.mjs dglist.xlsx
 ```
 
+## Google 登入(收藏跨裝置同步)
+
+使用 Supabase Auth。首次啟用需完成以下設定(只需一次):
+
+1. **建立資料表**:Supabase → SQL Editor,執行 `supabase/migrations/20260924_user_favorites.sql`。
+2. **建立 Google OAuth 用戶端**:Google Cloud Console → APIs & Services → Credentials → Create credentials → OAuth client ID(類型選 Web application)。
+   - Authorized JavaScript origins:`https://mux1r.github.io`
+   - Authorized redirect URIs:`https://<專案代碼>.supabase.co/auth/v1/callback`
+   - 若尚未設定 OAuth consent screen,依畫面指示先完成。
+3. **啟用 Supabase 的 Google 登入**:Supabase → Authentication → Sign In / Providers → Google,開啟並貼上 Client ID 與 Client Secret。
+4. **設定回跳網址**:Supabase → Authentication → URL Configuration
+   - Site URL:`https://mux1r.github.io/HMSS/`
+   - Redirect URLs:加入 `https://mux1r.github.io/HMSS/` 與 `http://localhost:3000/`(本地開發)
+
+同步規則:每台裝置第一次登入時合併本機與雲端收藏,之後以雲端為準;App 回到前景時重新拉取。AI 金鑰不同步,僅存在各裝置。
+
 ## 版本號
 
 採 `x.y.z`(大.中.小)語意化版本,**每次更新都要修改** `package.json` 的 `version`(並同步 `package-lock.json`):
