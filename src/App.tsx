@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// ponytail: bare identifier so Vite define replaces it at build time
-declare const __BUILD_TIME__: string;
-
 import {
   useState,
   useEffect,
@@ -39,7 +36,17 @@ import {
   Copy,
   Check,
   HelpCircle,
+  KeyRound,
 } from "lucide-react";
+import ApiKeySetup from "./components/ApiKeySetup";
+import {
+  GROQ_MODEL,
+  GroqKeyError,
+  clearGroqKey,
+  groqChat,
+  loadGroqKey,
+  saveGroqKey,
+} from "./lib/groq";
 
 const getDosageColor = (code: string) => {
   const firstChar = code?.charAt(0)?.toUpperCase();
@@ -216,16 +223,6 @@ const retryWithBackoff = async <T = any>(
   }
 };
 
-// Groq 模型：REASONING 用於症狀理解/問題拆解/用藥建議（準確度優先）；
-// FAST 留給未來純格式化等輕量任務。要換模型改這裡即可。
-// llama-3.3-70b-versatile 已於 2026-08-16 被 Groq 下架，改用官方建議替代模型。
-const GROQ_MODEL_REASONING = "openai/gpt-oss-120b";
-
-// Groq 代理端點（Apps Script doPost，key 藏在後端）。與藥物資料(doGet)分屬不同
-// Apps Script 專案，故獨立一條網址。此網址非機密，可放前端。
-const GROQ_PROXY_URL =
-  "https://script.google.com/macros/s/AKfycby-RlIM41-muVbHmYQFNncbfSkBryCwGzJfGFXu66ExMWKXnqdrxKhVP-lKDtVghU7s9Q/exec";
-
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -254,6 +251,8 @@ const [isSyncing, setIsSyncing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [groqApiKey, setGroqApiKey] = useState(loadGroqKey);
+  const [isApiKeySetupOpen, setIsApiKeySetupOpen] = useState(false);
   const [favoritesSearchQuery, setFavoritesSearchQuery] = useState("");
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [favorites, setFavorites] = useState<string[]>(() => {
@@ -525,23 +524,23 @@ const [isSyncing, setIsSyncing] = useState(false);
     document.documentElement.setAttribute("data-mode", isAiMode ? "ai" : "hmss");
   }, [isAiMode]);
 
-  // 透過 Apps Script 後端代打 Groq：key 藏在 Apps Script，瀏覽器看不到。
-  // 用 text/plain 送 POST 以避開 CORS preflight（Apps Script 不處理 OPTIONS）。
-  // Apps Script 不支援串流，故一律非串流；回傳即標準 Groq/OpenAI completions JSON。
-  const groqViaProxy = useCallback(
+  // 使用者自備 Groq 金鑰直連；缺金鑰或金鑰失效時開啟設定引導。
+  const callGroq = useCallback(
     async (body: Record<string, any>): Promise<any> => {
-      const res = await fetch(GROQ_PROXY_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ ...body, stream: false }),
-      });
-      if (!res.ok) throw new Error(`AI 代理錯誤: ${res.status}`);
-      const data = await res.json();
-      if (data?.error) throw new Error(`AI 代理錯誤: ${JSON.stringify(data.error)}`);
-      return data;
+      try {
+        return await groqChat(groqApiKey, body);
+      } catch (error) {
+        if (error instanceof GroqKeyError) setIsApiKeySetupOpen(true);
+        throw error;
+      }
     },
-    [],
+    [groqApiKey],
   );
+
+  // 進入 AI 模式但尚未設定金鑰 → 直接帶出設定引導。
+  useEffect(() => {
+    if (isAiMode && !groqApiKey) setIsApiKeySetupOpen(true);
+  }, [isAiMode, groqApiKey]);
 
   // 將 AI 建議的「成分名」比對院內藥庫，找出實際可用品項（含藥品碼）。
   const formularyFuse = useMemo(
@@ -724,8 +723,8 @@ ${JSON.stringify(systemsList)}
 注意：如果沒有任何相關的，請回傳空陣列形式。`;
 
         const response = await retryWithBackoff<any>(() =>
-          groqViaProxy({
-            model: GROQ_MODEL_REASONING,
+          callGroq({
+            model: GROQ_MODEL,
             messages: [{ role: "user", content: prompt }],
             response_format: { type: "json_object" },
           })
@@ -743,7 +742,7 @@ ${JSON.stringify(systemsList)}
     }, 450);
 
     return () => clearTimeout(delayTimer);
-  }, [isAiSymptomRequested, searchQuery, medications, medicationCodeSet, groqViaProxy]);
+  }, [isAiSymptomRequested, searchQuery, medications, medicationCodeSet, callGroq]);
 
   // Remove global click listener in favor of local onBlur for better focus management
   useEffect(() => {
@@ -820,8 +819,8 @@ ${JSON.stringify(systemsList)}
 回傳格式：{"mainProblems":["..."],"secondaryProblems":["..."]}
 病患描述：「${query}」`;
     const response = await retryWithBackoff<any>(() =>
-      groqViaProxy({
-        model: GROQ_MODEL_REASONING,
+      callGroq({
+        model: GROQ_MODEL,
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
       }),
@@ -930,8 +929,8 @@ ${query}
 
       // Apps Script 不支援串流 → 一次取回完整結果。ponytail: 失去逐字跳出，換到 key 不外洩。
       const response = await retryWithBackoff<any>(() =>
-        groqViaProxy({
-          model: GROQ_MODEL_REASONING,
+        callGroq({
+          model: GROQ_MODEL,
           messages: [{ role: "user", content: prompt }],
         }),
       );
@@ -1638,6 +1637,34 @@ ${query}
                   </button>
                 </div>
 
+                {/* AI Key Entry */}
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      setIsApiKeySetupOpen(true);
+                      setIsSettingsOpen(false);
+                    }}
+                    className={cn(
+                      "w-full p-3 rounded-xl border transition-all text-xs flex items-center justify-between group cursor-pointer shadow-sm",
+                      theme === "dark"
+                        ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200 hover:border-violet-500/30"
+                        : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-800 hover:border-violet-500/30",
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <KeyRound className="w-3.5 h-3.5 text-violet-500" />
+                      <span className="font-bold">AI 金鑰</span>
+                      <span
+                        className={cn(
+                          "w-1.5 h-1.5 rounded-full shrink-0",
+                          groqApiKey ? "bg-emerald-500" : "bg-rose-500",
+                        )}
+                      />
+                    </div>
+                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-brand-secondary-accent shrink-0" />
+                  </button>
+                </div>
+
                 {/* Section: Mode/Theme - Segmented Switcher */}
                 <div className="space-y-4">
                   <div className="flex flex-col gap-3">
@@ -1803,7 +1830,7 @@ ${query}
                           theme === "dark" ? "text-zinc-400" : "text-slate-600",
                         )}
                       >
-                        Build Ver.
+                        v{__APP_VERSION__}
                       </span>
                       <span
                         className={cn(
@@ -4331,6 +4358,21 @@ ${query}
         )}
       </AnimatePresence>
 
+      <ApiKeySetup
+        open={isApiKeySetupOpen}
+        theme={theme}
+        currentKey={groqApiKey}
+        onClose={() => setIsApiKeySetupOpen(false)}
+        onSave={(key) => {
+          saveGroqKey(key);
+          setGroqApiKey(key);
+        }}
+        onClear={() => {
+          clearGroqKey();
+          setGroqApiKey("");
+        }}
+      />
+
       {/* Help & Operation Guide Modal */}
       <AnimatePresence>
         {isHelpOpen && (
@@ -4431,6 +4473,9 @@ ${query}
                   <p className="opacity-80 leading-relaxed text-[11px] pl-5">
                     點擊頂部中央的開關可切換為「Smart Analysis」AI 情境諮詢模式。
                     在此模式下，您可以輸入整段臨床情境（如：病患 58 歲女性主訴飯後血糖高），AI 將在數秒內為您分析臨床考量並精確列出可用處方藥。
+                  </p>
+                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
+                    首次使用需設定免費的 Groq AI 金鑰（約 1 分鐘，免信用卡）：進入 AI 模式時會自動出現設定步驟，之後也可在左側「控制中心 → AI 金鑰」修改。
                   </p>
                 </div>
 
