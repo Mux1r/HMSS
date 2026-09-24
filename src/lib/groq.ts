@@ -1,5 +1,5 @@
 // Groq 呼叫：使用者自備的免費金鑰，瀏覽器直連 api.groq.com（官方允許 CORS）。
-// 金鑰只存在本機 localStorage，不經過任何 HMSS 後端。
+// 金鑰存於本機 localStorage；登入 Google 時另存於帳號（見 account.ts），呼叫 Groq 不經任何後端。
 
 // llama-3.3-70b-versatile 已於 2026-08-16 被 Groq 下架，改用官方建議替代模型。
 // 用藥建議（準確度優先）用 120B；問題拆解等輕量任務用 20B。

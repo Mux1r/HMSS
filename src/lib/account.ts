@@ -1,4 +1,4 @@
-// Google 登入（Supabase Auth）與收藏跨裝置同步（user_favorites 資料表，RLS 限本人讀寫）。
+// Google 登入（Supabase Auth）與帳號資料同步：收藏、Groq AI 金鑰（user_data 資料表，RLS 限本人讀寫）。
 
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
@@ -48,21 +48,33 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
 }
 
-/** 讀取雲端收藏；尚無資料回傳 null。 */
-export async function fetchRemoteFavorites(userId: string): Promise<string[] | null> {
+export interface RemoteUserData {
+  favorites: string[];
+  groqApiKey: string;
+}
+
+/** 讀取帳號資料；尚無資料回傳 null。 */
+export async function fetchRemoteUserData(userId: string): Promise<RemoteUserData | null> {
   const { data, error } = await supabase
-    .from("user_favorites")
-    .select("favorites")
+    .from("user_data")
+    .select("favorites, groq_api_key")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
-  return data ? (data.favorites as string[]) : null;
+  return data
+    ? { favorites: (data.favorites as string[]) || [], groqApiKey: (data.groq_api_key as string) || "" }
+    : null;
 }
 
-export async function pushRemoteFavorites(userId: string, favorites: string[]): Promise<void> {
-  const { error } = await supabase
-    .from("user_favorites")
-    .upsert({ user_id: userId, favorites, updated_at: new Date().toISOString() });
+/** 寫回帳號資料；只更新有提供的欄位。 */
+export async function pushRemoteUserData(
+  userId: string,
+  patch: Partial<RemoteUserData>,
+): Promise<void> {
+  const row: Record<string, unknown> = { user_id: userId, updated_at: new Date().toISOString() };
+  if (patch.favorites !== undefined) row.favorites = patch.favorites;
+  if (patch.groqApiKey !== undefined) row.groq_api_key = patch.groqApiKey || null;
+  const { error } = await supabase.from("user_data").upsert(row);
   if (error) throw error;
 }
 

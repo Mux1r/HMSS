@@ -6,7 +6,7 @@
 
 - React 19 + Vite + Tailwind CSS v4
 - 藥品資料:Supabase(前端以 anon key 讀取,首次載入後快取於本地)
-- AI:Groq `openai/gpt-oss-120b`(用藥建議)與 `openai/gpt-oss-20b`(問題拆解),使用者自備免費金鑰(App 內有逐步設定引導),金鑰只存在使用者瀏覽器,由前端直連 Groq
+- AI:Groq `openai/gpt-oss-120b`(用藥建議)與 `openai/gpt-oss-20b`(問題拆解),使用者自備免費金鑰(App 內有逐步設定引導),由前端直連 Groq;登入 Google 後金鑰綁定帳號
 
 ## 本地開發
 
@@ -30,11 +30,11 @@ npm run build  # 產出 dist/
 SUPABASE_URL=... SERVICE_ROLE_KEY=... node scripts/import-excel.mjs dglist.xlsx
 ```
 
-## Google 登入(收藏跨裝置同步)
+## Google 登入(收藏與 AI 金鑰綁定帳號)
 
 使用 Supabase Auth。首次啟用需完成以下設定(只需一次):
 
-1. **建立資料表**:Supabase → SQL Editor,執行 `supabase/migrations/20260924_user_favorites.sql`。
+1. **建立資料表**:Supabase → SQL Editor,執行 `supabase/migrations/20260924_user_data.sql`。
 2. **建立 Google OAuth 用戶端**:Google Cloud Console → APIs & Services → Credentials → Create credentials → OAuth client ID(類型選 Web application)。
    - Authorized JavaScript origins:`https://mux1r.github.io`
    - Authorized redirect URIs:`https://<專案代碼>.supabase.co/auth/v1/callback`
@@ -44,7 +44,11 @@ SUPABASE_URL=... SERVICE_ROLE_KEY=... node scripts/import-excel.mjs dglist.xlsx
    - Site URL:`https://mux1r.github.io/HMSS/`
    - Redirect URLs:加入 `https://mux1r.github.io/HMSS/` 與 `http://localhost:3000/`(本地開發)
 
-同步規則:每台裝置第一次登入時合併本機與雲端收藏,之後以雲端為準;App 回到前景時重新拉取。AI 金鑰不同步,僅存在各裝置。
+同步規則:
+- 收藏:每台裝置第一次登入時合併本機與帳號收藏,之後以帳號為準;App 回到前景時重新拉取。
+- AI 金鑰:帳號已有金鑰就以帳號為準;帳號沒有而本機有,登入時自動存入帳號。
+- 登出:收藏與 AI 金鑰一併從該裝置移除(適合公用電腦)。
+- 安全性:資料表啟用 RLS,只有本人可讀寫自己的資料;Supabase 專案管理者仍可在後台看到內容。
 
 ## 版本號
 

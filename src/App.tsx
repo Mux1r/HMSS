@@ -199,12 +199,12 @@ import {
 import { aiRecommendCache, loadAiHistory, saveAiHistory } from "./lib/aiStore";
 import {
   type User as AuthUser,
-  fetchRemoteFavorites,
+  fetchRemoteUserData,
   hasSyncedOnDevice,
   markSyncedOnDevice,
   mergeFavorites,
   onAuthChange,
-  pushRemoteFavorites,
+  pushRemoteUserData,
   signInWithGoogle,
   signOut,
 } from "./lib/account";
@@ -336,12 +336,14 @@ const [isSyncing, setIsSyncing] = useState(false);
 
   const isFavorite = (id: string) => favorites.includes(id);
 
-  // --- Google 登入與收藏同步 ---
+  // --- Google 登入：收藏與 AI 金鑰綁定帳號 ---
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [favSync, setFavSync] = useState<"idle" | "syncing" | "synced" | "error">("idle");
-  const [favPullTick, setFavPullTick] = useState(0);
+  const [accountSync, setAccountSync] = useState<"idle" | "syncing" | "synced" | "error">("idle");
+  const [accountPullTick, setAccountPullTick] = useState(0);
   const favoritesRef = useRef(favorites);
   favoritesRef.current = favorites;
+  const groqApiKeyRef = useRef(groqApiKey);
+  groqApiKeyRef.current = groqApiKey;
   // 最近一次與雲端一致的收藏（JSON）；null＝尚未完成首次拉取，此時不推送。
   const lastSyncedFavRef = useRef<string | null>(null);
 
@@ -349,67 +351,95 @@ const [isSyncing, setIsSyncing] = useState(false);
 
   // 回到前景時重新拉取，取得其他裝置的變更。
   useEffect(() => {
-    const onVisible = () => document.visibilityState === "visible" && setFavPullTick((t) => t + 1);
+    const onVisible = () =>
+      document.visibilityState === "visible" && setAccountPullTick((t) => t + 1);
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
-  // 拉取：這台裝置首次同步時合併本機與雲端，之後以雲端為準。
+  const applyGroqKey = (key: string) => {
+    if (key) saveGroqKey(key);
+    else clearGroqKey();
+    setGroqApiKey(key);
+  };
+
+  // 拉取帳號資料：
+  // - 收藏：這台裝置首次同步時合併本機與雲端，之後以雲端為準。
+  // - AI 金鑰：帳號有金鑰就以帳號為準；帳號沒有而本機有，則把本機金鑰存進帳號。
   const authUserId = authUser?.id;
   useEffect(() => {
     if (!authUserId) {
       lastSyncedFavRef.current = null;
-      setFavSync("idle");
+      setAccountSync("idle");
       return;
     }
     let cancelled = false;
     (async () => {
-      setFavSync("syncing");
+      setAccountSync("syncing");
       try {
-        const remote = await fetchRemoteFavorites(authUserId);
-        const local = favoritesRef.current;
-        const next =
+        const remote = await fetchRemoteUserData(authUserId);
+        const localFav = favoritesRef.current;
+        const nextFav =
           remote === null
-            ? local
+            ? localFav
             : hasSyncedOnDevice(authUserId)
-              ? remote
-              : mergeFavorites(remote, local);
-        if (JSON.stringify(next) !== JSON.stringify(remote)) {
-          await pushRemoteFavorites(authUserId, next);
-        }
+              ? remote.favorites
+              : mergeFavorites(remote.favorites, localFav);
+        const nextKey = remote?.groqApiKey || groqApiKeyRef.current;
+
+        const patch: { favorites?: string[]; groqApiKey?: string } = {};
+        if (JSON.stringify(nextFav) !== JSON.stringify(remote?.favorites ?? null)) patch.favorites = nextFav;
+        if (nextKey && nextKey !== remote?.groqApiKey) patch.groqApiKey = nextKey;
+        if (Object.keys(patch).length > 0) await pushRemoteUserData(authUserId, patch);
         if (cancelled) return;
+
         markSyncedOnDevice(authUserId);
-        lastSyncedFavRef.current = JSON.stringify(next);
-        setFavorites(next);
-        setFavSync("synced");
+        lastSyncedFavRef.current = JSON.stringify(nextFav);
+        setFavorites(nextFav);
+        if (nextKey !== groqApiKeyRef.current) applyGroqKey(nextKey);
+        setAccountSync("synced");
       } catch (error) {
-        console.error("Favorites sync failed:", error);
-        if (!cancelled) setFavSync("error");
+        console.error("Account sync failed:", error);
+        if (!cancelled) setAccountSync("error");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [authUserId, favPullTick]);
+  }, [authUserId, accountPullTick]);
 
-  // 推送：登入中且收藏有變動時，0.8 秒後寫回雲端。
+  // 推送收藏：登入中且收藏有變動時，0.8 秒後寫回帳號。
   useEffect(() => {
     if (!authUserId || lastSyncedFavRef.current === null) return;
     const json = JSON.stringify(favorites);
     if (json === lastSyncedFavRef.current) return;
     const timer = setTimeout(async () => {
-      setFavSync("syncing");
+      setAccountSync("syncing");
       try {
-        await pushRemoteFavorites(authUserId, favorites);
+        await pushRemoteUserData(authUserId, { favorites });
         lastSyncedFavRef.current = json;
-        setFavSync("synced");
+        setAccountSync("synced");
       } catch (error) {
         console.error("Favorites push failed:", error);
-        setFavSync("error");
+        setAccountSync("error");
       }
     }, 800);
     return () => clearTimeout(timer);
   }, [favorites, authUserId]);
+
+  // 設定/移除 AI 金鑰：登入中則同步寫回帳號。
+  const updateGroqKey = async (key: string) => {
+    applyGroqKey(key);
+    if (!authUserId) return;
+    setAccountSync("syncing");
+    try {
+      await pushRemoteUserData(authUserId, { groqApiKey: key });
+      setAccountSync("synced");
+    } catch (error) {
+      console.error("API key push failed:", error);
+      setAccountSync("error");
+    }
+  };
 
   const handleGoogleSignIn = async () => {
     try {
@@ -419,9 +449,13 @@ const [isSyncing, setIsSyncing] = useState(false);
     }
   };
 
+  // 登出：收藏與 AI 金鑰綁定帳號，一併從這台裝置移除（公用電腦不留資料）。
   const handleSignOut = async () => {
+    lastSyncedFavRef.current = null; // 先停止推送，避免清空的收藏被寫回帳號
     await signOut();
-    setToast({ message: "已登出，收藏仍保留在這台裝置", type: "info" });
+    setFavorites([]);
+    applyGroqKey("");
+    setToast({ message: "已登出，收藏與 AI 金鑰已從這台裝置移除", type: "info" });
   };
 
   const isStandalone = useMemo(() => {
@@ -1756,13 +1790,13 @@ ${query}`;
                           <span
                             className={cn(
                               "w-1.5 h-1.5 rounded-full",
-                              favSync === "synced" && "bg-emerald-500",
-                              favSync === "syncing" && "bg-amber-500 animate-pulse",
-                              favSync === "error" && "bg-rose-500",
-                              favSync === "idle" && "bg-slate-400",
+                              accountSync === "synced" && "bg-emerald-500",
+                              accountSync === "syncing" && "bg-amber-500 animate-pulse",
+                              accountSync === "error" && "bg-rose-500",
+                              accountSync === "idle" && "bg-slate-400",
                             )}
                           />
-                          {favSync === "error" ? "收藏同步失敗" : favSync === "syncing" ? "同步中…" : "收藏已同步"}
+                          {accountSync === "error" ? "同步失敗" : accountSync === "syncing" ? "同步中…" : "已同步"}
                         </span>
                         <button
                           onClick={handleSignOut}
@@ -1792,7 +1826,7 @@ ${query}`;
                         Google 登入
                       </span>
                       <span className={cn("text-[9px] opacity-60", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>
-                        收藏跨裝置同步
+                        收藏與 AI 金鑰綁定帳號
                       </span>
                     </button>
                   )}
@@ -4487,14 +4521,9 @@ ${query}`;
         theme={theme}
         currentKey={groqApiKey}
         onClose={() => setIsApiKeySetupOpen(false)}
-        onSave={(key) => {
-          saveGroqKey(key);
-          setGroqApiKey(key);
-        }}
-        onClear={() => {
-          clearGroqKey();
-          setGroqApiKey("");
-        }}
+        signedIn={!!authUser}
+        onSave={updateGroqKey}
+        onClear={() => updateGroqKey("")}
       />
 
       {/* Help & Operation Guide Modal */}
@@ -4612,7 +4641,7 @@ ${query}`;
                   </h4>
                   <p className="opacity-80 leading-relaxed text-[11px] pl-5">
                     點擊任何藥物卡片右側的星號（⭐）即可將該藥物收藏。
-                    點擊右上角「幫助」左側的「收藏」按鈕，可開啟我的收藏面板，用於快速調閱與一鍵管理。在左側「控制中心」以 Google 登入後，收藏會跨裝置同步。
+                    點擊右上角「幫助」左側的「收藏」按鈕，可開啟我的收藏面板，用於快速調閱與一鍵管理。在左側「控制中心」以 Google 登入後，收藏與 AI 金鑰會綁定帳號，換裝置登入即可使用；登出時會從該裝置移除。
                   </p>
                 </div>
               </div>
