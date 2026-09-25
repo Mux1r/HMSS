@@ -30,6 +30,15 @@ npm run build  # 產出 dist/
 SUPABASE_URL=... SERVICE_ROLE_KEY=... node scripts/import-excel.mjs dglist.xlsx
 ```
 
+## 知識圖向量搜尋
+
+「AI 輔助機轉查詢」會同時呼叫 Edge Function `kg-search`：把查詢轉成向量，比對 `helper` repo 建好的藥物知識圖，
+撈出院內適應症有寫到的藥（含同義詞與上下位概念）。與 Groq 分析各自獨立，不需要使用者金鑰。
+
+- 資料表與比對函式：`supabase/migrations/*_kg.sql`（`kg_nodes` / `kg_edges`，只給 service role 讀）
+- Edge Function：`supabase/functions/kg-search/`，secret `OPENROUTER_API_KEY`（向量模型必須與建圖時相同）
+- 資料更新：在 helper repo 重建圖後跑 `uv run kg/upload_supabase.py`
+
 ## 版本號
 
 採 `x.y.z`(大.中.小)語意化版本,**每次更新都要修改** `package.json` 的 `version`(並同步 `package-lock.json`):

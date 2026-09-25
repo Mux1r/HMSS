@@ -185,6 +185,8 @@ const SharpStar = ({
 import {
   localMedicationService,
   Medication,
+  searchKg,
+  KgResult,
 } from "./services/medicationService";
 import { cn } from "./lib/utils";
 import { MEDICAL_ALIASES, MECHANISM_ATC } from "./lib/medicalKeywords";
@@ -296,6 +298,11 @@ const [isSyncing, setIsSyncing] = useState(false);
   const [isAiSymptomRequested, setIsAiSymptomRequested] = useState(false);
   const [aiSymptomError, setAiSymptomError] = useState<string | null>(null);
   const aiSymptomCacheRef = useRef<Record<string, { classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] }>>({});
+  // 知識圖向量搜尋：與 Groq 症狀分析同時跑、互不依賴（不需要 Groq 金鑰）
+  const [kgResult, setKgResult] = useState<KgResult | null>(null);
+  const [isKgSearching, setIsKgSearching] = useState(false);
+  const [kgError, setKgError] = useState<string | null>(null);
+  const kgCacheRef = useRef<Record<string, KgResult>>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -788,6 +795,32 @@ ${JSON.stringify(systemsList)}
 
     return () => clearTimeout(delayTimer);
   }, [isAiSymptomRequested, searchQuery, medications, medicationCodeSet, callGroq]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    setKgResult(null);
+    setKgError(null);
+    if (!isAiSymptomRequested || query.length < 2 || medicationCodeSet.has(query.toUpperCase())) {
+      setIsKgSearching(false);
+      return;
+    }
+    if (kgCacheRef.current[query]) {
+      setKgResult(kgCacheRef.current[query]);
+      return;
+    }
+    let cancelled = false;
+    setIsKgSearching(true);
+    searchKg(query)
+      .then((r) => {
+        kgCacheRef.current[query] = r;
+        if (!cancelled) setKgResult(r);
+      })
+      .catch((e) => !cancelled && setKgError(e?.message || "圖譜搜尋失敗"))
+      .finally(() => !cancelled && setIsKgSearching(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [isAiSymptomRequested, searchQuery, medicationCodeSet]);
 
   // Remove global click listener in favor of local onBlur for better focus management
   useEffect(() => {
@@ -1351,6 +1384,10 @@ ${query}`;
         return isClassMatch || isSystemMatch || isKeywordMatch || isIngredientMatch;
       });
 
+      // 知識圖命中：適應症（臨床用途）經 LLM 拆解＋同義詞合併＋上下位擴散後對到的藥
+      const kgScoreOf = (m: Medication) => kgResult?.hits[(m.code || "").trim().toUpperCase()] || 0;
+      const kgMatches = kgResult ? medications.filter((m) => kgScoreOf(m) > 0) : [];
+
       // 整合與去重，保持基礎匹配類別 (使用 Set 保證完全無重複 key)
       const combinedMeds: typeof medications = [];
       const seenMeds = new Set<string>();
@@ -1367,6 +1404,7 @@ ${query}`;
       addUniqueMeds(exactMatches);
       addUniqueMeds(atcClassMatches);
       addUniqueMeds(medicalIntentMatches);
+      addUniqueMeds(kgMatches);
       addUniqueMeds(aiSymptomMatches);
       addUniqueMeds(stringStartMatches);
       addUniqueMeds(firstAlphaStartMatches);
@@ -1432,6 +1470,9 @@ ${query}`;
           score += 8000;
         } else if (medicalIntentMatches.some((mm) => mm.id === m.id)) {
           score += 7000;
+        } else if (kgScoreOf(m) > 0) {
+          // 圖譜命中 = 院內適應症有寫到（語意比對），可信度介於字面適應症(7000)與 AI 猜測(6000)之間
+          score += 6500;
         } else if (aiSymptomMatches.some((sm) => sm.id === m.id)) {
           // 有適應症佐證維持高分；僅分類/系統吻合者降至 contains(5000) 之後、門檻(3000)之上
           score += aiCorroborated ? 6000 : 3500;
@@ -1500,6 +1541,9 @@ ${query}`;
           score += 500;
         }
 
+        // 4.5 圖譜分數（約 0.3–1.1）：同層內語意越貼近越前面，量級與適應症字面命中(+2000)相當
+        score += Math.round(kgScoreOf(m) * 2000);
+
         // 5. 劑型常用度微調：全身性(口服/針劑)優先於局部劑型，口服固體又優先於液體。
         //    分數刻意小，僅打破同分，不影響臨床匹配大權重。
         score += formPrefScore(m.code);
@@ -1555,6 +1599,7 @@ ${query}`;
     onlyFavorites,
     favorites,
     aiSymptomMapping,
+    kgResult,
   ]);
 
   const displayedMedications = useMemo(() => {
@@ -2710,6 +2755,36 @@ ${query}`;
                         <span className="text-[11px] text-zinc-400 font-medium">未查得顯著相關之藥理分類/生理系統機轉</span>
                       )}
                     </motion.div>
+                  )}
+
+                  {isAiSymptomRequested && (isKgSearching || kgResult || kgError) && (
+                    <div
+                      className={cn(
+                        "mb-3.5 px-3.5 py-2.5 rounded-xl border flex flex-wrap items-center gap-2 text-xs",
+                        theme === "dark"
+                          ? "bg-brand-accent/[0.03] border-brand-accent/20 text-zinc-300"
+                          : "bg-brand-accent/[0.015] border-brand-accent/15 text-slate-700",
+                      )}
+                    >
+                      <span className="shrink-0 font-bold text-brand-accent">圖譜對應：</span>
+                      {isKgSearching ? (
+                        <span className="text-[11px] text-brand-accent/70 animate-pulse font-medium">搜尋中...</span>
+                      ) : kgError ? (
+                        <span className="text-[11px] text-red-400 font-medium">{kgError}</span>
+                      ) : kgResult && kgResult.concepts.length > 0 ? (
+                        kgResult.concepts.slice(0, 10).map((c) => (
+                          <span
+                            key={c.label}
+                            title={c.via ? `經上下位關聯自「${c.via}」` : undefined}
+                            className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/25"
+                          >
+                            {c.label}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[11px] text-zinc-400 font-medium">院內藥品適應症中未找到相關概念</span>
+                      )}
+                    </div>
                   )}
 
                   <div className="flex flex-col md:flex-row md:items-end justify-end gap-3 mb-2 md:mb-2.5">

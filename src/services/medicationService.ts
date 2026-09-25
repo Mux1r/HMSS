@@ -183,6 +183,23 @@ const mapSupabaseRow = (row: any): Medication => {
   };
 };
 
+export interface KgResult {
+  concepts: { label: string; score: number; via: string | null }[];
+  hits: Record<string, number>; // 藥品編碼（大寫）→ 圖譜分數，同一顆藥取最高分
+}
+
+/** 知識圖向量搜尋（Edge Function kg-search）：症狀/白話 → 概念 → 適應症有寫到的院內藥品。 */
+export async function searchKg(q: string): Promise<KgResult> {
+  const { data, error } = await supabase.functions.invoke('kg-search', { body: { q } });
+  if (error) throw new Error(`圖譜搜尋失敗: ${error.message}`);
+  const hits: Record<string, number> = {};
+  for (const { code, score } of [...(data?.links || []), ...(data?.drugs || [])]) {
+    const key = String(code || '').trim().toUpperCase();
+    if (key && !(hits[key] >= score)) hits[key] = score;
+  }
+  return { concepts: data?.concepts || [], hits };
+}
+
 export const localMedicationService = {
   /**
    * 獲取所有藥物資料 (從 IndexedDB)
