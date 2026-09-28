@@ -144,10 +144,13 @@ const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 /**
  * 解析 AI 回傳的 NDJSON。無法解析的行（未完成的串流行、```、說明文字）一律略過。
  * 藥物/建議若出現在任何「problem」之前，歸入「整體建議」群組。
+ * 同一成分在後面的問題又出現時不重複列卡片，改成一行「見上方」提示（AI 常把止痛退燒藥每組都列一次）。
  */
 export function parseRecommendation(text: string): Recommendation {
   const summary: string[] = [];
   const groups: RecGroup[] = [];
+  const firstGroup = new Map<string, RecGroup>(); // 成分名（小寫）→ 第一次出現的群組
+  const repeats = new Map<RecGroup, string[]>();
   const current = (): RecGroup => {
     if (groups.length === 0) groups.push({ problem: "整體建議", drugs: [], advice: [] });
     return groups[groups.length - 1];
@@ -181,8 +184,15 @@ export function parseRecommendation(text: string): Recommendation {
       case "drug": {
         const name = str(obj.name);
         if (!name) break;
+        const group = current();
+        const first = firstGroup.get(name.toLowerCase());
+        if (first) {
+          if (first !== group) repeats.set(group, [...(repeats.get(group) || []), `${name}（見「${first.problem}」）`]);
+          break;
+        }
+        firstGroup.set(name.toLowerCase(), group);
         const atc = str(obj.atc).toUpperCase();
-        current().drugs.push({
+        group.drugs.push({
           name,
           zh: str(obj.zh),
           route: str(obj.route),
@@ -194,5 +204,6 @@ export function parseRecommendation(text: string): Recommendation {
       }
     }
   }
+  for (const [group, names] of repeats) group.advice.push(`與上方相同的建議用藥：${names.join("、")}`);
   return { summary, groups };
 }

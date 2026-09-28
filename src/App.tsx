@@ -304,12 +304,9 @@ const [isSyncing, setIsSyncing] = useState(false);
   const [isDosageFormOpen, setIsDosageFormOpen] = useState(false);
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [aiSymptomMapping, setAiSymptomMapping] = useState<{ classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] } | null>(null);
-  const [isSymptomAnalyzing, setIsSymptomAnalyzing] = useState(false);
   const [isAiSymptomRequested, setIsAiSymptomRequested] = useState(false);
-  const [aiSymptomError, setAiSymptomError] = useState<string | null>(null);
-  const aiSymptomCacheRef = useRef<Record<string, { classes: string[], systems: string[], keywords: string[], recommendedIngredients: string[] }>>({});
-  // 知識圖向量搜尋：與 Groq 症狀分析同時跑、互不依賴（不需要 Groq 金鑰）
+  // 知識圖向量搜尋：症狀查詢只走圖譜（院內適應症），不需要 Groq 金鑰。
+  // 刻意拿掉舊的 Groq 分類/系統比對：按生理系統撈藥太廣（頭痛 → 整個神經系統）。
   const [kgResult, setKgResult] = useState<KgResult | null>(null);
   const [isKgSearching, setIsKgSearching] = useState(false);
   const [kgError, setKgError] = useState<string | null>(null);
@@ -848,86 +845,7 @@ const [isSyncing, setIsSyncing] = useState(false);
   // Reset AI request when search query changes
   useEffect(() => {
     setIsAiSymptomRequested(false);
-    setAiSymptomMapping(null);
-    setAiSymptomError(null);
   }, [searchQuery]);
-
-  useEffect(() => {
-    if (!isAiSymptomRequested) {
-      setAiSymptomMapping(null);
-      setIsSymptomAnalyzing(false);
-      setAiSymptomError(null);
-      return;
-    }
-
-    const query = searchQuery.trim();
-    if (!query || query.length < 2) {
-      setAiSymptomMapping(null);
-      setIsSymptomAnalyzing(false);
-      return;
-    }
-
-    if (medicationCodeSet.has(query.toUpperCase())) {
-      setAiSymptomMapping(null);
-      setIsSymptomAnalyzing(false);
-      return;
-    }
-
-    if (aiSymptomCacheRef.current[query]) {
-      setAiSymptomMapping(aiSymptomCacheRef.current[query]);
-      setIsSymptomAnalyzing(false);
-      return;
-    }
-
-    setIsSymptomAnalyzing(true);
-    const delayTimer = setTimeout(async () => {
-      try {
-        const classesList = Array.from(new Set(medications.map(m => m.pharmacologicalClass).filter(Boolean)));
-        const systemsList = Array.from(new Set(medications.map(m => m.anatomicalSystem).filter(Boolean)));
-
-        const prompt = `您是一位專業的醫院臨床藥師。
-使用者正在醫院藥物查詢系統的搜尋框中，輸入了一個模糊的「症狀或副作用描述」或非精準藥物名稱：「${query}」。
-請幫忙判斷這個描述可能與我們現有哪些「藥理分類 (Pharmacological Class)」或「生理系統 (Anatomical System)」最直接相關。
-同時，請為該症狀推薦最合適、最常用的 2~4 個首選特效藥物成分英文/中文名稱 (recommended ingredients / generic names，例如: "Dextromethorphan", "Codeine", "Acetaminophen", "Cetirizine" 等)。
-
-現有藥理分類 (Pharmacological Class) 列表：
-${JSON.stringify(classesList)}
-
-現有生理系統 (Anatomical System) 列表：
-${JSON.stringify(systemsList)}
-
-請回傳一個符合以下 JSON 格式的內容，絕不要包含任何 Markdown 格式標籤（如 \`\`\`json ），也絕不要有任何前後引言說明，直接輸出純 JSON 字串即可：
-{
-  "classes": [匹配的最相關藥理分類名稱列表，必須完全吻合上述列表中的字串項目],
-  "systems": [匹配的最相關生理系統名稱列表，必須完全吻合上述列表中的字串項目],
-  "keywords": [3~8個可能出現在藥品「適應症」欄位中的中文病名/症狀/治療用語，中英文皆可，用於比對藥品適應症文字，例如查咳嗽 → "咳嗽", "鎮咳", "祛痰", "化痰", "感冒"],
-  "recommendedIngredients": [最合適、最常用且最符合適應症的首選西藥成分名稱列表，建議用常見英文學名如 "dextromethorphan"、或是常用中文成分名稱，依據常用度及臨床首選順序由高到低排列]
-}
-
-注意：如果沒有任何相關的，請回傳空陣列形式。`;
-
-        const response = await retryWithBackoff<any>(() =>
-          callGroq({
-            model: GROQ_MODEL_FAST,
-            reasoning_effort: "low",
-            messages: [{ role: "user", content: prompt }],
-            response_format: { type: "json_object" },
-          })
-        );
-        const resultText = response.choices?.[0]?.message?.content || "";
-        const parsed = JSON.parse(resultText);
-        aiSymptomCacheRef.current[query] = parsed;
-        setAiSymptomMapping(parsed);
-      } catch (error: any) {
-        console.error("AI Symptom mapping error:", error);
-        setAiSymptomError(error?.message || "AI 分析失敗，請稍後再試");
-      } finally {
-        setIsSymptomAnalyzing(false);
-      }
-    }, 450);
-
-    return () => clearTimeout(delayTimer);
-  }, [isAiSymptomRequested, searchQuery, medications, medicationCodeSet, callGroq]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -1083,7 +1001,7 @@ ${JSON.stringify(systemsList)}
       const prompt = `你是精通臨床藥理的主治醫師。請只針對下方「已確認問題清單」給出用藥建議；系統會用你給的成分學名與 ATC 碼比對院內藥庫。
 
 # 規則
-1. 只處理清單內的問題，不自行新增。每個問題獨立成組，不混放其他問題的藥。
+1. 只處理清單內的問題，不自行新增。每個問題獨立成組，不混放其他問題的藥。同一成分只在最相關的一個問題下列出（reason 可註明兼治哪些問題），其他問題不要重複列；若某問題已被上方用藥完全涵蓋，該組只給一條 advice 說明，不要硬湊不同的藥。
 2. 可用藥的問題：列「首選」1–3 種、「替代」0–3 種，依臨床指引與實證排序。寧缺勿濫，不要為湊數列次要或冷門成分；優先各級醫院普遍備有的標準成分。
 3. 無特定藥物可治療的問題：不列藥，改給一條臨床建議（生活調整、檢查、轉診）。
 4. name 用通用英文學名，zh 附中文學名。絕不編造藥品碼。
@@ -1491,32 +1409,6 @@ ${query}`;
         })
         .map((r) => r.item as any);
 
-      // 症狀與 AI 關聯匹配 (Low Latency AI Symptom Match)
-      const aiSymptomMatches = medications.filter((m) => {
-        if (!aiSymptomMapping) return false;
-        if (exactMatches.some((em) => em.id === m.id)) return false;
-        if (medicalIntentMatches.some((mm) => mm.id === m.id)) return false;
-
-        const isClassMatch = aiSymptomMapping.classes.includes(m.pharmacologicalClass);
-        const isSystemMatch = aiSymptomMapping.systems.includes(m.anatomicalSystem);
-        const isKeywordMatch = aiSymptomMapping.keywords.some((kw) => {
-          const pool = `${m.component} ${m.brandName} ${m.genericName} ${m.chineseName} ${m.indications} ${m.pharmacologicalClass}`.toLowerCase();
-          return pool.includes(kw);
-        });
-        // 成分名比對：AI 推薦的首選成分若實際存在於院內藥庫就撈進來。
-        // 這條比 class 精確字串比對可靠得多 —— AI 模型都難一字不差複製院內分類字串，
-        // 但成分學名是穩定的。ponytail: 成分名是主訊號，class/system 只是輔助。
-        const nameFields = [m.component, m.genericName, m.chineseName, m.brandName]
-          .filter(Boolean)
-          .map((f) => (f as string).toLowerCase());
-        const isIngredientMatch = aiSymptomMapping.recommendedIngredients.some((ing) => {
-          const q = ing.toLowerCase().trim();
-          return q.length > 2 && nameFields.some((f) => f.includes(q) || q.includes(f));
-        });
-
-        return isClassMatch || isSystemMatch || isKeywordMatch || isIngredientMatch;
-      });
-
       // 知識圖命中：適應症（臨床用途）經 LLM 拆解＋同義詞合併＋上下位擴散後對到的藥
       const kgScoreOf = (m: Medication) => kgResult?.hits[(m.code || "").trim().toUpperCase()] || 0;
       const kgMatches = kgResult ? medications.filter((m) => kgScoreOf(m) > 0) : [];
@@ -1538,7 +1430,6 @@ ${query}`;
       addUniqueMeds(atcClassMatches);
       addUniqueMeds(medicalIntentMatches);
       addUniqueMeds(kgMatches);
-      addUniqueMeds(aiSymptomMatches);
       addUniqueMeds(stringStartMatches);
       addUniqueMeds(firstAlphaStartMatches);
       addUniqueMeds(wordBoundaryMatches);
@@ -1577,18 +1468,6 @@ ${query}`;
         const pharmacologicalLower = (m.pharmacologicalClass || "").toLowerCase();
         const genericLower = (m.genericName || "").toLowerCase();
 
-        // AI 佐證訊號：機轉分類/系統匹配的藥，還需適應症命中 AI 關鍵詞或被 AI 點名成分，
-        // 才算真正符合需求；否則降權排後（不排除）。
-        const recoIndex = aiSymptomMapping
-          ? aiSymptomMapping.recommendedIngredients.findIndex((ing) => {
-              const cleanIng = ing.toLowerCase();
-              return componentLower.includes(cleanIng) || genericLower.includes(cleanIng) || cleanIng.includes(componentLower);
-            })
-          : -1;
-        const aiIndicationHit = !!aiSymptomMapping &&
-          aiSymptomMapping.keywords.some((kw) => indicationsLower.includes(kw.toLowerCase()));
-        const aiCorroborated = aiIndicationHit || recoIndex !== -1;
-
         // 1. 各層級之基礎匹配權重
         if (exactMatches.some((em) => em.id === m.id)) {
           score += 12000;
@@ -1604,11 +1483,8 @@ ${query}`;
         } else if (medicalIntentMatches.some((mm) => mm.id === m.id)) {
           score += 7000;
         } else if (kgScoreOf(m) > 0) {
-          // 圖譜命中 = 院內適應症有寫到（語意比對），可信度介於字面適應症(7000)與 AI 猜測(6000)之間
+          // 圖譜命中 = 院內適應症有寫到（語意比對），排在字面適應症(7000)之後、contains(5000)之前
           score += 6500;
-        } else if (aiSymptomMatches.some((sm) => sm.id === m.id)) {
-          // 有適應症佐證維持高分；僅分類/系統吻合者降至 contains(5000) 之後、門檻(3000)之上
-          score += aiCorroborated ? 6000 : 3500;
         } else if (containsMatches.some((cm) => cm.id === m.id)) {
           score += 5000;
         } else {
@@ -1645,25 +1521,6 @@ ${query}`;
 
         if (checkPrefix(m.component) || checkPrefix(m.brandName) || checkPrefix(m.chineseName) || checkPrefix(m.genericName) || checkPrefix(m.code)) {
           score += 1000;
-        }
-
-        // 3. 整合 AI 臨床首選與推薦藥物成分 (與臨床最常用、治療契合度排序對接)
-        if (aiSymptomMapping) {
-          // 3.1 AI 主動推薦的特效/常用成分 (recoIndex 已於上方計算)
-          if (recoIndex !== -1) {
-            // 排名越靠前(recoIndex越小)，分數加成越高
-            score += Math.max(200, 3000 - recoIndex * 400);
-          }
-
-          // 3.2 / 3.3 分類與系統加成僅在有適應症佐證時給予，避免無佐證藥靠加成回升
-          if (aiCorroborated) {
-            if (aiSymptomMapping.classes.includes(m.pharmacologicalClass)) {
-              score += 1500;
-            }
-            if (aiSymptomMapping.systems.includes(m.anatomicalSystem)) {
-              score += 800;
-            }
-          }
         }
 
         // 4. 對臨床常見/常用成分常數加分 (保障基線常用度排序)
@@ -1731,7 +1588,6 @@ ${query}`;
     selectedDosageForms,
     onlyFavorites,
     favorites,
-    aiSymptomMapping,
     kgResult,
   ]);
 
@@ -2887,7 +2743,7 @@ ${query}`;
                     }
                   }}
                 >
-                  {/* AI Symptom Recognition Banner (由使用者點選開啟) */}
+                  {/* 症狀查詢按鈕（由使用者點選開啟，只走知識圖譜） */}
                   {isQueryValidForAi && !isAiSymptomRequested && (
                     <motion.button
                       id="ai-symptom-trigger-btn"
@@ -2903,62 +2759,13 @@ ${query}`;
                     >
                       <div className="flex items-center gap-1.5 font-bold">
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>AI 輔助機轉查詢</span>
+                        <span>適應症圖譜查詢</span>
                       </div>
                       <div className="flex items-center gap-1 text-[10px] font-medium opacity-80 shrink-0">
                         <span>分析</span>
                         <ChevronRight className="w-3 h-3" />
                       </div>
                     </motion.button>
-                  )}
-
-                  {isAiSymptomRequested && (isSymptomAnalyzing || aiSymptomMapping || aiSymptomError) && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={cn(
-                        "mb-3.5 px-3.5 py-2.5 rounded-xl border flex flex-wrap items-center gap-2 text-xs shadow-sm shadow-brand-accent/5",
-                        aiSymptomError
-                          ? theme === "dark"
-                            ? "bg-red-500/[0.05] border-red-500/20 text-zinc-300"
-                            : "bg-red-500/[0.04] border-red-500/15 text-slate-700"
-                          : theme === "dark"
-                            ? "bg-brand-accent/[0.03] border-brand-accent/20 text-zinc-300"
-                            : "bg-brand-accent/[0.015] border-brand-accent/15 text-slate-700",
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 shrink-0 font-bold text-brand-accent">
-                        <Sparkles className={cn("w-3.5 h-3.5", isSymptomAnalyzing && "animate-pulse")} />
-                        <span>關聯機轉：</span>
-                      </div>
-
-                      {isSymptomAnalyzing ? (
-                        <span className="text-[11px] text-brand-accent/70 animate-pulse font-medium">分析中...</span>
-                      ) : aiSymptomError ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-red-400 font-medium">{aiSymptomError}</span>
-                          <button
-                            onClick={() => { setAiSymptomError(null); setIsAiSymptomRequested(false); setTimeout(() => setIsAiSymptomRequested(true), 0); }}
-                            className="text-[10px] font-bold text-brand-accent underline underline-offset-2"
-                          >重試</button>
-                        </div>
-                      ) : (aiSymptomMapping && (aiSymptomMapping.classes.length > 0 || aiSymptomMapping.systems.length > 0)) ? (
-                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                          {aiSymptomMapping?.classes.map((cls) => (
-                            <span key={cls} className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/25">
-                              {cls}
-                            </span>
-                          ))}
-                          {aiSymptomMapping?.systems.map((sys) => (
-                            <span key={sys} className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-secondary-accent/10 text-brand-secondary-accent border border-brand-secondary-accent/25">
-                              {sys}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-zinc-400 font-medium">未查得顯著相關之藥理分類/生理系統機轉</span>
-                      )}
-                    </motion.div>
                   )}
 
                   {isAiSymptomRequested && (isKgSearching || kgResult || kgError) && (
@@ -2974,7 +2781,13 @@ ${query}`;
                       {isKgSearching ? (
                         <span className="text-[11px] text-brand-accent/70 animate-pulse font-medium">搜尋中...</span>
                       ) : kgError ? (
-                        <span className="text-[11px] text-red-400 font-medium">{kgError}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-red-400 font-medium">{kgError}</span>
+                          <button
+                            onClick={() => { setIsAiSymptomRequested(false); setTimeout(() => setIsAiSymptomRequested(true), 0); }}
+                            className="text-[10px] font-bold text-brand-accent underline underline-offset-2"
+                          >重試</button>
+                        </div>
                       ) : kgResult && kgResult.concepts.length > 0 ? (
                         kgResult.concepts.slice(0, 10).map((c) => (
                           <span
@@ -4686,11 +4499,10 @@ ${query}`;
 
                 <div className="space-y-1">
                   <h4 className="font-bold text-brand-accent flex items-center gap-1.5">
-                    <span>✨ 自動關聯機轉</span>
+                    <span>✨ 適應症圖譜查詢</span>
                   </h4>
                   <p className="opacity-80 leading-relaxed text-[11px] pl-5">
-                    輸入任何症狀時，頁面最上方會立即以簡約精緻的標籤「自動顯示關聯的學術生理機轉（生理系統與藥理分類）」，完全無多餘字樣干擾。
-                    同時，臨床最常用的首選西藥成分（如 Acetaminophen 等）會被智慧排序並自動置前。
+                    輸入症狀後點「適應症圖譜查詢」，系統會以知識圖譜比對院內藥品的適應症（含同義詞與上下位概念，例如頭痛 → 偏頭痛），並把相符的藥品排到前面。不需要 AI 金鑰。
                   </p>
                 </div>
 

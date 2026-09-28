@@ -6,7 +6,7 @@
  *  - MECHANISM_ATC：藥理機轉縮寫 → ATC 碼前綴。用 atcCode.startsWith 比對，撈到該類「在庫每一顆藥」，
  *    免手動維護學名清單，且可指定 5~7 碼細粒度隔出被 4 碼大類混在一起的（如 statin C10AA）。這是主力。
  *  - MEDICAL_ALIASES：ATC 隔不乾淨或非藥理類的確定性縮寫 → 名稱/病名清單（給藥/電解質、疾病縮寫、SNRI）。
- * 模糊臨床意圖（止痛、胃藥…）兩張都不放，走 AI 輔助機轉查詢路徑（App.tsx 症狀分析）動態處理。
+ * 模糊臨床意圖（止痛、胃藥…）兩張都不放，走適應症圖譜查詢（App.tsx，Edge Function kg-search）處理。
  */
 
 // 機轉縮寫 → ATC 碼前綴（可多個；比對 drug.atcCode.startsWith）

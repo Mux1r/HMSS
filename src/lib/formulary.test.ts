@@ -66,6 +66,16 @@ assert.equal(rec.groups[0].drugs[1].tier, "替代");
 assert.deepEqual(rec.groups[1].advice, ["減重與飲食控制"]);
 assert.equal(rec.groups[1].drugs.length, 0, "串流中未完成的行略過");
 assert.equal(parseRecommendation('{"type":"drug","name":"X"}').groups[0].problem, "整體建議", "無問題時歸入整體建議");
+const dup = parseRecommendation([
+  '{"type":"problem","name":"發燒"}',
+  '{"type":"drug","name":"Acetaminophen"}',
+  '{"type":"problem","name":"頭痛"}',
+  '{"type":"drug","name":"acetaminophen"}',
+  '{"type":"drug","name":"Ibuprofen"}',
+  '{"type":"drug","name":"Ibuprofen"}',
+].join("\n"));
+assert.deepEqual(dup.groups[1].drugs.map((d) => d.name), ["Ibuprofen"], "後面問題重複的成分不再列卡片，同組重複也略過");
+assert.deepEqual(dup.groups[1].advice, ["與上方相同的建議用藥：acetaminophen（見「發燒」）"], "改以一行提示指向第一次出現的問題");
 
 // --- isPediatricContext ---
 assert.equal(isPediatricContext("3歲男童發燒"), true, "幼齡");
