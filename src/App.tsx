@@ -158,6 +158,47 @@ const normalizeRoute = (raw: string): string => {
   return "";
 };
 
+// 幫助視窗內容。寫法原則：講「在哪裡、按什麼、會發生什麼」，不寫宣傳詞。
+const HELP_SECTIONS: { title: string; lines: string[] }[] = [
+  {
+    title: "查藥",
+    lines: [
+      "可以打成分、商品名、中文名或藥品代碼。打開頭幾個字最快，例如 acet 或「乙醯」，開頭相符的藥會排在最前面。",
+    ],
+  },
+  {
+    title: "用症狀找藥",
+    lines: [
+      "打症狀或病名（例如「偏頭痛」、「胃酸過多」），列表上方會出現「適應症圖譜查詢」。按下去會找出院內藥品資料中適應症有寫到的藥，同義詞和更細的病名也算，例如查頭痛也會找到偏頭痛用藥，找到的藥會排到前面。",
+      "這個功能不需要 AI 金鑰。",
+    ],
+  },
+  {
+    title: "AI 助理",
+    lines: [
+      "在最上方切到「AI 助理」，輸入病人的狀況，例如「58 歲女性，飯後血糖高」。",
+      "AI 會先整理出主要問題，並列出幾個可能的伴隨症狀，請勾選病人有的。這些是用來判斷病因的，不會因此多開藥。也可以填病人的族群、腎肝功能、過敏和目前用藥，AI 會避開禁忌。",
+      "建議分成「首選」和「替代」，並對應到院內品項。標示「同類替代」或「依 ATC 比對」的不是 AI 原本建議的成分，使用前請自己確認。長按藥卡（電腦按右鍵）可以複製藥品碼。",
+      "第一次使用要設定免費的 Groq 金鑰，進入 AI 助理時會帶你一步一步做，大約一分鐘；之後可以在控制中心修改。AI 建議僅供參考，處方前請依臨床判斷和仿單確認。",
+    ],
+  },
+  {
+    title: "收藏",
+    lines: [
+      "點藥品旁邊的星星就能收藏。左上角 ☰ 打開控制中心，按「收藏」可以查看和整理；篩選裡打開「僅顯示收藏」，列表就只顯示收藏的藥。",
+    ],
+  },
+  {
+    title: "Google 登入",
+    lines: [
+      "在控制中心按「Google 登入」。登入後，收藏和 AI 金鑰會存到你的帳號，換手機或電腦登入同一個帳號就會自動帶過來。",
+      "Google 的登入畫面會寫「繼續前往 ○○○.supabase.co」，那是本站使用的登入服務，可以放心繼續。",
+      "登出時，這台裝置上的收藏和金鑰會一起清掉，帳號裡的不受影響，所以在公用電腦上用完記得登出。",
+      "網站管理者在後台看得到帳號裡的資料，包括存進去的 AI 金鑰；介意的話可以不登入，資料就只留在這台裝置上。",
+    ],
+  },
+];
+
 const SharpStar = ({
   className,
   fill = "none",
@@ -1703,7 +1744,7 @@ ${query}`;
                               accountSync === "idle" && "bg-slate-400",
                             )}
                           />
-                          {accountSync === "error" ? "同步失敗" : accountSync === "syncing" ? "同步中…" : "已同步"}
+                          {accountSync === "error" ? "同步失敗，請檢查網路" : accountSync === "syncing" ? "同步中…" : "收藏與 AI 金鑰已存到帳號"}
                         </span>
                         <button
                           onClick={handleSignOut}
@@ -1712,6 +1753,9 @@ ${query}`;
                           登出
                         </button>
                       </div>
+                      <p className={cn("text-[9px] leading-relaxed", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
+                        登出會清掉這台裝置上的收藏和 AI 金鑰，帳號裡的不受影響。
+                      </p>
                     </div>
                   ) : (
                     <button
@@ -1732,10 +1776,15 @@ ${query}`;
                         </svg>
                         Google 登入
                       </span>
-                      <span className={cn("text-[9px] opacity-60", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>
-                        收藏與 AI 金鑰綁定帳號
+                      <span className={cn("text-[9px] opacity-60 text-center", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>
+                        登入後，收藏和 AI 金鑰會存到你的帳號，換手機或電腦登入就能直接用
                       </span>
                     </button>
+                  )}
+                  {!authUser && (
+                    <p className={cn("text-[9px] leading-relaxed px-1", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
+                      Google 登入畫面會寫「繼續前往 {new URL(import.meta.env.VITE_SUPABASE_URL).host}」，這是本站使用的登入服務，可以放心繼續。
+                    </p>
                   )}
                 </div>
 
@@ -4466,13 +4515,13 @@ ${query}`;
                   </div>
                   <div>
                     <h3 className="text-sm font-bold tracking-tight">
-                      系統操作指引與介紹
+                      使用說明
                     </h3>
                     <p className={cn(
                       "text-[10px] mt-0.5",
                       theme === "dark" ? "text-zinc-500" : "text-slate-400",
                     )}>
-                      幫助您快速掌握高效率的臨床藥物查詢功能
+                      查藥、用症狀找藥、AI 助理、收藏與登入
                     </p>
                   </div>
                 </div>
@@ -4491,52 +4540,16 @@ ${query}`;
 
               {/* Scrollable Content */}
               <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar text-xs">
-                <div className="space-y-1">
-                  <h4 className="font-bold text-brand-accent flex items-center gap-1.5">
-                    <span>🔍 字首優先！模糊與精準查詢</span>
-                  </h4>
-                  <p className="leading-relaxed text-[11px] pl-5 text-amber-500/90 font-medium">
-                    💡 關鍵密技：優先輸入成分/英文或中文的「完整字首」（例如以 'acet' / '乙醯' 進行查詢），高強度字首優選演算法即刻啟動，迅速置頂精確西藥成份。
-                  </p>
-                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
-                    同時也支持直接輸入學名、商品名、中文藥名，或任何「症狀、副作用、生理器官描述」（例如「胃酸過多」、「皮膚過敏」）。系統會透過自動演算，優選出最吻合適應症 (Indications) 的常用西藥成份。
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <h4 className="font-bold text-brand-accent flex items-center gap-1.5">
-                    <span>✨ 適應症圖譜查詢</span>
-                  </h4>
-                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
-                    輸入症狀後點「適應症圖譜查詢」，系統會以知識圖譜比對院內藥品的適應症（含同義詞與上下位概念，例如頭痛 → 偏頭痛），並把相符的藥品排到前面。不需要 AI 金鑰。
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <h4 className="font-bold text-violet-500 flex items-center gap-1.5">
-                    <span>🤖 AI 智能情境諮詢模式</span>
-                  </h4>
-                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
-                    點擊頂部中央的開關可切換為「Smart Analysis」AI 情境諮詢模式。
-                    在此模式下，您可以輸入整段臨床情境（如：病患 58 歲女性主訴飯後血糖高），AI 將在數秒內為您分析臨床考量並精確列出可用處方藥。
-                  </p>
-                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
-                    首次使用需設定免費的 Groq AI 金鑰（約 1 分鐘，免信用卡）：進入 AI 模式時會自動出現設定步驟，之後也可在左側「控制中心 → AI 金鑰」修改。
-                  </p>
-                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
-                    產生建議前可勾選病患安全資訊（族群、腎肝功能、過敏、目前用藥）。結果依「首選／替代」分級；標示「同類替代」或「依 ATC 比對」的品項並非 AI 原建議成分，請自行確認。
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <h4 className="font-bold text-amber-500 flex items-center gap-1.5">
-                    <span>⭐ 收藏與高頻藥物管理</span>
-                  </h4>
-                  <p className="opacity-80 leading-relaxed text-[11px] pl-5">
-                    點擊任何藥物卡片右側的星號（⭐）即可將該藥物收藏。
-                    點擊右上角「幫助」左側的「收藏」按鈕，可開啟我的收藏面板，用於快速調閱與一鍵管理。在左側「控制中心」以 Google 登入後，收藏與 AI 金鑰會綁定帳號，換裝置登入即可使用；登出時會從該裝置移除。
-                  </p>
-                </div>
+                {HELP_SECTIONS.map(({ title, lines }) => (
+                  <div key={title} className="space-y-1">
+                    <h4 className="font-bold text-brand-accent">{title}</h4>
+                    {lines.map((line) => (
+                      <p key={line} className="opacity-80 leading-relaxed text-[11px]">
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                ))}
               </div>
 
               {/* Footer */}
