@@ -17,6 +17,7 @@ interface Props {
   open: boolean;
   theme: "light" | "dark";
   currentKey: string;
+  signedIn: boolean;
   onClose: () => void;
   onSave: (key: string) => void;
   onClear: () => void;
@@ -32,7 +33,7 @@ const STEPS: { title: string; detail: string }[] = [
 
 const maskKey = (k: string) => (k.length > 10 ? `${k.slice(0, 4)}…${k.slice(-4)}` : "••••");
 
-export default function ApiKeySetup({ open, theme, currentKey, onClose, onSave, onClear }: Props) {
+export default function ApiKeySetup({ open, theme, currentKey, signedIn, onClose, onSave, onClear }: Props) {
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<"idle" | "verifying" | "error" | "success">("idle");
   const [message, setMessage] = useState("");
@@ -236,7 +237,10 @@ export default function ApiKeySetup({ open, theme, currentKey, onClose, onSave, 
 
               <p className={cn("flex items-start gap-1.5 text-[10px] leading-relaxed", muted)}>
                 <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-px" />
-                金鑰只存在這台裝置的瀏覽器，直接用來呼叫 Groq，不會上傳到 HMSS。免費方案每天約 1,000 次請求，一般使用足夠。
+                {signedIn
+                  ? "已登入 Google：金鑰會存到你的帳號（僅本人可讀取），換裝置登入即可使用；登出時會從這台裝置移除。"
+                  : "未登入：金鑰只存在這台裝置的瀏覽器。在控制中心以 Google 登入，即可綁定帳號、換裝置免重設。"}
+                免費方案每天約 1,000 次請求，一般使用足夠。
               </p>
             </div>
 
