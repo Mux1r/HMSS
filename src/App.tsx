@@ -943,7 +943,7 @@ const [isSyncing, setIsSyncing] = useState(false);
     const prompt = `你是一位專業臨床藥師。請分析以下病患描述，拆解臨床問題，並回傳純 JSON（絕不要 Markdown 標籤，也不要任何前後說明）。
 規則：
 - "mainProblems"：病患「主動描述」的主要問題/主訴（疾病本身或明確不適），通常 1-3 個，每項簡短（2-12 字）。
-- "secondaryProblems"：由主要問題「臨床上可能伴隨或衍生、但描述中尚未明確提及」的次要症狀或併發問題，供病患勾選確認是否存在。請列出 3-8 個最常見且相關的項目，一個症狀一項，每項簡短（2-12 字），不要與 mainProblems 重複。
+- "secondaryProblems"：描述中尚未提及、但「有或沒有」會改變最可能診斷的伴隨症狀，供勾選確認，用來協助鑑別診斷（不是用來多開藥）。優先列能區分常見病因的症狀與需要轉診的警訊（例如頭痛 → 發燒、頸部僵硬、單側搏動性、畏光）。列 3-8 項，一個症狀一項，每項簡短（2-12 字），不要與 mainProblems 重複。
 - 疾病本身與各症狀必須分開。
 回傳格式：{"mainProblems":["..."],"secondaryProblems":["..."]}
 病患描述：「${query}」`;
@@ -982,26 +982,29 @@ const [isSyncing, setIsSyncing] = useState(false);
       );
     setResponse("", "recommending");
     try {
-      const confirmedProblems = [
-        ...mainProblems.map((p) => `${p}（主要問題）`),
-        ...selectedSecondary.map((p) => `${p}（伴隨症狀）`),
-      ];
       const safetyText = formatSafety(safety);
-      const cacheKey = [query, [...confirmedProblems].sort().join("\x01"), safetyText].join("\x00");
+      const cacheKey = [
+        query,
+        [...mainProblems].sort().join("\x01"),
+        [...selectedSecondary].sort().join("\x01"),
+        safetyText,
+      ].join("\x00");
       const cached = aiRecommendCache.get(cacheKey);
       if (cached) {
         setResponse(cached, "done");
         return;
       }
       const problemListText =
-        confirmedProblems.length > 0
-          ? confirmedProblems.map((p) => `- ${p}`).join("\n")
-          : `- ${query}`;
+        mainProblems.length > 0 ? mainProblems.map((p) => `- ${p}`).join("\n") : `- ${query}`;
+      // 伴隨症狀只用來判斷診斷，不自成一組開藥（使用者勾選的目的是讓診斷更準）
+      const symptomListText =
+        selectedSecondary.length > 0 ? selectedSecondary.map((p) => `- ${p}`).join("\n") : "（無）";
 
-      const prompt = `你是精通臨床藥理的主治醫師。請只針對下方「已確認問題清單」給出用藥建議；系統會用你給的成分學名與 ATC 碼比對院內藥庫。
+      const prompt = `你是精通臨床藥理的主治醫師。請先結合「主要問題」與「已確認的伴隨症狀」判斷最可能的診斷，再針對主要問題給出用藥建議；系統會用你給的成分學名與 ATC 碼比對院內藥庫。
 
 # 規則
-1. 只處理清單內的問題，不自行新增。每個問題獨立成組，不混放其他問題的藥。同一成分只在最相關的一個問題下列出（reason 可註明兼治哪些問題），其他問題不要重複列；若某問題已被上方用藥完全涵蓋，該組只給一條 advice 說明，不要硬湊不同的藥。
+0. 伴隨症狀是鑑別診斷的線索，不是要各自開藥的問題：用它們判斷最可能的病因、調整藥物選擇、找出需轉診的警訊。不要為伴隨症狀另開一組，也不要為了涵蓋每個症狀而多列藥。
+1. 只為「主要問題」各開一組，不自行新增；problem 名稱可寫成「主要問題（推測：診斷）」。每組只放該問題的藥。同一成分只列一次（reason 可註明兼治哪些問題）；若某問題已被上方用藥涵蓋，該組只給一條 advice 說明。
 2. 可用藥的問題：列「首選」1–3 種、「替代」0–3 種，依臨床指引與實證排序。寧缺勿濫，不要為湊數列次要或冷門成分；優先各級醫院普遍備有的標準成分。
 3. 無特定藥物可治療的問題：不列藥，改給一條臨床建議（生活調整、檢查、轉診）。
 4. name 用通用英文學名，zh 附中文學名。絕不編造藥品碼。
@@ -1012,14 +1015,17 @@ const [isSyncing, setIsSyncing] = useState(false);
 
 # 輸出格式（嚴格遵守）
 只輸出 NDJSON：每行一個 JSON 物件，不要 Markdown、不要任何其他文字。依序：
-{"type":"summary","text":"整體用藥策略與臨床重點，80–150 字"}
+{"type":"summary","text":"最可能的診斷與依據（引用哪些伴隨症狀）、需排除的鑑別診斷或轉診警訊、整體用藥策略，80–150 字"}
 {"type":"problem","name":"問題名稱"}
 {"type":"drug","name":"Amlodipine","zh":"氨氯地平","route":"口服","atc":"C08CA01","tier":"首選","reason":"……"}
 {"type":"advice","text":"臨床建議（僅用於無特定藥物可治療的問題）"}
 每個問題重複一次 problem 行，其後接該問題的 drug 或 advice 行。
 
-# 已確認問題清單
+# 主要問題
 ${problemListText}
+
+# 已確認的伴隨症狀（僅供判斷診斷）
+${symptomListText}
 
 # 病患安全資訊
 ${safetyText}
@@ -3267,7 +3273,7 @@ ${query}`;
                                             )}
                                             <div className="flex flex-col gap-1.5">
                                               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                                伴隨症狀
+                                                伴隨症狀（勾選有的，協助判斷病因）
                                               </span>
                                               <div className="flex flex-col gap-1.5">
                                                 {item.secondaryProblems?.map((p) => {
