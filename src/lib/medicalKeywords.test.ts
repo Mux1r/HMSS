@@ -3,7 +3,7 @@
  * 守住 ATC 前綴表的格式，避免空字串前綴（會 startsWith 命中全部藥）或小寫/畸形碼悄悄失效。
  */
 import assert from "node:assert";
-import { MECHANISM_ATC, MEDICAL_ALIASES } from "./medicalKeywords.ts";
+import { MECHANISM_ATC, MEDICAL_ALIASES, mechanismKey } from "./medicalKeywords.ts";
 
 const ATC_PREFIX = /^[A-Z]\d{2}[A-Z]{0,2}\d{0,2}$/; // 例 C09A, C10AA, C09DX04
 
@@ -19,5 +19,11 @@ for (const [key, prefixes] of Object.entries(MECHANISM_ATC)) {
 for (const key of Object.keys(MECHANISM_ATC)) {
   assert.ok(!(key in MEDICAL_ALIASES), `${key} 同時存在於兩張表，請擇一`);
 }
+
+// 常見寫法都要對到同一組藥
+for (const q of ["Cox 2", "COX-2", "cox2", "COX-2 inhibitors", "cox 2 inhibitor", "Coxib"]) {
+  assert.deepEqual(MECHANISM_ATC[mechanismKey(q)], ["M01AH"], `「${q}」應對到 COX-2 抑制劑`);
+}
+assert.equal(mechanismKey("SGLT2 inhibitor"), "sglt2i");
 
 console.log("medicalKeywords data: all assertions passed ✓");

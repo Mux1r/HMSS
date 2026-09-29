@@ -242,7 +242,7 @@ import {
 } from "./services/medicationService";
 import { consumeJustUpdated } from "./lib/appUpdate";
 import { cn } from "./lib/utils";
-import { MEDICAL_ALIASES, MECHANISM_ATC } from "./lib/medicalKeywords";
+import { MEDICAL_ALIASES, MECHANISM_ATC, mechanismKey } from "./lib/medicalKeywords";
 import {
   atcMatches,
   diffMedications,
@@ -1346,7 +1346,7 @@ ${query}`;
 
     const query = deferredSearchQuery.toLowerCase().trim();
     const synonyms = MEDICAL_ALIASES[query] || [];
-    const atcPrefixes = MECHANISM_ATC[query] || [];
+    const atcPrefixes = MECHANISM_ATC[query] || MECHANISM_ATC[mechanismKey(query)] || [];
 
     let baseMeds = medications;
 

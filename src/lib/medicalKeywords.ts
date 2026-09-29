@@ -17,6 +17,9 @@ export const MECHANISM_ATC: Record<string, string[]> = {
   'bb': ['C07'],                     // β 阻斷劑
   'statin': ['C10AA'],               // HMG-CoA 還原酶抑制劑（自降血脂大類 C10A 中精準隔出）
   'nsaid': ['M01A'],                 // 非類固醇抗炎藥
+  'cox2': ['M01AH'],                 // COX-2 選擇性抑制劑（coxib）
+  'cox2i': ['M01AH'],
+  'coxib': ['M01AH'],
   'ppi': ['A02BC'],                  // 質子幫浦抑制劑
   'h2ra': ['A02BA'],                 // H2 受體拮抗劑
   'sglt2': ['A10BK'],                // SGLT2 抑制劑
@@ -32,6 +35,11 @@ export const MECHANISM_ATC: Record<string, string[]> = {
   'arni': ['C09DX04'],               // sacubitril/valsartan
   'mra': ['C03DA'],                  // 醛固酮拮抗劑
 };
+
+/** 查縮寫表前先整理：去空白與連字號，inhibitor(s) 收成 i。「COX-2 inhibitors」「Cox 2」→ cox2i／cox2。 */
+export function mechanismKey(query: string): string {
+  return query.toLowerCase().replace(/[\s\-]+/g, "").replace(/inhibitors?$/, "i");
+}
 
 // 確定性縮寫 → 名稱/病名清單（ATC 隔不乾淨或非藥理分類者）
 export const MEDICAL_ALIASES: Record<string, string[]> = {
