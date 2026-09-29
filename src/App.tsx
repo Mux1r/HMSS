@@ -170,7 +170,7 @@ function Tile({ dark, className, onClick, label, children }: {
   children: ReactNode;
 }) {
   const cls = cn(
-    "rounded-3xl border p-3.5 flex flex-col min-w-0 overflow-hidden transition-all",
+    "rounded-2xl border p-3.5 flex flex-col min-w-0 overflow-hidden transition-all",
     dark ? "bg-white/5 border-white/10" : "bg-white/60 border-slate-200",
     onClick && (dark ? "hover:bg-white/10 active:scale-[0.97]" : "hover:bg-white/80 active:scale-[0.97]"),
     className,
@@ -1804,22 +1804,21 @@ ${query}`;
                   )}
 
                   {/* 外觀 2×1：沿用原本的滑動式主題切換 */}
-                  <Tile dark={theme === "dark"} className="col-span-2 justify-center">
                     <div
                       className={cn(
-                        "w-full p-1 rounded-xl flex items-center gap-1 border relative transition-colors h-10",
-                        theme === "dark" ? "bg-white/5 border-white/10" : "bg-slate-100 border-slate-200",
+                        "col-span-2 p-1.5 rounded-2xl flex items-center gap-1.5 border relative transition-colors",
+                        theme === "dark" ? "bg-white/5 border-white/10" : "bg-white/60 border-slate-200",
                       )}
                     >
                       <motion.div
                         className={cn(
-                          "absolute h-[calc(100%-8px)] rounded-lg shadow-md z-0",
+                          "absolute h-[calc(100%-12px)] rounded-xl shadow-md z-0",
                           theme === "dark" ? "bg-zinc-800 border border-white/10" : "bg-white border border-slate-200",
                         )}
                         initial={false}
                         animate={{
-                          left: theme === "dark" ? "calc(50% + 1px)" : "4px",
-                          width: "calc(50% - 5px)",
+                          left: theme === "dark" ? "calc(50% + 1.5px)" : "6px",
+                          width: "calc(50% - 7.5px)",
                         }}
                         transition={{ type: "spring", bounce: 0.1, duration: 0.5 }}
                       />
@@ -1846,7 +1845,6 @@ ${query}`;
                         <Moon className="w-4 h-4" />
                       </button>
                     </div>
-                  </Tile>
 
                   {/* 收藏、AI 金鑰 1×1 */}
                   <Tile
