@@ -98,6 +98,7 @@ const DOSAGE_FORM_MAP: Record<string, string> = {
   V: "塞劑",
   W: "洗劑",
   Y: "糖漿",
+  X: "核醫藥品",
   Z: "其他/試驗",
   A: "錠劑",
 };
@@ -1309,7 +1310,7 @@ ${query}`;
     const forms = new Set(
       medications
         .map((m) => m.dosageForm || m.code?.charAt(0)?.toUpperCase() || "?")
-        .filter((f) => f && f !== "?"),
+        .filter((f) => /^[A-Z]$/.test(f)), // 數字開頭是空白佔位代碼，不是劑型
     );
     return ["全部劑型", ...Array.from(forms).sort()];
   }, [medications]);
@@ -2118,11 +2119,6 @@ ${query}`;
               </button>
             </div>
 
-            <div className="hidden lg:flex flex-col">
-              <span className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.2em] leading-tight">
-                {isAiMode ? "Smart Analysis" : "Hospital System"}
-              </span>
-            </div>
           </div>
         </div>
 
@@ -2132,12 +2128,6 @@ ${query}`;
               <CheckCircle2 className="w-3 h-3" /> {importStatus}
             </div>
           )}
-
-          <div className="hidden md:flex flex-col items-end mr-1">
-            <p className="text-[8px] text-brand-accent font-bold uppercase tracking-widest leading-none">
-              {isSyncing ? "Cloud Syncing" : "Connected"}
-            </p>
-          </div>
 
           <button
             id="help-button"
@@ -2198,7 +2188,7 @@ ${query}`;
                         ref={searchInputRef}
                         type="text"
                         enterKeyHint="search"
-                        placeholder="搜尋成分、代碼、適應症..."
+                        placeholder="搜尋藥名、成分、代碼或症狀"
                         value={searchQuery}
                         onChange={(e) => {
                           setSearchQuery(e.target.value);
@@ -2289,14 +2279,14 @@ ${query}`;
                               duration: 0.5,
                             }}
                             className={cn(
-                              "absolute top-full right-0 mt-3 w-80 backdrop-blur-3xl border rounded-2xl shadow-2xl z-[100] p-4 flex flex-col gap-4",
+                              "absolute top-full right-0 mt-3 w-[22rem] max-w-[calc(100vw-2rem)] backdrop-blur-3xl border rounded-2xl shadow-2xl z-[100] p-4 flex flex-col gap-4",
                               theme === "dark"
                                 ? "bg-brand-sidebar/95 border-white/10 shadow-black/50"
                                 : "bg-white border-slate-200 shadow-slate-200/60",
                             )}
                           >
                             <div className="flex items-center justify-between px-1">
-                              <span className="text-[10px] font-bold text-brand-accent uppercase tracking-[0.2em]">
+                              <span className="text-xs font-bold text-brand-accent tracking-[0.2em]">
                                 分類篩選
                               </span>
                               <button
@@ -2344,7 +2334,7 @@ ${query}`;
                                     />
                                     <span
                                       className={cn(
-                                        "text-[10px] font-bold uppercase tracking-wider",
+                                        "text-xs font-bold",
                                         theme === "dark"
                                           ? "text-zinc-300"
                                           : "text-slate-700",
@@ -2376,13 +2366,13 @@ ${query}`;
                                   <div className="space-y-1 overflow-visible dropdown-container">
                                     <label
                                       className={cn(
-                                        "text-[9px] font-bold uppercase tracking-widest pl-1",
+                                        "text-[11px] font-bold pl-1",
                                         theme === "dark"
                                           ? "text-zinc-500"
                                           : "text-slate-400",
                                       )}
                                     >
-                                      系統
+                                      ① 系統
                                     </label>
                                     <div
                                       className="relative"
@@ -2404,7 +2394,7 @@ ${query}`;
                                           setIsDosageFormOpen(false);
                                         }}
                                         className={cn(
-                                          "w-full border rounded-lg pl-3 pr-2 py-2 text-[10px] flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all shadow-sm group",
+                                          "w-full border rounded-lg pl-3 pr-2 py-2.5 text-xs flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all shadow-sm group disabled:cursor-not-allowed disabled:opacity-50",
                                           theme === "dark"
                                             ? "bg-white/5 border-white/10 text-zinc-200"
                                             : "bg-slate-50 border-slate-200 text-slate-700",
@@ -2434,7 +2424,7 @@ ${query}`;
                                             animate={{ opacity: 1, scale: 1 }}
                                             exit={{ opacity: 0, scale: 0.95 }}
                                             className={cn(
-                                              "absolute top-full left-0 right-0 mt-1 border rounded-lg shadow-2xl z-[110] max-h-48 overflow-y-auto p-1",
+                                              "absolute top-full left-0 right-0 mt-1 border rounded-lg shadow-2xl z-[110] max-h-60 overflow-y-auto p-1",
                                               theme === "dark"
                                                 ? "bg-brand-header border-white/10"
                                                 : "bg-white border-slate-200",
@@ -2447,9 +2437,11 @@ ${query}`;
                                                   setSelectedSystem(s);
                                                   setSelectedClass("全部藥理");
                                                   setIsSystemOpen(false);
+                                                  // 引導下一步：選好系統就直接展開藥理
+                                                  setIsClassOpen(s !== "全部系統");
                                                 }}
                                                 className={cn(
-                                                  "w-full text-left px-2 py-1.5 rounded-md text-[10px] transition-all flex items-center justify-between",
+                                                  "w-full text-left px-2.5 py-2 rounded-md text-xs transition-all flex items-center justify-between",
                                                   selectedSystem === s
                                                     ? "bg-brand-accent/20 text-brand-accent font-bold"
                                                     : theme === "dark"
@@ -2470,13 +2462,13 @@ ${query}`;
                                   <div className="space-y-1 overflow-visible dropdown-container">
                                     <label
                                       className={cn(
-                                        "text-[9px] font-bold uppercase tracking-widest pl-1",
+                                        "text-[11px] font-bold pl-1",
                                         theme === "dark"
                                           ? "text-zinc-500"
                                           : "text-slate-400",
                                       )}
                                     >
-                                      藥理
+                                      ② 藥理
                                     </label>
                                     <div
                                       className="relative"
@@ -2491,6 +2483,8 @@ ${query}`;
                                       }}
                                     >
                                       <button
+                                        // 刻意要求先選系統：藥理清單上百項，沒縮小範圍很難找
+                                        disabled={selectedSystem === "全部系統"}
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           setIsClassOpen(!isClassOpen);
@@ -2498,15 +2492,15 @@ ${query}`;
                                           setIsDosageFormOpen(false);
                                         }}
                                         className={cn(
-                                          "w-full border rounded-lg pl-3 pr-2 py-2 text-[10px] flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all shadow-sm group",
+                                          "w-full border rounded-lg pl-3 pr-2 py-2.5 text-xs flex items-center justify-between cursor-pointer focus:border-brand-accent/40 transition-all shadow-sm group disabled:cursor-not-allowed disabled:opacity-50",
                                           theme === "dark"
                                             ? "bg-white/5 border-white/10 text-zinc-200"
                                             : "bg-slate-50 border-slate-200 text-slate-700",
                                         )}
                                       >
                                         <span className="truncate font-medium">
-                                          {selectedClass === "全部藥理"
-                                            ? "全部藥理"
+                                          {selectedSystem === "全部系統"
+                                            ? "先選系統"
                                             : selectedClass}
                                         </span>
                                         <ChevronDown
@@ -2528,7 +2522,7 @@ ${query}`;
                                             animate={{ opacity: 1, scale: 1 }}
                                             exit={{ opacity: 0, scale: 0.95 }}
                                             className={cn(
-                                              "absolute top-full left-0 right-0 mt-1 border rounded-lg shadow-2xl z-[110] max-h-48 overflow-y-auto p-1",
+                                              "absolute top-full left-0 right-0 mt-1 border rounded-lg shadow-2xl z-[110] max-h-60 overflow-y-auto p-1",
                                               theme === "dark"
                                                 ? "bg-brand-header border-white/10"
                                                 : "bg-white border-slate-200",
@@ -2542,7 +2536,7 @@ ${query}`;
                                                   setIsClassOpen(false);
                                                 }}
                                                 className={cn(
-                                                  "w-full text-left px-2 py-1.5 rounded-md text-[10px] transition-all flex items-center justify-between",
+                                                  "w-full text-left px-2.5 py-2 rounded-md text-xs transition-all flex items-center justify-between",
                                                   selectedClass === c
                                                     ? "bg-brand-accent/20 text-brand-accent font-bold"
                                                     : theme === "dark"
@@ -2565,26 +2559,26 @@ ${query}`;
                                   <div className="flex items-center justify-between px-1">
                                     <label
                                       className={cn(
-                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        "text-[11px] font-bold",
                                         theme === "dark"
                                           ? "text-zinc-500"
                                           : "text-slate-400",
                                       )}
                                     >
-                                      劑型 (多選)
+                                      劑型（可多選）
                                     </label>
                                     {selectedDosageForms.length > 0 && (
                                       <button
                                         onClick={() =>
                                           setSelectedDosageForms([])
                                         }
-                                        className="text-[9px] text-brand-accent font-bold hover:underline"
+                                        className="text-[11px] text-brand-accent font-bold hover:underline"
                                       >
                                         重設
                                       </button>
                                     )}
                                   </div>
-                                  <div className="flex flex-wrap gap-1.5 p-0.5 max-h-32 overflow-y-auto custom-scrollbar">
+                                  <div className="flex flex-wrap gap-1.5 p-0.5 max-h-48 overflow-y-auto custom-scrollbar">
                                     {dosageForms
                                       .filter((f) => f !== "全部劑型")
                                       .map((f) => {
@@ -2604,7 +2598,7 @@ ${query}`;
                                               );
                                             }}
                                             className={cn(
-                                              "px-2 py-1 rounded-md text-[9px] font-bold transition-all border flex items-center gap-1.5",
+                                              "px-2.5 py-1.5 rounded-md text-[11px] font-bold transition-all border flex items-center gap-1.5",
                                               isSelected
                                                 ? cn(
                                                     dosageStyle.bg,
@@ -2692,7 +2686,7 @@ ${query}`;
                         <span>適應症圖譜查詢</span>
                       </div>
                       <div className="flex items-center gap-1 text-[10px] font-medium opacity-80 shrink-0">
-                        <span>分析</span>
+                        <span>查詢</span>
                         <ChevronRight className="w-3 h-3" />
                       </div>
                     </motion.button>
@@ -2902,8 +2896,7 @@ ${query}`;
                             }
                             className="flex items-center gap-2 text-[10px] font-black text-brand-muted hover:text-brand-accent transition-all uppercase tracking-[0.2em] px-6 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/[0.08]"
                           >
-                            載入更多藥物 (
-                            {filteredMedications.length - displayLimit} 筆)
+                            顯示更多（還有 {filteredMedications.length - displayLimit} 筆）
                             <ChevronDown className="w-4 h-4" />
                           </button>
                         </div>
@@ -2918,10 +2911,10 @@ ${query}`;
                           theme === "dark" ? "text-white" : "text-slate-700",
                         )}
                       >
-                        查無相關結果
+                        找不到相符的藥
                       </h3>
                       <p className="text-brand-muted text-sm mb-8">
-                        請嘗試不同的診斷名、成分或藥品碼
+                        換個說法試試，例如成分學名或商品名；症狀可按「適應症圖譜查詢」
                       </p>
                     </div>
                   ) : (
@@ -2950,7 +2943,7 @@ ${query}`;
                           theme === "dark" ? "text-zinc-500" : "text-slate-500",
                         )}
                       >
-                        請在上方輸入關鍵字開始搜尋，或使用篩選按鈕依據系統、藥理分類、劑型進行篩選。
+                        輸入藥名、成分、代碼或症狀開始查，也可以用「篩選」依系統、藥理或劑型找藥。
                       </p>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
@@ -2975,7 +2968,7 @@ ${query}`;
                                   : "text-slate-700",
                               )}
                             >
-                              快速關鍵字搜尋
+                              打字就能查
                             </h4>
                           </div>
                           <p
@@ -2986,9 +2979,7 @@ ${query}`;
                                 : "text-slate-400",
                             )}
                           >
-                            支援輸入藥品成分（如
-                            Dextrose）、商品名、英文簡寫（如
-                            NS）、中文名或特定適應症群。
+                            成分、商品名、中文名、縮寫（如 NS）或代碼都可以；打症狀可用「適應症圖譜查詢」。
                           </p>
                         </div>
 
@@ -3014,7 +3005,7 @@ ${query}`;
                                   : "text-slate-700",
                               )}
                             >
-                              進階屬性篩選
+                              用篩選縮小範圍
                             </h4>
                           </div>
                           <p
@@ -3025,7 +3016,7 @@ ${query}`;
                                 : "text-slate-400",
                             )}
                           >
-                            點擊搜尋框右側的「篩選」按鈕，即可選取特定生理系統、特定藥理分類或給藥劑型進行組合檢驗。
+                            按搜尋框右邊的「篩選」，依系統、藥理和劑型組合篩選。
                           </p>
                         </div>
                       </div>
@@ -3054,7 +3045,7 @@ ${query}`;
                           >
                             <input
                               type="text"
-                              placeholder="輸入臨床情境分析藥物"
+                              placeholder="例如：58 歲女性，飯後血糖高"
                               value={aiQuery}
                               onChange={(e) => setAiQuery(e.target.value)}
                               className={cn(
@@ -3089,7 +3080,7 @@ ${query}`;
                             <div className="h-full flex flex-col items-center justify-center text-center opacity-30 py-20">
                               <Database className="w-12 h-12 mb-4 stroke-1" />
                               <p className="text-zinc-400 font-medium tracking-wide">
-                                等待輸入諮詢內容...
+                                輸入病人狀況，AI 會先整理問題、請你勾選症狀，再建議用藥
                               </p>
                             </div>
                           )}
@@ -3101,13 +3092,13 @@ ${query}`;
                                 <div className="flex items-center justify-between pb-2 border-b border-white/5">
                                   <div className="flex items-center gap-2">
                                     <History className="w-4 h-4 text-zinc-500" />
-                                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em]">
+                                    <span className="text-xs font-black text-zinc-500 uppercase tracking-[0.3em]">
                                       諮詢對話
                                     </span>
                                   </div>
                                   <button
                                     onClick={() => setAiHistory([])}
-                                    className="text-[10px] text-red-400/50 hover:text-red-400 transition-colors uppercase tracking-widest font-bold"
+                                    className="text-xs text-red-400/50 hover:text-red-400 transition-colors uppercase tracking-widest font-bold"
                                   >
                                     清除紀錄
                                   </button>
@@ -3146,7 +3137,7 @@ ${query}`;
                                         </div>
                                         <div
                                           className={cn(
-                                            "px-4 py-2.5 rounded-2xl rounded-tl-none border text-xs md:text-sm font-medium shadow-xl max-w-[85%]",
+                                            "px-4 py-2.5 rounded-2xl rounded-tl-none border text-sm md:text-base font-medium shadow-xl max-w-[85%]",
                                             theme === "dark"
                                               ? "bg-white/5 border-white/5 text-zinc-300"
                                               : "bg-white border-slate-100 text-slate-700 shadow-slate-200",
@@ -3159,14 +3150,14 @@ ${query}`;
                                       {/* AI Response */}
                                       <div className="flex flex-col gap-2">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="text-[10px] font-black bg-gradient-to-r from-blue-400/60 via-purple-400/60 to-orange-400/60 bg-clip-text text-transparent uppercase tracking-widest">
+                                          <span className="text-xs font-black bg-gradient-to-r from-blue-400/60 via-purple-400/60 to-orange-400/60 bg-clip-text text-transparent uppercase tracking-widest">
                                             AI 建議
                                           </span>
                                           <div className="h-[1px] flex-1 min-w-[20px] bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-orange-500/10" />
                                         </div>
 
                                         {item.phase === "decomposing" && (
-                                          <div className="flex items-center gap-2 text-xs text-brand-accent/80 px-1 py-2">
+                                          <div className="flex items-center gap-2 text-sm text-brand-accent/80 px-1 py-2">
                                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                             <span className="animate-pulse font-medium">
                                               {aiWaitSeconds > 0
@@ -3180,14 +3171,14 @@ ${query}`;
                                           <div className="w-full space-y-3.5">
                                             {(item.mainProblems?.length ?? 0) > 0 && (
                                               <div className="flex flex-col gap-1.5">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-brand-accent">
+                                                <span className="text-xs font-bold uppercase tracking-wider text-brand-accent">
                                                   主要問題（將自動提供建議）
                                                 </span>
                                                 <div className="flex flex-wrap gap-1.5">
                                                   {item.mainProblems?.map((p) => (
                                                     <span
                                                       key={p}
-                                                      className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/25"
+                                                      className="px-2 py-0.5 rounded-md text-[13px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/25"
                                                     >
                                                       {p}
                                                     </span>
@@ -3196,7 +3187,7 @@ ${query}`;
                                               </div>
                                             )}
                                             <div className="flex flex-col gap-1.5">
-                                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
                                                 伴隨症狀（勾選有的，協助判斷病因）
                                               </span>
                                               <div className="flex flex-col gap-1.5">
@@ -3207,7 +3198,7 @@ ${query}`;
                                                       key={p}
                                                       onClick={() => toggleSecondaryProblem(item.timestamp, p)}
                                                       className={cn(
-                                                        "flex items-center gap-2 px-3 py-2 rounded-lg border text-xs text-left transition-all",
+                                                        "flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-left transition-all",
                                                         checked
                                                           ? "bg-brand-accent/10 border-brand-accent/40 text-brand-accent font-bold"
                                                           : theme === "dark"
@@ -3249,7 +3240,7 @@ ${query}`;
                                                   }}
                                                   placeholder="其他：自行輸入伴隨症狀…"
                                                   className={cn(
-                                                    "flex-1 min-w-0 px-3 py-2 rounded-lg border text-xs outline-none transition-all focus:border-brand-accent/50",
+                                                    "flex-1 min-w-0 px-3 py-2 rounded-lg border text-sm outline-none transition-all focus:border-brand-accent/50",
                                                     theme === "dark"
                                                       ? "bg-white/[0.02] border-white/10 text-zinc-200 placeholder:text-zinc-500"
                                                       : "bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400",
@@ -3259,7 +3250,7 @@ ${query}`;
                                                   type="button"
                                                   onClick={() => addCustomSymptom(item.timestamp)}
                                                   disabled={!(customSymptomInputs[item.timestamp] || "").trim()}
-                                                  className="shrink-0 px-3 py-2 rounded-lg text-xs font-bold border border-brand-accent/30 text-brand-accent hover:bg-brand-accent/10 transition-all disabled:opacity-40"
+                                                  className="shrink-0 px-3 py-2 rounded-lg text-sm font-bold border border-brand-accent/30 text-brand-accent hover:bg-brand-accent/10 transition-all disabled:opacity-40"
                                                 >
                                                   新增
                                                 </button>
@@ -3267,7 +3258,7 @@ ${query}`;
                                             </div>
                                             {/* 病患安全資訊（選填）：供 AI 避開禁忌與交互作用 */}
                                             <div className="flex flex-col gap-1.5">
-                                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
                                                 病患安全資訊（選填，建議填寫）
                                               </span>
                                               <div className="flex flex-wrap gap-1.5">
@@ -3279,7 +3270,7 @@ ${query}`;
                                                       type="button"
                                                       onClick={() => toggleSafetyFlag(item.timestamp, flag)}
                                                       className={cn(
-                                                        "px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all",
+                                                        "px-2.5 py-1 rounded-lg border text-[13px] font-bold transition-all",
                                                         on
                                                           ? "bg-rose-500/10 border-rose-500/40 text-rose-500"
                                                           : theme === "dark"
@@ -3305,7 +3296,7 @@ ${query}`;
                                                   onChange={(e) => updateSafety(item.timestamp, { [field]: e.target.value })}
                                                   placeholder={placeholder}
                                                   className={cn(
-                                                    "w-full px-3 py-2 rounded-lg border text-xs outline-none transition-all focus:border-brand-accent/50",
+                                                    "w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all focus:border-brand-accent/50",
                                                     theme === "dark"
                                                       ? "bg-white/[0.02] border-white/10 text-zinc-200 placeholder:text-zinc-500"
                                                       : "bg-slate-50 border-slate-200 text-slate-700 placeholder:text-slate-400",
@@ -3316,7 +3307,7 @@ ${query}`;
                                             <button
                                               onClick={() => handleGenerateRecommendation(item.timestamp)}
                                               disabled={isAiLoading}
-                                              className="w-full py-2.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 text-white shadow-lg hover:opacity-90 active:scale-[0.99] disabled:opacity-50"
+                                              className="w-full py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-1.5 bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 text-white shadow-lg hover:opacity-90 active:scale-[0.99] disabled:opacity-50"
                                             >
                                               <Sparkles className="w-3.5 h-3.5" />
                                               產生用藥建議
@@ -3331,7 +3322,7 @@ ${query}`;
                                           {(() => {
                                             if (item.response.startsWith("⚠️ 錯誤：")) {
                                               return (
-                                                <div className="p-3 rounded-xl border border-red-400/30 bg-red-400/5 text-xs text-red-400 leading-relaxed break-words">
+                                                <div className="p-3 rounded-xl border border-red-400/30 bg-red-400/5 text-sm text-red-400 leading-relaxed break-words">
                                                   {item.response}
                                                 </div>
                                               );
@@ -3344,7 +3335,7 @@ ${query}`;
                                             const tierBadge = (tier: DrugRec["tier"]) => (
                                               <span
                                                 className={cn(
-                                                  "text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0",
+                                                  "text-[11px] font-bold px-1.5 py-0.5 rounded shrink-0",
                                                   tier === "首選"
                                                     ? "bg-emerald-500/15 text-emerald-600"
                                                     : "bg-slate-500/15 text-slate-500",
@@ -3378,7 +3369,7 @@ ${query}`;
                                                     handleCopyCode(code);
                                                   }}
                                                   className={cn(
-                                                    "w-full max-w-full min-w-0 flex flex-col gap-2.5 text-xs p-3.5 rounded-xl transition-all group border text-left overflow-hidden box-border select-none",
+                                                    "w-full max-w-full min-w-0 flex flex-col gap-2.5 text-sm p-3.5 rounded-xl transition-all group border text-left overflow-hidden box-border select-none",
                                                     theme === "dark"
                                                       ? "bg-white/[0.02] hover:bg-white/[0.05] border-white/5 hover:border-white/10"
                                                       : "bg-slate-50 hover:bg-white border-slate-100/50 hover:border-slate-200 shadow-sm shadow-slate-100",
@@ -3395,7 +3386,7 @@ ${query}`;
                                                     >
                                                       <div
                                                         className={cn(
-                                                          "font-mono font-bold shrink-0 px-2 py-0.5 rounded text-[10px]",
+                                                          "font-mono font-bold shrink-0 px-2 py-0.5 rounded text-xs",
                                                           theme === "dark"
                                                             ? "bg-white/10 text-zinc-300"
                                                             : "bg-white border shadow-sm text-slate-800",
@@ -3406,7 +3397,7 @@ ${query}`;
                                                       </div>
                                                       <span
                                                         className={cn(
-                                                          "font-bold truncate text-xs md:text-sm",
+                                                          "font-bold truncate text-sm md:text-base",
                                                           theme === "dark" ? "text-zinc-200" : "text-slate-800",
                                                         )}
                                                       >
@@ -3424,7 +3415,7 @@ ${query}`;
                                                       {!isExpanded && reason && (
                                                         <span
                                                           className={cn(
-                                                            "truncate text-right transition-colors uppercase text-[10px] tracking-tight",
+                                                            "truncate text-right transition-colors uppercase text-xs tracking-tight",
                                                             theme === "dark"
                                                               ? "text-zinc-500 group-hover:text-zinc-400"
                                                               : "text-slate-400 group-hover:text-slate-600",
@@ -3444,7 +3435,7 @@ ${query}`;
                                                   {reason && isExpanded && (
                                                     <div
                                                       className={cn(
-                                                        "w-full text-[11px] leading-relaxed border-t pt-2.5 mt-0.5 animate-fadeIn whitespace-normal break-words",
+                                                        "w-full text-[13px] leading-relaxed border-t pt-2.5 mt-0.5 animate-fadeIn whitespace-normal break-words",
                                                         theme === "dark"
                                                           ? "border-white/5 text-zinc-400"
                                                           : "border-slate-100 text-slate-600",
@@ -3468,26 +3459,26 @@ ${query}`;
                                                   <div
                                                     key={drugKey}
                                                     className={cn(
-                                                      "w-full max-w-full min-w-0 flex flex-col gap-1 text-xs p-3 rounded-xl border border-dashed overflow-hidden box-border",
+                                                      "w-full max-w-full min-w-0 flex flex-col gap-1 text-sm p-3 rounded-xl border border-dashed overflow-hidden box-border",
                                                       theme === "dark"
                                                         ? "bg-white/[0.01] border-white/10 text-zinc-400"
                                                         : "bg-slate-50/50 border-slate-200 text-slate-500",
                                                     )}
                                                   >
                                                     <div className="flex items-center gap-2 flex-wrap">
-                                                      <span className="font-bold text-xs md:text-sm break-words">{displayName}</span>
+                                                      <span className="font-bold text-sm md:text-base break-words">{displayName}</span>
                                                       {tierBadge(drug.tier)}
                                                       {route && (
-                                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-500/15 shrink-0">
+                                                        <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-500/15 shrink-0">
                                                           {route}
                                                         </span>
                                                       )}
-                                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 shrink-0">
+                                                      <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 shrink-0">
                                                         院內無此品項
                                                       </span>
                                                     </div>
                                                     {drug.reason && (
-                                                      <span className="text-[11px] leading-relaxed break-words opacity-80">
+                                                      <span className="text-[13px] leading-relaxed break-words opacity-80">
                                                         {drug.reason}
                                                       </span>
                                                     )}
@@ -3505,7 +3496,7 @@ ${query}`;
                                               return (
                                                 <div key={drugKey} className="flex flex-col gap-1.5 w-full min-w-0">
                                                   {kind !== "name" && (
-                                                    <div className="flex items-center gap-1.5 flex-wrap px-1 text-[10px]">
+                                                    <div className="flex items-center gap-1.5 flex-wrap px-1 text-xs">
                                                       <span className="font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 shrink-0">
                                                         {kind === "class" ? "同類替代" : "依 ATC 比對・成分名待確認"}
                                                       </span>
@@ -3531,7 +3522,7 @@ ${query}`;
                                                 >
                                                   <div className="flex items-center gap-2.5 px-1 w-full max-w-full min-w-0 overflow-hidden">
                                                     <div className="w-[3px] h-3 bg-gradient-to-b from-blue-500 via-purple-500 to-orange-500 rounded-full rotate-[15deg] shadow-lg shadow-purple-500/20 shrink-0" />
-                                                    <span className="text-[11px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-[0.2em] truncate flex-1 min-w-0">
+                                                    <span className="text-[13px] font-black bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-transparent uppercase tracking-[0.2em] truncate flex-1 min-w-0">
                                                       {group.problem}
                                                     </span>
                                                   </div>
@@ -3540,7 +3531,7 @@ ${query}`;
                                                       <div
                                                         key={`advice-${aIdx}`}
                                                         className={cn(
-                                                          "w-full max-w-full min-w-0 flex items-start gap-2 text-xs p-3 rounded-xl border overflow-hidden box-border break-words",
+                                                          "w-full max-w-full min-w-0 flex items-start gap-2 text-sm p-3 rounded-xl border overflow-hidden box-border break-words",
                                                           theme === "dark"
                                                             ? "bg-blue-500/[0.04] border-blue-400/20 text-zinc-300"
                                                             : "bg-blue-50 border-blue-200 text-slate-600",
@@ -3557,7 +3548,7 @@ ${query}`;
                                                       onClick={() =>
                                                         setAiVisibleLimits((prev) => ({ ...prev, [limitKey]: limit + 5 }))
                                                       }
-                                                      className="w-full mt-2 py-3 text-[10px] font-black text-brand-accent hover:text-white bg-brand-accent/10 hover:bg-brand-accent/20 transition-all uppercase tracking-widest flex items-center justify-center gap-2 rounded-xl border border-brand-accent/20 shadow-lg shadow-brand-accent/5 backdrop-blur-sm"
+                                                      className="w-full mt-2 py-3 text-xs font-black text-brand-accent hover:text-white bg-brand-accent/10 hover:bg-brand-accent/20 transition-all uppercase tracking-widest flex items-center justify-center gap-2 rounded-xl border border-brand-accent/20 shadow-lg shadow-brand-accent/5 backdrop-blur-sm"
                                                     >
                                                       查看更多建議 ({hiddenCount} 筆)
                                                       <ChevronDown className="w-3 h-3" />
@@ -3579,11 +3570,11 @@ ${query}`;
                                                     )}
                                                   >
                                                     {rec.summary.map((text, sIdx) => (
-                                                      <p key={sIdx} className="text-xs md:text-sm leading-relaxed whitespace-pre-line">
+                                                      <p key={sIdx} className="text-sm md:text-base leading-relaxed whitespace-pre-line">
                                                         {text}
                                                       </p>
                                                     ))}
-                                                    <p className="text-[10px] leading-relaxed text-amber-600/90 pt-1">
+                                                    <p className="text-xs leading-relaxed text-amber-600/90 pt-1">
                                                       ⚠️ AI 建議僅供醫療專業人員參考，處方前請依臨床判斷、仿單及院內規範確認。
                                                     </p>
                                                   </div>
