@@ -25,5 +25,9 @@ for (const q of ["Cox 2", "COX-2", "cox2", "COX-2 inhibitors", "cox 2 inhibitor"
   assert.deepEqual(MECHANISM_ATC[mechanismKey(q)], ["M01AH"], `「${q}」應對到 COX-2 抑制劑`);
 }
 assert.equal(mechanismKey("SGLT2 inhibitor"), "sglt2i");
+for (const [q, key] of [["5-ARI", "5ari"], ["PDE5 inhibitor", "pde5i"], ["P2Y12 inhibitors", "p2y12i"], ["TMP-SMX", "tmpsmx"], ["5-HT3 RA", "5ht3ra"], ["JAK inhibitor", "jaki"]]) {
+  assert.equal(mechanismKey(q), key, `「${q}」應整理成 ${key}`);
+  assert.ok(MECHANISM_ATC[key], `${key} 應在縮寫表內`);
+}
 
 console.log("medicalKeywords data: all assertions passed ✓");

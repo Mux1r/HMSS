@@ -34,6 +34,47 @@ export const MECHANISM_ATC: Record<string, string[]> = {
   'doac': ['B01AE', 'B01AF'],
   'arni': ['C09DX04'],               // sacubitril/valsartan
   'mra': ['C03DA'],                  // 醛固酮拮抗劑
+  // --- 以下於 2026-09-30 補上 30 組（另含 aap、5ht3、p2y12 三個同義寫法），每組都對過院內至少有一筆 ---
+  // 呼吸道
+  'laba': ['R03AC12', 'R03AC13', 'R03AC18', 'R03AC19', 'R03AK', 'R03AL03', 'R03AL04', 'R03AL05', 'R03AL06', 'R03AL07', 'R03AL08', 'R03AL09', 'R03AL11', 'R03AL12'], // 長效 β2 促效劑（含 ICS/LAMA 複方）
+  'saba': ['R03AC02', 'R03AC03', 'R03AC04', 'R03AL01', 'R03AL02'], // 短效 β2 促效劑（含與 SAMA 複方）
+  'lama': ['R03BB04', 'R03BB05', 'R03BB06', 'R03BB07', 'R03AL03', 'R03AL04', 'R03AL05', 'R03AL06', 'R03AL07', 'R03AL08', 'R03AL09', 'R03AL11', 'R03AL12'], // 長效抗膽鹼（含複方）
+  'sama': ['R03BB01', 'R03AL01', 'R03AL02'], // 短效抗膽鹼 ipratropium（含複方）
+  'ics': ['R03BA', 'R03AK', 'R03AL08', 'R03AL09', 'R03AL11', 'R03AL12'], // 吸入型類固醇（含複方）
+  'incs': ['R01AD'],                 // 鼻用類固醇
+  'ltra': ['R03DC'],                 // 白三烯受體拮抗劑（montelukast）
+  'h1ra': ['R06A'],                  // H1 抗組織胺
+  // 泌尿、代謝
+  '5ari': ['G04CB'],                 // 5α 還原酶抑制劑
+  'pde5i': ['G04BE03', 'G04BE08', 'G04BE09', 'G04BE10'], // PDE5 抑制劑
+  'tzd': ['A10BG'],                  // thiazolidinedione（pioglitazone）
+  // 精神、神經
+  'sga': ['N05AH02', 'N05AH03', 'N05AH04', 'N05AH05', 'N05AX08', 'N05AX12', 'N05AX13', 'N05AE04', 'N05AE05'], // 第二代抗精神病藥
+  'aap': ['N05AH02', 'N05AH03', 'N05AH04', 'N05AH05', 'N05AX08', 'N05AX12', 'N05AX13', 'N05AE04', 'N05AE05'], // 同 sga（atypical antipsychotic）
+  'fga': ['N05AA', 'N05AB', 'N05AD', 'N05AF'], // 第一代抗精神病藥
+  'maoi': ['N06AF', 'N06AG'],        // 單胺氧化酶抑制劑
+  'achei': ['N06DA'],                // 乙醯膽鹼酯酶抑制劑（失智）
+  'triptan': ['N02CC'],              // 5-HT1 促效劑（偏頭痛）
+  // 止吐
+  '5ht3ra': ['A04AA'],               // 5-HT3 拮抗劑（setron）
+  '5ht3': ['A04AA'],
+  // 抗凝、抗血小板
+  'lmwh': ['B01AB04', 'B01AB05', 'B01AB06', 'B01AB12'], // 低分子量肝素
+  'ufh': ['B01AB01'],                // 未分段肝素
+  'vka': ['B01AA'],                  // 維生素 K 拮抗劑（warfarin）
+  'p2y12i': ['B01AC04', 'B01AC05', 'B01AC22', 'B01AC24'], // P2Y12 抑制劑
+  'p2y12': ['B01AC04', 'B01AC05', 'B01AC22', 'B01AC24'],
+  // 抗感染
+  'fq': ['J01MA'],                   // fluoroquinolone
+  'tmpsmx': ['J01EE01'],             // trimethoprim/sulfamethoxazole
+  'bli': ['J01CR'],                  // β-lactam + β-lactamase inhibitor
+  '3gc': ['J01DD'],                  // 第三代頭孢菌素
+  'nrti': ['J05AF'],                 // 核苷類反轉錄酶抑制劑（含 B 肝用藥）
+  // 免疫、血液
+  'tnfi': ['L04AB'],                 // TNF-α 抑制劑
+  'jaki': ['L04AF', 'L04AA29', 'L04AA37', 'L04AA44'], // JAK 抑制劑（新舊 ATC 版本都收）
+  'esa': ['B03XA01', 'B03XA02', 'B03XA03'], // 紅血球生成刺激劑（不含 HIF-PHI）
+  'gcsf': ['L03AA'],                 // 白血球生長激素
 };
 
 /** 查縮寫表前先整理：去空白與連字號，inhibitor(s) 收成 i。「COX-2 inhibitors」「Cox 2」→ cox2i／cox2。 */
