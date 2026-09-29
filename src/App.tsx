@@ -11,6 +11,7 @@ import {
   useRef,
   useDeferredValue,
   FormEvent,
+  type ReactNode,
 } from "react";
 import Fuse from "fuse.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -37,8 +38,10 @@ import {
   Check,
   HelpCircle,
   KeyRound,
+  MessageSquareWarning,
 } from "lucide-react";
 import ApiKeySetup from "./components/ApiKeySetup";
+import Feedback from "./components/Feedback";
 import {
   GROQ_MODEL,
   GROQ_MODEL_FAST,
@@ -158,6 +161,35 @@ const normalizeRoute = (raw: string): string => {
   return "";
 };
 
+// 控制中心的功能卡片：圖示、標題、一行說明；可點的整張都是按鈕。
+function ControlCard({ dark, icon, title, desc, onClick }: {
+  dark: boolean;
+  icon: ReactNode;
+  title: string;
+  desc: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      className={cn(
+        "p-4 rounded-2xl border flex items-center gap-3 text-left group transition-colors disabled:cursor-default",
+        dark ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50",
+      )}
+    >
+      <span className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", dark ? "bg-white/5" : "bg-slate-100")}>
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold">{title}</span>
+        <span className={cn("block text-xs mt-0.5", dark ? "text-zinc-400" : "text-slate-500")}>{desc}</span>
+      </span>
+      {onClick && <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 shrink-0" />}
+    </button>
+  );
+}
+
 // 幫助視窗內容。寫法原則：講「在哪裡、按什麼、會發生什麼」，不寫宣傳詞。
 const HELP_SECTIONS: { title: string; lines: string[] }[] = [
   {
@@ -197,6 +229,12 @@ const HELP_SECTIONS: { title: string; lines: string[] }[] = [
       "網站管理者在後台看得到帳號裡的資料，包括存進去的 AI 金鑰；介意的話可以不登入，資料就只留在這台裝置上。",
     ],
   },
+  {
+    title: "意見回報",
+    lines: [
+      "左上角 ☰ 打開控制中心，按「意見回報」。寫下發生了什麼事，可以附一張截圖（電腦上也能直接貼上）。請不要寫病人的姓名或病歷號。",
+    ],
+  },
 ];
 
 const SharpStar = ({
@@ -229,10 +267,12 @@ import {
   searchKg,
   KgResult,
 } from "./services/medicationService";
+import { consumeJustUpdated } from "./lib/appUpdate";
 import { cn } from "./lib/utils";
 import { MEDICAL_ALIASES, MECHANISM_ATC } from "./lib/medicalKeywords";
 import {
   atcMatches,
+  diffMedications,
   ingredientMatches,
   isPediatricContext,
   parseRecommendation,
@@ -355,6 +395,18 @@ const [isSyncing, setIsSyncing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  // Esc 關掉最上層：先回報視窗，再控制中心。
+  useEffect(() => {
+    if (!isSettingsOpen && !isFeedbackOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (isFeedbackOpen) setIsFeedbackOpen(false);
+      else setIsSettingsOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isSettingsOpen, isFeedbackOpen]);
   const [groqApiKey, setGroqApiKey] = useState(loadGroqKey);
   const [isApiKeySetupOpen, setIsApiKeySetupOpen] = useState(false);
   // 免費額度暫滿時的自動重試倒數秒數（0＝未在等待）
@@ -563,13 +615,13 @@ const [isSyncing, setIsSyncing] = useState(false);
   };
 
   // AI Mode States
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info"; duration?: number } | null>(null);
 
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => {
         setToast(null);
-      }, 2500);
+      }, toast.duration ?? 2500);
       return () => clearTimeout(timer);
     }
   }, [toast]);
@@ -673,7 +725,7 @@ const [isSyncing, setIsSyncing] = useState(false);
         if (state.type === "ai_with_med") {
           setIsAiMode(true);
           const med = medications.find((m) => m.id === state.medId);
-          if (med) setSelectedMed(med); setMobileExpanded(false);
+          if (med) setSelectedMed(med); setMobileExpanded(true);
         } else if (state.type === "ai") {
           setIsAiMode(true);
           // If the state says it's just AI, but we came from a med selection,
@@ -681,14 +733,14 @@ const [isSyncing, setIsSyncing] = useState(false);
           // or just follow the state exactly.
           if (state.medId) {
             const med = medications.find((m) => m.id === state.medId);
-            if (med) setSelectedMed(med); setMobileExpanded(false);
+            if (med) setSelectedMed(med); setMobileExpanded(true);
           } else {
             setSelectedMed(null);
           }
         } else if (state.type === "med") {
           setIsAiMode(false);
           const med = medications.find((m) => m.id === state.id);
-          if (med) setSelectedMed(med); setMobileExpanded(false);
+          if (med) setSelectedMed(med); setMobileExpanded(true);
         } else if (state.type === "hmss") {
           setIsAiMode(false);
           setSelectedMed(null);
@@ -950,6 +1002,26 @@ const [isSyncing, setIsSyncing] = useState(false);
     }
   };
 
+  const refreshIfChanged = async (stored: Medication[]) => {
+    const [{ meds, hash }, oldHash] = await Promise.all([
+      localMedicationService.fetchFromSupabase(),
+      localMedicationService.getStoredHash(),
+    ]);
+    if (meds.length === 0 || hash === oldHash) return;
+    await localMedicationService.saveAll(meds, hash);
+    setMedications(meds);
+    const { added, changed, removed } = diffMedications(stored, meds);
+    if (added + changed + removed === 0) return; // 只是快取格式不同，內容沒變就不打擾
+    const parts = [added && `新增 ${added}`, changed && `修改 ${changed}`, removed && `刪除 ${removed}`].filter(Boolean);
+    setToast({ message: `藥品資料已更新：${parts.join("、")} 筆`, type: "info", duration: 6000 });
+  };
+
+  useEffect(() => {
+    if (consumeJustUpdated()) {
+      setToast({ message: `網站已更新到 v${__APP_VERSION__}`, type: "info", duration: 6000 });
+    }
+  }, []);
+
   useEffect(() => {
     const initData = async () => {
       setLoading(true);
@@ -957,12 +1029,8 @@ const [isSyncing, setIsSyncing] = useState(false);
         const stored = await localMedicationService.getAll();
         if (stored.length > 0) {
           setMedications(stored);
-          // 背景靜默比對遠端筆數，有差異自動更新（不阻塞 UI）
-          localMedicationService.getSupabaseCount().then(remoteCount => {
-            if (remoteCount > 0 && remoteCount !== stored.length) {
-              handleSync();
-            }
-          }).catch(() => {});
+          // 背景抓完整清單比對內容（約 360 KB gzip）。刻意不只比筆數：改學名這類修改筆數不變也要更新。
+          refreshIfChanged(stored).catch(() => {});
         } else {
           const { meds, hash } = await localMedicationService.fetchFromSupabase();
           await localMedicationService.saveAll(meds, hash);
@@ -1659,399 +1727,195 @@ ${query}`;
 
   return (
     <div className="h-screen font-sans flex flex-col overflow-hidden relative">
-      {/* Settings Sidebar Overlay */}
+      {/* 控制中心：全頁，一眼看到所有功能 */}
       <AnimatePresence>
         {isSettingsOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
-              onClick={() => setIsSettingsOpen(false)}
-              className="fixed inset-0 bg-transparent z-[100]"
-            />
-            <motion.div
-              initial={{ x: "-105%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "-105%" }}
-              transition={{
-                type: "spring",
-                damping: 32,
-                stiffness: 280,
-                mass: 0.8,
-                restDelta: 0.001,
-              }}
-              className={cn(
-                "fixed inset-y-0 left-0 w-40 z-[110] shadow-2xl flex flex-col",
-                theme === "dark"
-                  ? "bg-zinc-950/30 border-r border-white/10 text-white backdrop-blur-md"
-                  : "bg-white/30 border-r border-slate-200 text-slate-900 backdrop-blur-md",
-              )}
-            >
-              {/* Header: Identity */}
-              <div className="p-4 pt-10 pb-6 border-b border-inherit">
-                <div className="flex flex-col items-center gap-4 text-center">
-                  <div>
-                    <h2 className="text-sm font-bold tracking-tight">
-                      控制中心
-                    </h2>
-                    <p
-                      className={cn(
-                        "text-[8px] font-black uppercase tracking-[0.2em] opacity-60 mt-1",
-                        theme === "dark" ? "text-zinc-400" : "text-slate-600",
-                      )}
-                    >
-                      Preferences
-                    </p>
-                  </div>
-                </div>
+          <motion.div
+            key="control-center"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="control-center-title"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ type: "spring", damping: 32, stiffness: 300 }}
+            className={cn(
+              "fixed inset-0 z-[110] flex flex-col backdrop-blur-xl",
+              theme === "dark" ? "bg-zinc-950/95 text-white" : "bg-slate-50/95 text-slate-900",
+            )}
+          >
+            <div className={cn("shrink-0 border-b", theme === "dark" ? "border-white/10" : "border-slate-200")}>
+              <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+                <h2 id="control-center-title" className="text-base font-bold">控制中心</h2>
+                <button
+                  onClick={() => setIsSettingsOpen(false)}
+                  aria-label="關閉控制中心"
+                  className={cn("p-2 rounded-full", theme === "dark" ? "hover:bg-white/10 text-zinc-400" : "hover:bg-slate-200 text-slate-500")}
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
+            </div>
 
-              <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8 custom-scrollbar">
-                {/* Account: Google 登入與收藏同步 */}
-                <div className="space-y-2">
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+                {/* 帳號 */}
+                <section
+                  className={cn(
+                    "p-4 rounded-2xl border",
+                    theme === "dark" ? "bg-white/5 border-white/10" : "bg-white border-slate-200",
+                  )}
+                >
                   {authUser ? (
-                    <div
-                      className={cn(
-                        "p-3 rounded-xl border space-y-2",
-                        theme === "dark" ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-100",
-                      )}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         {authUser.user_metadata?.avatar_url ? (
-                          <img
-                            src={authUser.user_metadata.avatar_url}
-                            alt=""
-                            referrerPolicy="no-referrer"
-                            className="w-6 h-6 rounded-full shrink-0"
-                          />
+                          <img src={authUser.user_metadata.avatar_url} alt="" referrerPolicy="no-referrer" className="w-9 h-9 rounded-full shrink-0" />
                         ) : (
-                          <User className="w-4 h-4 shrink-0 opacity-60" />
+                          <User className="w-5 h-5 shrink-0 opacity-60" />
                         )}
-                        <span className="text-[11px] font-bold truncate">
-                          {authUser.user_metadata?.full_name || authUser.email}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="flex items-center gap-1 text-[9px] font-bold opacity-80">
-                          <span
-                            className={cn(
-                              "w-1.5 h-1.5 rounded-full",
-                              accountSync === "synced" && "bg-emerald-500",
-                              accountSync === "syncing" && "bg-amber-500 animate-pulse",
-                              accountSync === "error" && "bg-rose-500",
-                              accountSync === "idle" && "bg-slate-400",
-                            )}
-                          />
-                          {accountSync === "error" ? "同步失敗，請檢查網路" : accountSync === "syncing" ? "同步中…" : "收藏與 AI 金鑰已存到帳號"}
-                        </span>
-                        <button
-                          onClick={handleSignOut}
-                          className="text-[9px] font-bold text-rose-500 hover:underline shrink-0"
-                        >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold truncate">{authUser.user_metadata?.full_name || authUser.email}</p>
+                          <p className="flex items-center gap-1.5 text-xs opacity-80">
+                            <span
+                              className={cn(
+                                "w-1.5 h-1.5 rounded-full",
+                                accountSync === "synced" && "bg-emerald-500",
+                                accountSync === "syncing" && "bg-amber-500 animate-pulse",
+                                accountSync === "error" && "bg-rose-500",
+                                accountSync === "idle" && "bg-slate-400",
+                              )}
+                            />
+                            {accountSync === "error" ? "同步失敗，請檢查網路" : accountSync === "syncing" ? "同步中…" : "收藏與 AI 金鑰已存到帳號"}
+                          </p>
+                        </div>
+                        <button onClick={handleSignOut} className="text-xs font-bold text-rose-500 hover:underline shrink-0">
                           登出
                         </button>
                       </div>
-                      <p className={cn("text-[9px] leading-relaxed", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
+                      <p className={cn("text-[11px]", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
                         登出會清掉這台裝置上的收藏和 AI 金鑰，帳號裡的不受影響。
                       </p>
                     </div>
                   ) : (
-                    <button
-                      onClick={handleGoogleSignIn}
-                      className={cn(
-                        "w-full p-3 rounded-xl border transition-all text-xs flex flex-col items-center gap-1 cursor-pointer shadow-sm",
-                        theme === "dark"
-                          ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200"
-                          : "bg-white border-slate-200 hover:bg-slate-50 text-slate-800",
-                      )}
-                    >
-                      <span className="flex items-center gap-2 font-bold">
-                        <svg viewBox="0 0 48 48" className="w-3.5 h-3.5" aria-hidden="true">
+                    <div className="space-y-3">
+                      <button
+                        onClick={handleGoogleSignIn}
+                        className={cn(
+                          "w-full p-3 rounded-xl border flex items-center justify-center gap-2 text-sm font-bold",
+                          theme === "dark" ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50",
+                        )}
+                      >
+                        <svg viewBox="0 0 48 48" className="w-4 h-4" aria-hidden="true">
                           <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
                           <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
                           <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
                           <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
                         </svg>
                         Google 登入
-                      </span>
-                      <span className={cn("text-[9px] opacity-60 text-center", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>
-                        登入後，收藏和 AI 金鑰會存到你的帳號，換手機或電腦登入就能直接用
-                      </span>
-                    </button>
+                      </button>
+                      <p className={cn("text-[11px] leading-relaxed", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
+                        登入後，收藏和 AI 金鑰會存到你的帳號，換手機或電腦登入就能直接用。Google 登入畫面會寫「繼續前往 {new URL(import.meta.env.VITE_SUPABASE_URL).host}」，這是本站使用的登入服務，可以放心繼續。
+                      </p>
+                    </div>
                   )}
-                  {!authUser && (
-                    <p className={cn("text-[9px] leading-relaxed px-1", theme === "dark" ? "text-zinc-500" : "text-slate-400")}>
-                      Google 登入畫面會寫「繼續前往 {new URL(import.meta.env.VITE_SUPABASE_URL).host}」，這是本站使用的登入服務，可以放心繼續。
-                    </p>
-                  )}
-                </div>
+                </section>
 
-                {/* Favorites Management Entry - Direct Button */}
-                <div className="space-y-2">
-                  <button
-                    onClick={() => {
-                      setIsFavoritesManagerOpen(true);
-                      setIsSettingsOpen(false);
-                    }}
+                {/* 功能 */}
+                <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <ControlCard
+                    dark={theme === "dark"}
+                    icon={<SharpStar className={cn("w-4 h-4 text-amber-500", favorites.length > 0 && "fill-amber-500")} />}
+                    title="收藏"
+                    desc={favorites.length > 0 ? `${favorites.length} 個藥品` : "還沒有收藏，點藥品旁的星星就能加入"}
+                    onClick={() => { setIsFavoritesManagerOpen(true); setIsSettingsOpen(false); }}
+                  />
+                  <ControlCard
+                    dark={theme === "dark"}
+                    icon={<KeyRound className="w-4 h-4 text-violet-500" />}
+                    title="AI 金鑰"
+                    desc={groqApiKey ? "已設定，可以使用 AI 助理" : "尚未設定，AI 助理需要它"}
+                    onClick={() => { setIsApiKeySetupOpen(true); setIsSettingsOpen(false); }}
+                  />
+                  <ControlCard
+                    dark={theme === "dark"}
+                    icon={<HelpCircle className="w-4 h-4 text-brand-accent" />}
+                    title="使用說明"
+                    desc="查藥、用症狀找藥、AI 助理怎麼用"
+                    onClick={() => { setIsHelpOpen(true); setIsSettingsOpen(false); }}
+                  />
+                  <ControlCard
+                    dark={theme === "dark"}
+                    icon={<MessageSquareWarning className="w-4 h-4 text-rose-500" />}
+                    title="意見回報"
+                    desc="回報錯誤或建議，可以附截圖"
+                    onClick={() => setIsFeedbackOpen(true)}
+                  />
+                  <ControlCard
+                    dark={theme === "dark"}
+                    icon={isSyncing ? <Loader2 className="w-4 h-4 animate-spin text-emerald-500" /> : <Database className="w-4 h-4 text-emerald-500" />}
+                    title="藥品資料"
+                    desc={importStatus || `共 ${medications.length} 筆；開網站時會自動更新，也可以點這裡手動同步`}
+                    onClick={isSyncing ? undefined : handleSync}
+                  />
+                  <div
                     className={cn(
-                      "w-full p-3 rounded-xl border transition-all text-xs flex items-center justify-between group cursor-pointer shadow-sm",
-                      theme === "dark"
-                        ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200 hover:border-brand-accent/30"
-                        : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-800 hover:border-brand-accent/30",
+                      "p-4 rounded-2xl border flex items-center justify-between gap-3",
+                      theme === "dark" ? "bg-white/5 border-white/10" : "bg-white border-slate-200",
                     )}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <SharpStar
-                        className={cn(
-                          "w-3.5 h-3.5 text-amber-500",
-                          favorites.length > 0 && "fill-amber-500",
-                        )}
-                      />
-                      <span className="font-bold">收藏</span>
-                      <span
-                        className={cn(
-                          "px-1.5 py-0.5 rounded-full text-[9px] font-mono leading-none",
-                          theme === "dark"
-                            ? "bg-white/10 text-zinc-400"
-                            : "bg-slate-200 text-slate-600",
-                        )}
-                      >
-                        {favorites.length}
-                      </span>
+                    <div className="flex items-center gap-3">
+                      {theme === "dark" ? <Moon className="w-4 h-4 text-indigo-400" /> : <Sun className="w-4 h-4 text-amber-500" />}
+                      <span className="text-sm font-bold">外觀</span>
                     </div>
-                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-brand-secondary-accent shrink-0" />
-                  </button>
-                </div>
-
-                {/* AI Key Entry */}
-                <div className="space-y-2">
-                  <button
-                    onClick={() => {
-                      setIsApiKeySetupOpen(true);
-                      setIsSettingsOpen(false);
-                    }}
-                    className={cn(
-                      "w-full p-3 rounded-xl border transition-all text-xs flex items-center justify-between group cursor-pointer shadow-sm",
-                      theme === "dark"
-                        ? "bg-white/5 border-white/5 hover:bg-white/10 text-zinc-200 hover:border-violet-500/30"
-                        : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-800 hover:border-violet-500/30",
-                    )}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <KeyRound className="w-3.5 h-3.5 text-violet-500" />
-                      <span className="font-bold">AI 金鑰</span>
-                      <span
-                        className={cn(
-                          "w-1.5 h-1.5 rounded-full shrink-0",
-                          groqApiKey ? "bg-emerald-500" : "bg-rose-500",
-                        )}
-                      />
-                    </div>
-                    <ChevronRight className="w-4 h-4 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-brand-secondary-accent shrink-0" />
-                  </button>
-                </div>
-
-                {/* Section: Mode/Theme - Segmented Switcher */}
-                <div className="space-y-4">
-                  <div className="flex flex-col gap-3">
-                    <div
-                      className={cn(
-                        "p-1 rounded-xl flex items-center gap-1 border relative transition-colors h-10",
-                        theme === "dark"
-                          ? "bg-white/5 border-white/10"
-                          : "bg-slate-100 border-slate-200",
-                      )}
-                    >
-                      <motion.div
-                        className={cn(
-                          "absolute h-[calc(100%-8px)] rounded-lg shadow-md z-0",
-                          theme === "dark"
-                            ? "bg-zinc-800 border border-white/10"
-                            : "bg-white border border-slate-200",
-                        )}
-                        initial={false}
-                        animate={{
-                          left: theme === "dark" ? "calc(50% + 1px)" : "4px",
-                          width: "calc(50% - 5px)",
-                        }}
-                        transition={{
-                          type: "spring",
-                          bounce: 0.1,
-                          duration: 0.5,
-                        }}
-                      />
-
-                      <button
-                        onClick={() => setTheme("light")}
-                        className={cn(
-                          "relative z-10 flex-1 h-full rounded-lg transition-all duration-300 flex items-center justify-center",
-                          theme === "light"
-                            ? "text-amber-500"
-                            : "text-zinc-500 hover:text-zinc-400",
-                        )}
-                      >
-                        <Sun className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        onClick={() => setTheme("dark")}
-                        className={cn(
-                          "relative z-10 flex-1 h-full rounded-lg transition-all duration-300 flex items-center justify-center",
-                          theme === "dark"
-                            ? "text-indigo-400"
-                            : "text-zinc-500 hover:text-zinc-400",
-                        )}
-                      >
-                        <Moon className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <span
-                      className={cn(
-                        "text-[9px] font-black uppercase tracking-[0.2em] text-center opacity-60",
-                        theme === "dark" ? "text-zinc-400" : "text-slate-600",
-                      )}
-                    >
-                      Theme Mode
-                    </span>
-                  </div>
-                </div>
-
-                {/* Integrated Status & Sync */}
-                <div className="pt-6 border-t border-inherit flex flex-col items-center gap-4">
-                  <div className="relative group">
-                    <button
-                      onClick={handleSync}
-                      disabled={isSyncing}
-                      className={cn(
-                        "w-12 h-12 rounded-full flex items-center justify-center transition-all relative overflow-hidden",
-                        theme === "dark"
-                          ? "bg-white/5 hover:bg-brand-accent/20 border border-white/5 text-zinc-400 hover:text-brand-accent"
-                          : "bg-slate-50 hover:bg-brand-accent/10 border border-slate-100 text-slate-400 hover:text-brand-accent shadow-sm",
-                      )}
-                    >
-                      {isSyncing ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      ) : (
-                        <Database className="w-5 h-5" />
-                      )}
-                    </button>
-                  </div>
-                  <div className="text-center space-y-1">
-                    <span
-                      className={cn(
-                        "text-[9px] font-black uppercase tracking-[0.1em] block",
-                        isSyncing ? "text-amber-500" : "text-emerald-500",
-                      )}
-                    >
-                      {isSyncing ? "Syncing..." : "Connected"}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-[8px] font-medium opacity-60 block",
-                        theme === "dark" ? "text-zinc-500" : "text-slate-600",
-                      )}
-                    >
-                      API Status
-                    </span>
-                  </div>
-                </div>
-
-                {/* PWA Install */}
-                {!isStandalone && (
-                  <div className="pt-6 border-t border-inherit">
-                    <button
-                      onClick={handleInstallApp}
-                      className={cn(
-                        "w-full flex flex-col items-center gap-2 p-3 rounded-xl transition-all duration-300 group hover:scale-[1.02] active:scale-95",
-                        theme === "dark"
-                          ? "bg-brand-accent/20 border border-brand-accent/30"
-                          : "bg-brand-accent/10 border border-brand-accent/20 shadow-sm",
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "w-8 h-8 rounded-lg flex items-center justify-center bg-brand-accent text-white shadow-lg shadow-brand-accent/20 group-hover:rotate-12 transition-transform",
-                        )}
-                      >
-                        <Smartphone className="w-4 h-4" />
-                      </div>
-                      <div className="text-center">
-                        <span className="text-[10px] font-bold text-brand-accent block">
-                          安裝應用程式
-                        </span>
-                        <span
+                    <div className={cn("flex p-1 rounded-xl border", theme === "dark" ? "border-white/10" : "border-slate-200")}>
+                      {(["light", "dark"] as const).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setTheme(t)}
+                          aria-pressed={theme === t}
                           className={cn(
-                            "text-[8px] font-medium opacity-60 block",
-                            theme === "dark"
-                              ? "text-zinc-500"
-                              : "text-slate-600",
+                            "px-3 py-1 rounded-lg text-xs font-bold",
+                            theme === t
+                              ? theme === "dark" ? "bg-zinc-800 text-white" : "bg-slate-900 text-white"
+                              : "opacity-60",
                           )}
                         >
-                          {deferredPrompt
-                            ? "Install Web App"
-                            : "Add to Home Screen (Guide)"}
-                        </span>
-                      </div>
-                    </button>
-                  </div>
-                )}
-
-                {/* Build Info */}
-                <div className="pt-6 border-t border-inherit space-y-4">
-                  <div className="flex flex-col items-center gap-2">
-                    <div
-                      className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center",
-                        theme === "dark"
-                          ? "bg-white/5"
-                          : "bg-slate-50 border border-slate-100",
-                      )}
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5 opacity-60" />
-                    </div>
-                    <div className="text-center space-y-1">
-                      <span
-                        className={cn(
-                          "text-[10px] font-bold block",
-                          theme === "dark" ? "text-zinc-400" : "text-slate-600",
-                        )}
-                      >
-                        v{__APP_VERSION__}
-                      </span>
+                          {t === "light" ? "淺色" : "深色"}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                </div>
-              </div>
+                  {!isStandalone && (
+                    <ControlCard
+                      dark={theme === "dark"}
+                      icon={<Smartphone className="w-4 h-4 text-brand-accent" />}
+                      title="安裝到手機或電腦"
+                      desc={deferredPrompt ? "安裝後可以從主畫面直接打開" : "照步驟加到主畫面"}
+                      onClick={handleInstallApp}
+                    />
+                  )}
+                </section>
 
-              {/* Footer */}
-              <div
-                className={cn(
-                  "p-6 border-t border-inherit",
-                  theme === "dark" ? "bg-black/20" : "bg-slate-50/50",
-                )}
-              >
-                <div className="flex flex-col items-center gap-4">
-                  <div className="flex items-center gap-2 opacity-20">
-                    <span className="text-[9px] font-black tracking-[0.4em] uppercase">
-                      HMSS
-                    </span>
-                  </div>
-                  <p
-                    className={cn(
-                      "text-[8px] text-center leading-tight opacity-50 font-medium",
-                      theme === "dark" ? "text-zinc-400" : "text-slate-600",
-                    )}
-                  >
-                    Professional Ref Only.
-                  </p>
-                </div>
+                <p className={cn("text-center text-[11px] pt-2", theme === "dark" ? "text-zinc-600" : "text-slate-400")}>
+                  HMSS v{__APP_VERSION__} · 僅供醫療專業人員參考
+                </p>
               </div>
-            </motion.div>
-          </>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
+
+      <Feedback
+        open={isFeedbackOpen}
+        theme={theme}
+        email={authUser?.email}
+        onClose={() => setIsFeedbackOpen(false)}
+        onSent={() => {
+          setIsFeedbackOpen(false);
+          setToast({ message: "已送出，謝謝你的回報", type: "success" });
+        }}
+      />
 
       {/* Enhanced Background Glows for Glass Visibility */}
       <div
@@ -2905,7 +2769,7 @@ ${query}`;
                                   isLongPressRef.current = false;
                                   return;
                                 }
-                                setSelectedMed(med); setMobileExpanded(false);
+                                setSelectedMed(med); setMobileExpanded(true);
                               }}
                               onMouseDown={() => startLongPress(med.code)}
                               onMouseUp={cancelLongPress}
@@ -3514,7 +3378,7 @@ ${query}`;
                                                     <div
                                                       onClick={(e) => {
                                                         e.stopPropagation();
-                                                        setSelectedMed(med);
+                                                        setSelectedMed(med); setMobileExpanded(true);
                                                       }}
                                                       className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 active:scale-[0.98] transition-transform"
                                                     >
@@ -4370,7 +4234,7 @@ ${query}`;
                                 exit={{ opacity: 0, scale: 0.95 }}
                                 transition={{ duration: 0.2 }}
                                 onClick={() => {
-                                  setSelectedMed(med); setMobileExpanded(false);
+                                  setSelectedMed(med); setMobileExpanded(true);
                                   setIsFavoritesManagerOpen(false);
                                   setFavoritesSearchQuery("");
                                 }}

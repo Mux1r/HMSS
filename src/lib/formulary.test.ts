@@ -10,6 +10,7 @@ import {
   normalizeIngredient,
   ingredientMatches,
   parseRecommendation,
+  diffMedications,
 } from "./formulary.ts";
 
 // --- atcMatches ---
@@ -83,5 +84,15 @@ assert.equal(isPediatricContext("小兒咳嗽"), true, "兒科關鍵字");
 assert.equal(isPediatricContext("6個月大嬰兒"), true, "月大");
 assert.equal(isPediatricContext("65歲高血壓"), false, "高齡非兒科");
 assert.equal(isPediatricContext("成人發燒"), false, "成人");
+
+// --- diffMedications ---
+assert.deepEqual(
+  diffMedications(
+    [{ id: "A", g: "x" }, { id: "B", g: "y" }, { id: "C", g: "z" }],
+    [{ id: "A", g: "x" }, { id: "B", g: "y2" }, { id: "D", g: "w" }],
+  ),
+  { added: 1, changed: 1, removed: 1 },
+  "新增 D、修改 B、刪除 C",
+);
 
 console.log("formulary helpers: all assertions passed ✓");

@@ -240,6 +240,10 @@ export const localMedicationService = {
     }
   },
 
+  async getStoredHash(): Promise<string> {
+    return (await get(HASH_KEY)) || '';
+  },
+
   generateHash(data: any): string {
     // 簡單的雜湊生成，用於檢查版本
     const str = JSON.stringify(data);
@@ -250,14 +254,6 @@ export const localMedicationService = {
       hash = hash & hash; // Convert to 32bit integer
     }
     return hash.toString(36) + str.length;
-  },
-
-  /**
-   * 取得 Supabase 目前筆數（HEAD request，不傳資料，極快）
-   */
-  async getSupabaseCount(): Promise<number> {
-    const { count } = await supabase.from('medications').select('id', { count: 'exact', head: true });
-    return count ?? 0;
   },
 
   /**

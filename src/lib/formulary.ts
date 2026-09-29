@@ -207,3 +207,20 @@ export function parseRecommendation(text: string): Recommendation {
   for (const [group, names] of repeats) group.advice.push(`與上方相同的建議用藥：${names.join("、")}`);
   return { summary, groups };
 }
+
+/** 比對新舊藥品清單（以 id 為鍵），回傳新增／修改／刪除筆數，給「資料已更新」提示用。 */
+export function diffMedications<T extends { id: string }>(
+  oldList: T[],
+  newList: T[],
+): { added: number; changed: number; removed: number } {
+  const old = new Map(oldList.map((m) => [m.id, JSON.stringify(m)]));
+  let added = 0;
+  let changed = 0;
+  for (const m of newList) {
+    const prev = old.get(m.id);
+    if (prev === undefined) added++;
+    else if (prev !== JSON.stringify(m)) changed++;
+    old.delete(m.id);
+  }
+  return { added, changed, removed: old.size };
+}
