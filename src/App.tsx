@@ -175,7 +175,7 @@ function ControlCard({ dark, icon, title, desc, onClick }: {
       disabled={!onClick}
       className={cn(
         "p-4 rounded-2xl border flex items-center gap-3 text-left group transition-colors disabled:cursor-default",
-        dark ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50",
+        dark ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white/60 border-slate-200 hover:bg-white/80",
       )}
     >
       <span className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", dark ? "bg-white/5" : "bg-slate-100")}>
@@ -1740,8 +1740,8 @@ ${query}`;
             exit={{ opacity: 0, y: 24 }}
             transition={{ type: "spring", damping: 32, stiffness: 300 }}
             className={cn(
-              "fixed inset-0 z-[110] flex flex-col backdrop-blur-xl",
-              theme === "dark" ? "bg-zinc-950/95 text-white" : "bg-slate-50/95 text-slate-900",
+              "fixed inset-0 z-[110] flex flex-col backdrop-blur-md",
+              theme === "dark" ? "bg-zinc-950/30 text-white" : "bg-white/30 text-slate-900",
             )}
           >
             <div className={cn("shrink-0 border-b", theme === "dark" ? "border-white/10" : "border-slate-200")}>
@@ -1763,7 +1763,7 @@ ${query}`;
                 <section
                   className={cn(
                     "p-4 rounded-2xl border",
-                    theme === "dark" ? "bg-white/5 border-white/10" : "bg-white border-slate-200",
+                    theme === "dark" ? "bg-white/5 border-white/10" : "bg-white/60 border-slate-200",
                   )}
                 >
                   {authUser ? (
@@ -1861,29 +1861,51 @@ ${query}`;
                   <div
                     className={cn(
                       "p-4 rounded-2xl border flex items-center justify-between gap-3",
-                      theme === "dark" ? "bg-white/5 border-white/10" : "bg-white border-slate-200",
+                      theme === "dark" ? "bg-white/5 border-white/10" : "bg-white/60 border-slate-200",
                     )}
                   >
-                    <div className="flex items-center gap-3">
-                      {theme === "dark" ? <Moon className="w-4 h-4 text-indigo-400" /> : <Sun className="w-4 h-4 text-amber-500" />}
-                      <span className="text-sm font-bold">外觀</span>
-                    </div>
-                    <div className={cn("flex p-1 rounded-xl border", theme === "dark" ? "border-white/10" : "border-slate-200")}>
-                      {(["light", "dark"] as const).map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => setTheme(t)}
-                          aria-pressed={theme === t}
-                          className={cn(
-                            "px-3 py-1 rounded-lg text-xs font-bold",
-                            theme === t
-                              ? theme === "dark" ? "bg-zinc-800 text-white" : "bg-slate-900 text-white"
-                              : "opacity-60",
-                          )}
-                        >
-                          {t === "light" ? "淺色" : "深色"}
-                        </button>
-                      ))}
+                    <span className="text-sm font-bold">外觀</span>
+                    {/* 沿用原本的滑動式主題切換 */}
+                    <div
+                      className={cn(
+                        "w-32 p-1 rounded-xl flex items-center gap-1 border relative transition-colors h-10",
+                        theme === "dark" ? "bg-white/5 border-white/10" : "bg-slate-100 border-slate-200",
+                      )}
+                    >
+                      <motion.div
+                        className={cn(
+                          "absolute h-[calc(100%-8px)] rounded-lg shadow-md z-0",
+                          theme === "dark" ? "bg-zinc-800 border border-white/10" : "bg-white border border-slate-200",
+                        )}
+                        initial={false}
+                        animate={{
+                          left: theme === "dark" ? "calc(50% + 1px)" : "4px",
+                          width: "calc(50% - 5px)",
+                        }}
+                        transition={{ type: "spring", bounce: 0.1, duration: 0.5 }}
+                      />
+                      <button
+                        onClick={() => setTheme("light")}
+                        aria-label="淺色"
+                        aria-pressed={theme === "light"}
+                        className={cn(
+                          "relative z-10 flex-1 h-full rounded-lg transition-all duration-300 flex items-center justify-center",
+                          theme === "light" ? "text-amber-500" : "text-zinc-500 hover:text-zinc-400",
+                        )}
+                      >
+                        <Sun className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setTheme("dark")}
+                        aria-label="深色"
+                        aria-pressed={theme === "dark"}
+                        className={cn(
+                          "relative z-10 flex-1 h-full rounded-lg transition-all duration-300 flex items-center justify-center",
+                          theme === "dark" ? "text-indigo-400" : "text-zinc-500 hover:text-zinc-400",
+                        )}
+                      >
+                        <Moon className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                   {!isStandalone && (
