@@ -161,28 +161,6 @@ const normalizeRoute = (raw: string): string => {
   return "";
 };
 
-// 控制中心的方塊：大小由 className 的 col-span/row-span 決定；有 onClick 就是按鈕。
-function Tile({ dark, className, onClick, label, children }: {
-  dark: boolean;
-  className?: string;
-  onClick?: () => void;
-  label?: string;
-  children: ReactNode;
-}) {
-  const cls = cn(
-    "rounded-2xl border p-3.5 flex flex-col min-w-0 overflow-hidden transition-all",
-    dark ? "bg-white/5 border-white/10" : "bg-white/60 border-slate-200",
-    onClick && (dark ? "hover:bg-white/10 active:scale-[0.97]" : "hover:bg-white/80 active:scale-[0.97]"),
-    className,
-  );
-  return onClick ? (
-    <button onClick={onClick} aria-label={label} className={cn(cls, "text-left")}>
-      {children}
-    </button>
-  ) : (
-    <div className={cls}>{children}</div>
-  );
-}
 
 // 幫助視窗內容。寫法原則：講「在哪裡、按什麼、會發生什麼」，不寫宣傳詞。
 const HELP_SECTIONS: { title: string; lines: string[] }[] = [
@@ -1719,6 +1697,10 @@ ${query}`;
     );
   }
 
+  // 控制中心的玻璃材質（半透明 + 背後模糊由外層提供）
+  const glass = theme === "dark" ? "bg-white/5 border-white/10" : "bg-white/60 border-slate-200";
+  const glassHover = theme === "dark" ? "hover:bg-white/10" : "hover:bg-white/80";
+  const muted = theme === "dark" ? "text-zinc-400" : "text-slate-500";
   return (
     <div className="h-screen font-sans flex flex-col overflow-hidden relative">
       {/* 控制中心：全頁，一眼看到所有功能 */}
@@ -1752,22 +1734,19 @@ ${query}`;
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-              <div className="max-w-md mx-auto px-4 py-6 space-y-4">
-                {/* 像手機控制中心：4 欄格線，方塊大小交錯（2×2 帳號、2×1 寬塊、1×1 小方塊） */}
-                <div className="grid grid-cols-4 auto-rows-[84px] gap-3">
-                  {/* 帳號 2×2 */}
+              <div className="max-w-md mx-auto px-4 py-6 space-y-5">
+                {/* 帳號：一條橫的 */}
+                <div className="space-y-1.5">
                   {authUser ? (
-                    <Tile dark={theme === "dark"} className="col-span-2 row-span-2 justify-between">
+                    <div className={cn("flex items-center gap-3 px-4 py-3 rounded-2xl border", glass)}>
                       {authUser.user_metadata?.avatar_url ? (
-                        <img src={authUser.user_metadata.avatar_url} alt="" referrerPolicy="no-referrer" className="w-11 h-11 rounded-full" />
+                        <img src={authUser.user_metadata.avatar_url} alt="" referrerPolicy="no-referrer" className="w-10 h-10 rounded-full shrink-0" />
                       ) : (
-                        <span className={cn("w-11 h-11 rounded-full flex items-center justify-center", theme === "dark" ? "bg-white/10" : "bg-slate-100")}>
-                          <User className="w-5 h-5 opacity-60" />
-                        </span>
+                        <User className="w-5 h-5 shrink-0 opacity-60" />
                       )}
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold truncate">{authUser.user_metadata?.full_name || authUser.email}</p>
-                        <p className="flex items-center gap-1.5 text-[11px] opacity-80 mt-0.5">
+                        <p className={cn("flex items-center gap-1.5 text-[11px]", muted)}>
                           <span
                             className={cn(
                               "w-1.5 h-1.5 rounded-full shrink-0",
@@ -1777,48 +1756,81 @@ ${query}`;
                               accountSync === "idle" && "bg-slate-400",
                             )}
                           />
-                          {accountSync === "error" ? "同步失敗" : accountSync === "syncing" ? "同步中…" : "已存到帳號"}
+                          {accountSync === "error" ? "同步失敗，請檢查網路" : accountSync === "syncing" ? "同步中…" : "收藏與 AI 金鑰已存到帳號"}
                         </p>
                       </div>
-                      <button onClick={handleSignOut} className="self-start text-xs font-bold text-rose-500 hover:underline">
+                      <button onClick={handleSignOut} className="text-xs font-bold text-rose-500 hover:underline shrink-0">
                         登出
                       </button>
-                    </Tile>
+                    </div>
                   ) : (
-                    <Tile dark={theme === "dark"} className="col-span-2 row-span-2 justify-between" onClick={handleGoogleSignIn} label="Google 登入">
-                      <span className={cn("w-11 h-11 rounded-full flex items-center justify-center", theme === "dark" ? "bg-white/10" : "bg-white")}>
-                        <svg viewBox="0 0 48 48" className="w-5 h-5" aria-hidden="true">
-                          <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
-                          <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
-                          <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
-                          <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
-                        </svg>
+                    <button
+                      onClick={handleGoogleSignIn}
+                      className={cn("w-full flex items-center gap-3 px-4 py-3 rounded-2xl border text-left transition-colors", glass, glassHover)}
+                    >
+                      <svg viewBox="0 0 48 48" className="w-6 h-6 shrink-0" aria-hidden="true">
+                        <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+                        <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+                        <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+                        <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+                      </svg>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold">Google 登入</span>
+                        <span className={cn("block text-[11px]", muted)}>收藏和 AI 金鑰會跟著帳號走，換裝置也能用</span>
                       </span>
-                      <div>
-                        <p className="text-sm font-bold">Google 登入</p>
-                        <p className={cn("text-[11px] leading-snug mt-0.5", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>
-                          收藏和 AI 金鑰會跟著帳號走，換裝置也能用
-                        </p>
-                      </div>
-                    </Tile>
+                      <ChevronRight className="w-4 h-4 opacity-40 shrink-0" />
+                    </button>
                   )}
+                  <p className={cn("text-[10px] leading-relaxed px-1", muted)}>
+                    {authUser
+                      ? "登出會清掉這台裝置上的收藏和 AI 金鑰，帳號裡的不受影響。"
+                      : `Google 登入畫面會寫「繼續前往 ${new URL(import.meta.env.VITE_SUPABASE_URL).host}」，這是本站使用的登入服務，可以放心繼續。`}
+                  </p>
+                </div>
 
-                  {/* 外觀 2×1：沿用原本的滑動式主題切換 */}
+                {/* 收藏、AI 金鑰：兩張並排，用數字和狀態說話 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => { setIsFavoritesManagerOpen(true); setIsSettingsOpen(false); }}
+                    className={cn("p-4 rounded-2xl border text-left transition-colors", glass, glassHover)}
+                  >
+                    <SharpStar className={cn("w-4 h-4 text-amber-500", favorites.length > 0 && "fill-amber-500")} />
+                    <span className="block text-2xl font-bold mt-3 leading-none">{favorites.length}</span>
+                    <span className={cn("block text-[11px] mt-1", muted)}>收藏的藥品</span>
+                  </button>
+                  <button
+                    onClick={() => { setIsApiKeySetupOpen(true); setIsSettingsOpen(false); }}
+                    className={cn("p-4 rounded-2xl border text-left transition-colors", glass, glassHover)}
+                  >
+                    <KeyRound className="w-4 h-4 text-violet-500" />
+                    <span className="flex items-center gap-1.5 text-sm font-bold mt-3">
+                      <span className={cn("w-2 h-2 rounded-full", groqApiKey ? "bg-emerald-500" : "bg-rose-500")} />
+                      {groqApiKey ? "已設定" : "未設定"}
+                    </span>
+                    <span className={cn("block text-[11px] mt-1", muted)}>AI 金鑰</span>
+                  </button>
+                </div>
+
+                {/* 外觀、藥品資料、安裝：一組分隔列表 */}
+                <div className={cn("rounded-2xl border divide-y", glass, theme === "dark" ? "divide-white/10" : "divide-slate-200")}>
+                  <div className="flex items-center justify-between gap-3 px-4 py-3">
+                    <span className="text-sm font-bold">外觀</span>
+                    {/* 沿用原本的滑動式主題切換 */}
                     <div
                       className={cn(
-                        "col-span-2 p-1.5 rounded-2xl flex items-center gap-1.5 border relative transition-colors",
-                        theme === "dark" ? "bg-white/5 border-white/10" : "bg-white/60 border-slate-200",
+                        "w-32 p-1 rounded-xl flex items-center gap-1 border relative transition-colors h-10",
+                        theme === "dark" ? "bg-white/5 border-white/10" : "bg-slate-100 border-slate-200",
                       )}
                     >
                       <motion.div
                         className={cn(
-                          "absolute h-[calc(100%-12px)] rounded-xl shadow-md z-0",
+                          "absolute h-[calc(100%-8px)] rounded-lg shadow-md z-0",
                           theme === "dark" ? "bg-zinc-800 border border-white/10" : "bg-white border border-slate-200",
                         )}
                         initial={false}
                         animate={{
-                          left: theme === "dark" ? "calc(50% + 1.5px)" : "6px",
-                          width: "calc(50% - 7.5px)",
+                          left: theme === "dark" ? "calc(50% + 1px)" : "4px",
+                          width: "calc(50% - 5px)",
                         }}
                         transition={{ type: "spring", bounce: 0.1, duration: 0.5 }}
                       />
@@ -1845,96 +1857,59 @@ ${query}`;
                         <Moon className="w-4 h-4" />
                       </button>
                     </div>
+                  </div>
 
-                  {/* 收藏、AI 金鑰 1×1 */}
-                  <Tile
-                    dark={theme === "dark"}
-                    className="items-center justify-center gap-1.5 relative"
-                    onClick={() => { setIsFavoritesManagerOpen(true); setIsSettingsOpen(false); }}
-                    label={`收藏，${favorites.length} 個藥品`}
-                  >
-                    <SharpStar className={cn("w-6 h-6 text-amber-500", favorites.length > 0 && "fill-amber-500")} />
-                    <span className="text-[11px] font-bold">收藏</span>
-                    {favorites.length > 0 && (
-                      <span className="absolute top-2 right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
-                        {favorites.length}
-                      </span>
-                    )}
-                  </Tile>
-                  <Tile
-                    dark={theme === "dark"}
-                    className="items-center justify-center gap-1.5 relative"
-                    onClick={() => { setIsApiKeySetupOpen(true); setIsSettingsOpen(false); }}
-                    label={groqApiKey ? "AI 金鑰，已設定" : "AI 金鑰，尚未設定"}
-                  >
-                    <KeyRound className="w-6 h-6 text-violet-500" />
-                    <span className="text-[11px] font-bold">AI 金鑰</span>
-                    <span className={cn("absolute top-3 right-3 w-2 h-2 rounded-full", groqApiKey ? "bg-emerald-500" : "bg-rose-500")} />
-                  </Tile>
-
-                  {/* 說明、回報 1×1 */}
-                  <Tile
-                    dark={theme === "dark"}
-                    className="items-center justify-center gap-1.5"
-                    onClick={() => { setIsHelpOpen(true); setIsSettingsOpen(false); }}
-                    label="使用說明"
-                  >
-                    <HelpCircle className="w-6 h-6 text-brand-accent" />
-                    <span className="text-[11px] font-bold">說明</span>
-                  </Tile>
-                  <Tile
-                    dark={theme === "dark"}
-                    className="items-center justify-center gap-1.5"
-                    onClick={() => setIsFeedbackOpen(true)}
-                    label="意見回報"
-                  >
-                    <MessageSquareWarning className="w-6 h-6 text-rose-500" />
-                    <span className="text-[11px] font-bold">回報</span>
-                  </Tile>
-
-                  {/* 藥品資料 2×1 */}
-                  <Tile
-                    dark={theme === "dark"}
-                    className="col-span-2 flex-row items-center gap-3"
-                    onClick={isSyncing ? undefined : handleSync}
-                    label="同步藥品資料"
-                  >
-                    {isSyncing ? <Loader2 className="w-6 h-6 shrink-0 animate-spin text-emerald-500" /> : <Database className="w-6 h-6 shrink-0 text-emerald-500" />}
-                    <span className="min-w-0">
-                      <span className="block text-sm font-bold">藥品資料</span>
-                      <span className={cn("block text-[11px] leading-snug truncate", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>
-                        {importStatus || `${medications.length} 筆 · 點這裡同步`}
-                      </span>
-                    </span>
-                  </Tile>
-
-                  {/* 安裝 2×1 + 版本 */}
-                  {!isStandalone && (
-                    <Tile
-                      dark={theme === "dark"}
-                      className="col-span-2 flex-row items-center gap-3"
-                      onClick={handleInstallApp}
-                      label="安裝到手機或電腦"
+                  <div className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold">藥品資料</p>
+                      <p className={cn("text-[11px] truncate", muted)}>
+                        {importStatus || `${medications.length} 筆，開網站時自動更新`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleSync}
+                      disabled={isSyncing}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-bold shrink-0 disabled:opacity-60",
+                        theme === "dark" ? "bg-emerald-500/15 text-emerald-400" : "bg-emerald-500/10 text-emerald-600",
+                      )}
                     >
-                      <Smartphone className="w-6 h-6 shrink-0 text-brand-accent" />
+                      {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                      同步
+                    </button>
+                  </div>
+
+                  {!isStandalone && (
+                    <button onClick={handleInstallApp} className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left">
                       <span className="min-w-0">
                         <span className="block text-sm font-bold">安裝 App</span>
-                        <span className={cn("block text-[11px] leading-snug", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>
-                          加到主畫面
-                        </span>
+                        <span className={cn("block text-[11px]", muted)}>加到主畫面，之後直接點開</span>
                       </span>
-                    </Tile>
+                      <Smartphone className="w-4 h-4 text-brand-accent shrink-0" />
+                    </button>
                   )}
-                  <Tile dark={theme === "dark"} className={cn("justify-center", isStandalone ? "col-span-4" : "col-span-2")}>
-                    <span className="text-sm font-bold">HMSS v{__APP_VERSION__}</span>
-                    <span className={cn("text-[11px]", theme === "dark" ? "text-zinc-400" : "text-slate-500")}>僅供醫療專業人員參考</span>
-                  </Tile>
                 </div>
 
-                <p className={cn("text-[11px] leading-relaxed px-1", theme === "dark" ? "text-zinc-500" : "text-slate-500")}>
-                  {authUser
-                    ? "登出會清掉這台裝置上的收藏和 AI 金鑰，帳號裡的不受影響。"
-                    : `Google 登入畫面會寫「繼續前往 ${new URL(import.meta.env.VITE_SUPABASE_URL).host}」，這是本站使用的登入服務，可以放心繼續。`}
+                {/* 說明、回報：兩顆膠囊按鈕 */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setIsHelpOpen(true); setIsSettingsOpen(false); }}
+                    className={cn("flex-1 flex items-center justify-center gap-1.5 h-10 rounded-full border text-xs font-bold transition-colors", glass, glassHover)}
+                  >
+                    <HelpCircle className="w-4 h-4 text-brand-accent" />
+                    使用說明
+                  </button>
+                  <button
+                    onClick={() => setIsFeedbackOpen(true)}
+                    className={cn("flex-1 flex items-center justify-center gap-1.5 h-10 rounded-full border text-xs font-bold transition-colors", glass, glassHover)}
+                  >
+                    <MessageSquareWarning className="w-4 h-4 text-rose-500" />
+                    意見回報
+                  </button>
+                </div>
+
+                <p className={cn("text-center text-[10px] pt-1", muted)}>
+                  HMSS v{__APP_VERSION__} · 僅供醫療專業人員參考
                 </p>
               </div>
             </div>
