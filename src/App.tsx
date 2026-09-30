@@ -192,7 +192,8 @@ const LOGIN_FOR_KEY = {
   dismiss: "先不要",
 };
 
-// 兩個模式還沒開始時的介紹：同一套排版（圖示、標題、一句說明、範例、三步驟），只換內容與顏色
+// 兩個模式還沒開始時的介紹：同一套排版（重點色細線、標題、一句說明、範例、三步驟），只換內容與顏色。
+// 刻意極簡：不用色塊圖示與圓形數字，靠字重、字距與細線分層。
 function ModeIntro({ dark, ai, title, desc, examples, onExample, steps, note }: {
   dark: boolean;
   ai: boolean;
@@ -203,52 +204,46 @@ function ModeIntro({ dark, ai, title, desc, examples, onExample, steps, note }: 
   steps: { title: string; desc: string }[];
   note?: string;
 }) {
-  const accent = ai ? "from-violet-600 to-orange-500" : "from-teal-600 to-cyan-500";
+  const accent = ai ? "from-violet-500 to-orange-400" : "from-teal-500 to-cyan-400";
   const muted = dark ? "text-zinc-400" : "text-slate-500";
+  const faint = dark ? "text-zinc-600" : "text-slate-400";
+  const line = dark ? "border-white/10" : "border-slate-200";
   return (
-    <div className="min-h-full flex flex-col items-center justify-center text-center px-2 py-8 max-w-lg mx-auto">
-      <span className={cn("w-14 h-14 rounded-2xl bg-gradient-to-br text-white flex items-center justify-center shadow-lg mb-4", accent)}>
-        {ai ? <Sparkles className="w-7 h-7" /> : <Pill className="w-7 h-7" />}
-      </span>
-      <h3 className={cn("text-xl font-bold", dark ? "text-white" : "text-slate-800")}>{title}</h3>
-      <p className={cn("text-sm leading-relaxed mt-1.5", muted)}>{desc}</p>
+    <div className="min-h-full flex flex-col items-center justify-center text-center px-2 py-10 max-w-xl mx-auto">
+      <span className={cn("block w-10 h-[3px] rounded-full bg-gradient-to-r", accent)} aria-hidden="true" />
+      <h3 className={cn("mt-5 text-[28px] md:text-[32px] font-light tracking-tight leading-tight", dark ? "text-white" : "text-slate-900")}>
+        {title}
+      </h3>
+      <p className={cn("mt-3 text-sm leading-relaxed max-w-md text-balance", muted)}>{desc}</p>
 
-      <div className="w-full mt-6">
-        <p className={cn("text-[11px] font-bold mb-2", muted)}>試試看</p>
-        <div className="flex flex-wrap justify-center gap-2">
-          {examples.map((ex) => (
-            <button
-              key={ex}
-              onClick={() => onExample(ex)}
-              className={cn(
-                "px-3.5 h-8 rounded-full border text-xs font-bold transition-colors",
-                ai
-                  ? dark ? "border-violet-400/40 text-violet-300 hover:bg-violet-500/15" : "border-violet-300 text-violet-600 hover:bg-violet-50"
-                  : dark ? "border-brand-accent/40 text-brand-accent hover:bg-brand-accent/15" : "border-brand-accent/40 text-brand-accent hover:bg-brand-accent/10",
-              )}
-            >
-              {ex}
-            </button>
-          ))}
-        </div>
+      <div className="mt-7 flex flex-wrap justify-center gap-2">
+        {examples.map((ex) => (
+          <button
+            key={ex}
+            onClick={() => onExample(ex)}
+            className={cn(
+              "px-3.5 h-8 rounded-full border text-xs transition-colors",
+              dark ? "border-white/15 text-zinc-300 hover:border-white/40 hover:text-white" : "border-slate-300 text-slate-600 hover:border-slate-500 hover:text-slate-900",
+            )}
+          >
+            {ex}
+          </button>
+        ))}
       </div>
 
-      <ol className="w-full grid grid-cols-3 gap-2 mt-8">
+      <ol className={cn("mt-10 w-full grid grid-cols-3 border-t", line)}>
         {steps.map((st, i) => (
-          <li
-            key={st.title}
-            className={cn("p-3 rounded-2xl border text-left", dark ? "bg-white/5 border-white/10" : "bg-white/70 border-slate-200")}
-          >
-            <span className={cn("w-6 h-6 rounded-full bg-gradient-to-br text-white text-[11px] font-bold flex items-center justify-center", accent)}>
-              {i + 1}
+          <li key={st.title} className={cn("pt-4 px-2 sm:px-4 text-left", i > 0 && cn("border-l", line))}>
+            <span className={cn("block font-display text-xs font-light tabular-nums tracking-wider", faint)}>
+              {String(i + 1).padStart(2, "0")}
             </span>
-            <p className={cn("text-xs font-bold mt-2", dark ? "text-zinc-100" : "text-slate-800")}>{st.title}</p>
-            <p className={cn("text-[11px] leading-snug mt-0.5", muted)}>{st.desc}</p>
+            <p className={cn("mt-1.5 text-[13px] font-medium", dark ? "text-zinc-100" : "text-slate-800")}>{st.title}</p>
+            <p className={cn("mt-1 text-[11px] leading-snug", muted)}>{st.desc}</p>
           </li>
         ))}
       </ol>
 
-      {note && <p className={cn("text-[11px] mt-5", muted)}>{note}</p>}
+      {note && <p className={cn("mt-8 text-[11px]", faint)}>{note}</p>}
     </div>
   );
 }
