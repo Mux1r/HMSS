@@ -2416,7 +2416,6 @@ ${query}`;
             >
               {/* Sliding background */}
               <motion.div
-                layoutId="activeTab"
                 className="absolute h-[calc(100%-8px)] rounded-lg shadow-lg z-0 overflow-hidden"
                 initial={false}
                 animate={{
@@ -2425,8 +2424,8 @@ ${query}`;
                 }}
                 transition={{ type: "spring", bounce: 0.1, duration: 0.6 }}
               >
-                {/* 兩層顏色交叉淡入淡出，切換時顏色會慢慢變過去 */}
-                <span className={cn("absolute inset-0 bg-gradient-to-r from-teal-600 to-cyan-500 transition-opacity duration-500", isAiMode ? "opacity-0" : "opacity-100")} />
+                {/* 綠色底層常駐，紫橘層疊在上面淡入淡出（兩層同時淡會在中途透出白底、像閃一下） */}
+                <span className="absolute inset-0 bg-gradient-to-r from-teal-600 to-cyan-500" />
                 <span className={cn("absolute inset-0 bg-gradient-to-r from-violet-600 to-orange-500 transition-opacity duration-500", isAiMode ? "opacity-100" : "opacity-0")} />
               </motion.div>
 
@@ -2515,7 +2514,7 @@ ${query}`;
                         isAiMode ? "shadow-purple-500/20" : theme === "dark" ? "shadow-brand-accent/20" : "shadow-slate-200",
                       )}
                     >
-                      {/* 外框兩層漸層交叉淡入淡出：切換模式時框線顏色慢慢變過去 */}
+                      {/* 外框：綠色底層常駐，AI 建議的漸層疊在上面淡入淡出（兩層同時淡會在中途透出白底、像閃一下） */}
                       <span
                         aria-hidden="true"
                         className={cn(
@@ -2523,7 +2522,6 @@ ${query}`;
                           theme === "dark"
                             ? "from-teal-600/60 to-cyan-500/60 group-focus-within:from-teal-600 group-focus-within:to-cyan-500"
                             : "from-teal-600/40 to-cyan-500/40 group-focus-within:to-cyan-500/70",
-                          isAiMode ? "opacity-0" : "opacity-100",
                         )}
                       />
                       <span
@@ -3028,14 +3026,15 @@ ${query}`;
                     )}
                   </div>
                 </div>
-          <AnimatePresence mode="popLayout" initial={false}>
+          <AnimatePresence mode="wait" initial={false}>
             {!isAiMode ? (
               <motion.div
                 key="standard-mode"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ ease: [0.2, 0.8, 0.2, 1], duration: 0.5 }}
+                // 原地先淡出再淡入（不重疊、不左右移動）
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
                 className="flex-1 flex flex-col overflow-hidden"
               >
 
@@ -3424,10 +3423,11 @@ ${query}`;
             ) : (
               <motion.div
                 key="ai-mode"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ ease: [0.2, 0.8, 0.2, 1], duration: 0.5 }}
+                // 原地先淡出再淡入（不重疊、不左右移動）
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
                 className="flex-1 flex flex-col overflow-hidden pt-[72px] md:pt-[80px]"
               >
                 <div className="max-w-4xl mx-auto w-full flex flex-col h-full gap-6">
