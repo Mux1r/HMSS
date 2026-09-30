@@ -41,7 +41,7 @@
   <h2>查詢內容會送到哪裡</h2>
   <ul>
     <li><strong>一般查藥</strong>：在你的瀏覽器裡比對，不會送出查詢內容。</li>
-    <li><strong>適應症圖譜查詢</strong>：查詢文字會送到我們在 Supabase 的服務，再交給 <a href="https://openrouter.ai/privacy">OpenRouter</a> 轉成向量後比對，不會記錄你是誰。</li>
+    <li><strong>AI 輔助查詢</strong>：查詢文字會送到我們在 Supabase 的服務，再交給 <a href="https://openrouter.ai/privacy">OpenRouter</a> 轉成向量後比對，不會記錄你是誰。</li>
     <li><strong>AI 助理（有自己的金鑰）</strong>：你輸入的病人狀況，會用你自己的 Groq 金鑰直接從瀏覽器送到 <a href="https://groq.com/privacy-policy/">Groq</a>，不經過我們的伺服器，適用 Groq 的隱私權政策。</li>
     <li><strong>AI 助理（訪客額度）</strong>：沒有自己的金鑰時，內容會先送到我們在 Supabase 的服務，再用網站的金鑰轉給 Groq。我們不儲存查詢內容，只記錄這台裝置的隨機代碼、使用類別和時間，用來計算每小時的次數。</li>
   </ul>

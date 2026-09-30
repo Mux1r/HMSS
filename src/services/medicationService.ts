@@ -197,7 +197,7 @@ export async function searchKg(q: string): Promise<KgResult> {
   const key = mechanismKey(q);
   const body = { q: key && key !== q.toLowerCase() ? `${q} ${key}` : q };
   const { data, error } = await supabase.functions.invoke('kg-search', { body });
-  if (error) throw new Error(`圖譜搜尋失敗: ${error.message}`);
+  if (error) throw new Error(`AI 輔助查詢失敗: ${error.message}`);
   const hits: Record<string, number> = {};
   for (const { code, score } of [...(data?.links || []), ...(data?.drugs || [])]) {
     const key = String(code || '').trim().toUpperCase();

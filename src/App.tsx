@@ -173,7 +173,7 @@ const normalizeRoute = (raw: string): string => {
 const TOUR_STEPS: TourStep[] = [
   { target: "search", title: "查藥", body: "打藥名、成分、代碼或症狀就能查。現在先幫你填了「頭痛」當例子。" },
   { target: "fav-star", title: "收藏", body: "點星星把常用的藥加入收藏（要先登入）。收藏可以在左上角 ☰ 的控制中心裡分資料夾整理。" },
-  { target: "kg", title: "適應症圖譜查詢", body: "打的是症狀或病名時按這裡，會依院內藥品的適應症找藥，連同義詞和更細的病名也會找到。" },
+  { target: "kg", title: "AI 輔助查詢", body: "打的是症狀或病名時按這裡，AI 會依院內藥品的適應症找藥，連同義詞和更細的病名也會找到。不需要金鑰，也不佔 AI 助理的次數。" },
   { target: "filter", title: "篩選", body: "先選生理系統，再選藥理分類，也可以加上劑型，一起縮小範圍。" },
   { target: "mode", title: "AI 助理", body: "切到 AI 助理，輸入病人狀況，會先整理問題、請你勾選症狀，再建議院內用藥。沒登入每小時可以用 3 次。" },
   { target: "menu", title: "控制中心", body: "登入、收藏、AI 金鑰、外觀、意見回報都在這裡。" },
@@ -191,6 +191,45 @@ const LOGIN_FOR_KEY = {
   body: "金鑰會存在你的帳號，不會留在這台電腦。沒登入也能用 AI 助理，每小時可以產生 3 次用藥建議。",
   dismiss: "先不要",
 };
+
+// AI 輔助查詢按鈕：做成「用另一種方式查剛剛打的字」的搜尋建議樣式，標題直接帶出查詢字
+function AiSearchButton({ query, dark, onClick, className }: {
+  query: string;
+  dark: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      data-tour="kg"
+      onClick={onClick}
+      className={cn(
+        "group w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-colors",
+        dark
+          ? "border-brand-accent/50 bg-brand-accent/10 hover:bg-brand-accent/20"
+          : "border-brand-accent/40 bg-white hover:bg-brand-accent/5",
+        className,
+      )}
+    >
+      <span className="relative w-10 h-10 rounded-full bg-brand-accent text-white flex items-center justify-center shrink-0">
+        <Search className="w-5 h-5" />
+        <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-amber-400 fill-amber-300" />
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-bold truncate">
+          AI 輔助查詢「<span className="text-brand-accent">{query}</span>」
+        </span>
+        <span className={cn("block text-[11px] truncate", dark ? "text-zinc-400" : "text-slate-500")}>
+          依院內藥品的適應症，找出相關用藥
+        </span>
+      </span>
+      <span className="flex items-center gap-0.5 px-3 h-8 rounded-full bg-brand-accent text-white text-xs font-bold shrink-0 group-hover:brightness-110">
+        查詢
+        <ChevronRight className="w-4 h-4" />
+      </span>
+    </button>
+  );
+}
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -245,7 +284,7 @@ const HELP_SECTIONS: { title: string; lines: string[] }[] = [
   {
     title: "用症狀找藥",
     lines: [
-      "打症狀或病名（例如「偏頭痛」、「胃酸過多」），列表上方會出現「適應症圖譜查詢」。按下去會找出院內藥品資料中適應症有寫到的藥，同義詞和更細的病名也算，例如查頭痛也會找到偏頭痛用藥，找到的藥會排到前面。",
+      "打症狀或病名（例如「偏頭痛」、「胃酸過多」），列表上方會出現「AI 輔助查詢」。按下去會找出院內藥品資料中適應症有寫到的藥，同義詞和更細的病名也算，例如查頭痛也會找到偏頭痛用藥，找到的藥會排到前面。也可以打藥理分類，例如「PPI」「COX-2」。",
       "這個功能不需要 AI 金鑰。",
     ],
   },
@@ -1150,7 +1189,7 @@ const [isSyncing, setIsSyncing] = useState(false);
         kgCacheRef.current[query] = r;
         if (!cancelled) setKgResult(r);
       })
-      .catch((e) => !cancelled && setKgError(e?.message || "圖譜搜尋失敗"))
+      .catch((e) => !cancelled && setKgError(e?.message || "AI 輔助查詢失敗"))
       .finally(() => !cancelled && setIsKgSearching(false));
     return () => {
       cancelled = true;
@@ -2988,21 +3027,13 @@ ${query}`;
                 >
                   {/* 症狀查詢按鈕（由使用者點選開啟，只走知識圖譜） */}
                   {isQueryValidForAi && !isAiSymptomRequested && filteredMedications.length > 0 && (
-                    <motion.button
-                      id="ai-symptom-trigger-btn"
-                      data-tour="kg"
-                      onClick={() => setIsAiSymptomRequested(true)}
-                      initial={{ opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={kgButtonClass}
-                    >
-                      <Sparkles className="w-5 h-5 shrink-0" />
-                      <span className="flex-1 min-w-0 text-left">
-                        <span className="block text-sm font-bold">適應症圖譜查詢</span>
-                        <span className="block text-[11px] opacity-90 truncate">打的是症狀或病名？依院內藥品的適應症找藥</span>
-                      </span>
-                      <ChevronRight className="w-5 h-5 shrink-0" />
-                    </motion.button>
+                    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mb-3.5">
+                      <AiSearchButton
+                        query={searchQuery.trim()}
+                        dark={theme === "dark"}
+                        onClick={() => setIsAiSymptomRequested(true)}
+                      />
+                    </motion.div>
                   )}
 
                   {isAiSymptomRequested && (isKgSearching || kgResult || kgError) && (
@@ -3014,7 +3045,7 @@ ${query}`;
                           : "bg-brand-accent/[0.015] border-brand-accent/15 text-slate-700",
                       )}
                     >
-                      <span className="shrink-0 font-bold text-brand-accent">圖譜對應：</span>
+                      <span className="shrink-0 font-bold text-brand-accent">AI 找到的相關概念：</span>
                       {isKgSearching ? (
                         <span className="text-[11px] text-brand-accent/70 animate-pulse font-medium">搜尋中...</span>
                       ) : kgError ? (
@@ -3234,24 +3265,18 @@ ${query}`;
                       {isQueryValidForAi && !isAiSymptomRequested ? (
                         <>
                           <p className="text-brand-muted text-sm mb-5 max-w-sm">
-                            一般搜尋沒有找到。如果你打的是症狀或病名，可以改用圖譜，依院內藥品的適應症來找。
+                            一般搜尋沒有找到。如果你打的是症狀或病名，可以試試 AI 輔助查詢。
                           </p>
-                          <button
-                            data-tour="kg"
+                          <AiSearchButton
+                            query={searchQuery.trim()}
+                            dark={theme === "dark"}
                             onClick={() => setIsAiSymptomRequested(true)}
-                            className={cn(kgButtonClass, "max-w-sm")}
-                          >
-                            <Sparkles className="w-5 h-5 shrink-0" />
-                            <span className="flex-1 min-w-0 text-left">
-                              <span className="block text-sm font-bold">改用適應症圖譜查詢</span>
-                              <span className="block text-[11px] opacity-90">查「{searchQuery.trim()}」相關的院內藥品</span>
-                            </span>
-                            <ChevronRight className="w-5 h-5 shrink-0" />
-                          </button>
+                            className="max-w-sm"
+                          />
                         </>
                       ) : (
                         <p className="text-brand-muted text-sm mb-8">
-                          {isKgSearching ? "圖譜查詢中…" : "換個說法試試，例如成分學名或商品名"}
+                          {isKgSearching ? "AI 輔助查詢中…" : "換個說法試試，例如成分學名或商品名"}
                         </p>
                       )}
                     </div>
@@ -3317,7 +3342,7 @@ ${query}`;
                                 : "text-slate-400",
                             )}
                           >
-                            成分、商品名、中文名、縮寫（如 NS）或代碼都可以；打症狀可用「適應症圖譜查詢」。
+                            成分、商品名、中文名、縮寫（如 NS）或代碼都可以；打症狀可用「AI 輔助查詢」。
                           </p>
                         </div>
 
