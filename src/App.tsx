@@ -44,6 +44,8 @@ import {
 } from "lucide-react";
 import ApiKeySetup from "./components/ApiKeySetup";
 import Feedback from "./components/Feedback";
+import FavoritesPage from "./components/FavoritesPage";
+import { EMPTY_FOLDERS, mergeFolders, normalizeFolders, type FavoriteFolders } from "./lib/folders";
 import {
   GROQ_MODEL,
   GROQ_MODEL_FAST,
@@ -323,6 +325,7 @@ import {
   mergeFavorites,
   onAuthChange,
   pushRemoteUserData,
+  pushRemoteFolders,
   signInWithGoogle,
   signOut,
 } from "./lib/account";
@@ -451,7 +454,6 @@ const [isSyncing, setIsSyncing] = useState(false);
   const [isApiKeySetupOpen, setIsApiKeySetupOpen] = useState(false);
   // 免費額度暫滿時的自動重試倒數秒數（0＝未在等待）
   const [aiWaitSeconds, setAiWaitSeconds] = useState(0);
-  const [favoritesSearchQuery, setFavoritesSearchQuery] = useState("");
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (typeof window !== "undefined" && !STALE_EPHEMERAL) {
@@ -465,11 +467,32 @@ const [isSyncing, setIsSyncing] = useState(false);
     localStorage.setItem("favorites", JSON.stringify(favorites));
   }, [favorites]);
 
+  // 收藏資料夾（見 lib/folders.ts）；和收藏一樣存本機、登入時同步到帳號
+  const [favoriteFolders, setFavoriteFolders] = useState<FavoriteFolders>(() => {
+    if (STALE_EPHEMERAL) return EMPTY_FOLDERS;
+    try {
+      return normalizeFolders(JSON.parse(localStorage.getItem("favorite_folders") || "null"));
+    } catch {
+      return EMPTY_FOLDERS;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("favorite_folders", JSON.stringify(favoriteFolders));
+    } catch {}
+  }, [favoriteFolders]);
+
   const toggleFavorite = (id: string) => {
     if (!authUser) return setLoginPrompt(LOGIN_FOR_FAVORITES);
+    const removing = favorites.includes(id);
     setFavorites((prev) =>
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
     );
+    // 移出收藏時一併移出資料夾，免得之後重新收藏跑回舊資料夾
+    if (removing && favoriteFolders.assign[id]) {
+      const { [id]: _, ...assign } = favoriteFolders.assign;
+      setFavoriteFolders({ ...favoriteFolders, assign });
+    }
   };
 
   const isFavorite = (id: string) => !!authUser && favorites.includes(id);
@@ -484,6 +507,9 @@ const [isSyncing, setIsSyncing] = useState(false);
   groqApiKeyRef.current = groqApiKey;
   // 最近一次與雲端一致的收藏（JSON）；null＝尚未完成首次拉取，此時不推送。
   const lastSyncedFavRef = useRef<string | null>(null);
+  const foldersRef = useRef(favoriteFolders);
+  foldersRef.current = favoriteFolders;
+  const lastSyncedFoldersRef = useRef<string | null>(null);
 
   useEffect(() => onAuthChange(setAuthUser), []);
 
@@ -508,6 +534,7 @@ const [isSyncing, setIsSyncing] = useState(false);
   useEffect(() => {
     if (!authUserId) {
       lastSyncedFavRef.current = null;
+      lastSyncedFoldersRef.current = null;
       setAccountSync("idle");
       return;
     }
@@ -516,24 +543,39 @@ const [isSyncing, setIsSyncing] = useState(false);
       setAccountSync("syncing");
       try {
         const remote = await fetchRemoteUserData(authUserId);
+        const firstSync = !hasSyncedOnDevice(authUserId);
         const localFav = favoritesRef.current;
         const nextFav =
           remote === null
             ? localFav
-            : hasSyncedOnDevice(authUserId)
+            : !firstSync
               ? remote.favorites
               : mergeFavorites(remote.favorites, localFav);
+        // 資料夾同規則；帳號還沒存過資料夾（含資料表還沒加欄位）就沿用本機的
+        const remoteFolders = remote?.favoriteFolders ?? null;
+        const nextFolders = !remoteFolders
+          ? foldersRef.current
+          : firstSync
+            ? mergeFolders(remoteFolders, foldersRef.current)
+            : remoteFolders;
         const nextKey = remote?.groqApiKey || groqApiKeyRef.current;
 
         const patch: { favorites?: string[]; groqApiKey?: string } = {};
         if (JSON.stringify(nextFav) !== JSON.stringify(remote?.favorites ?? null)) patch.favorites = nextFav;
         if (nextKey && nextKey !== remote?.groqApiKey) patch.groqApiKey = nextKey;
         if (Object.keys(patch).length > 0) await pushRemoteUserData(authUserId, patch);
+        const foldersJson = JSON.stringify(nextFolders);
+        if (foldersJson !== JSON.stringify(remoteFolders) && (remoteFolders || nextFolders.folders.length > 0)) {
+          // 資料夾寫入失敗（例如還沒加欄位）不影響收藏同步，只留紀錄
+          await pushRemoteFolders(authUserId, nextFolders).catch((e) => console.warn("Folders push failed:", e));
+        }
         if (cancelled) return;
 
         markSyncedOnDevice(authUserId);
         lastSyncedFavRef.current = JSON.stringify(nextFav);
+        lastSyncedFoldersRef.current = foldersJson;
         setFavorites(nextFav);
+        setFavoriteFolders(nextFolders);
         if (nextKey !== groqApiKeyRef.current) applyGroqKey(nextKey);
         setAccountSync("synced");
       } catch (error) {
@@ -565,6 +607,19 @@ const [isSyncing, setIsSyncing] = useState(false);
     return () => clearTimeout(timer);
   }, [favorites, authUserId]);
 
+  // 推送資料夾：與收藏分開寫，失敗只留紀錄（資料表還沒加欄位時不影響其他同步）
+  useEffect(() => {
+    if (!authUserId || lastSyncedFoldersRef.current === null) return;
+    const json = JSON.stringify(favoriteFolders);
+    if (json === lastSyncedFoldersRef.current) return;
+    const timer = setTimeout(() => {
+      pushRemoteFolders(authUserId, favoriteFolders)
+        .then(() => (lastSyncedFoldersRef.current = json))
+        .catch((error) => console.warn("Folders push failed:", error));
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [favoriteFolders, authUserId]);
+
   // 設定/移除 AI 金鑰：登入中則同步寫回帳號。
   const updateGroqKey = async (key: string) => {
     applyGroqKey(key);
@@ -590,8 +645,11 @@ const [isSyncing, setIsSyncing] = useState(false);
   // 登出：收藏與 AI 金鑰綁定帳號，一併從這台裝置移除（公用電腦不留資料）。
   const handleSignOut = async (reason?: string) => {
     lastSyncedFavRef.current = null; // 先停止推送，避免清空的收藏被寫回帳號
+    lastSyncedFoldersRef.current = null;
     await signOut();
     setFavorites([]);
+    setFavoriteFolders(EMPTY_FOLDERS);
+    setIsFavoritesManagerOpen(false);
     applyGroqKey("");
     setAiHistory([]); // 諮詢內容可能含病人資訊，登出時一併清掉
     setOnlyFavorites(false);
@@ -782,13 +840,19 @@ const [isSyncing, setIsSyncing] = useState(false);
       isNavigatingRef.current = true;
       const state = event.state;
 
+      // 收藏頁：狀態是 favorites，或從收藏頁打開的藥（fav）→ 收藏頁留著；其他狀態都關掉
+      setIsFavoritesManagerOpen(!!state && (state.type === "favorites" || (state.type === "med" && !!state.fav)));
+
       if (!state) {
         // Initial state
         setSelectedMed(null);
         setIsAiMode(false);
       } else {
         // Navigation case
-        if (state.type === "ai_with_med") {
+        if (state.type === "favorites") {
+          setIsAiMode(false);
+          setSelectedMed(null);
+        } else if (state.type === "ai_with_med") {
           setIsAiMode(true);
           const med = medications.find((m) => m.id === state.medId);
           if (med) setSelectedMed(med); setMobileExpanded(true);
@@ -834,17 +898,36 @@ const [isSyncing, setIsSyncing] = useState(false);
     } else if (isAiMode) {
       window.history.pushState({ type: "ai" }, "");
     } else if (selectedMed) {
-      window.history.pushState({ type: "med", id: selectedMed.id }, "");
+      // fav：從收藏頁打開的，按上一頁要回到收藏頁
+      window.history.pushState({ type: "med", id: selectedMed.id, fav: isFavoritesManagerOpen }, "");
+    } else if (isFavoritesManagerOpen) {
+      if (window.history.state?.type !== "favorites") window.history.pushState({ type: "favorites" }, "");
     } else {
       // Basic HMSS mode
       window.history.replaceState({ type: "hmss" }, "");
     }
-  }, [selectedMed, isAiMode]);
+  }, [selectedMed, isAiMode, isFavoritesManagerOpen]);
+
+  // 切到 AI 助理就離開收藏頁（收藏頁蓋在主畫面上）
+  useEffect(() => {
+    if (isAiMode) setIsFavoritesManagerOpen(false);
+  }, [isAiMode]);
+
+  // 收藏頁的「返回」：是剛推進的收藏頁紀錄就退一步（跟按上一頁一樣），否則直接關
+  const closeFavoritesPage = () => {
+    if (window.history.state?.type === "favorites") window.history.back();
+    else setIsFavoritesManagerOpen(false);
+  };
 
   const [mobileExpanded, setMobileExpanded] = useState(false);
 
   // Manual close handlers
-  const closeDetail = () => { setSelectedMed(null); setMobileExpanded(false); };
+  const closeDetail = () => {
+    // 從收藏頁打開的詳情：關閉＝退一步回收藏頁，免得之後按上一頁又把剛關掉的藥打開
+    if (window.history.state?.type === "med" && window.history.state.fav) return window.history.back();
+    setSelectedMed(null);
+    setMobileExpanded(false);
+  };
   const exitAiMode = () => setIsAiMode(false);
   // -----------------------------------
 
@@ -2329,6 +2412,20 @@ ${query}`;
       <div className="flex flex-1 overflow-hidden relative">
         {/* Main Area */}
         <main className="flex-1 flex flex-col bg-transparent overflow-hidden relative">
+          {/* 收藏頁：蓋在主畫面區上，右側詳情欄照常顯示；點藥或返回都不會離開 */}
+          {isFavoritesManagerOpen && authUser && (
+            <FavoritesPage
+              theme={theme}
+              meds={favorites.map((id) => medications.find((m) => m.id === id)).filter((m): m is Medication => !!m)}
+              folders={favoriteFolders}
+              selectedId={selectedMed?.id}
+              onOpen={(med) => { setSelectedMed(med); setMobileExpanded(true); }}
+              onRemove={toggleFavorite}
+              onBack={closeFavoritesPage}
+              onChangeFolders={setFavoriteFolders}
+              codeStyle={getDosageColor}
+            />
+          )}
           <AnimatePresence mode="popLayout" initial={false}>
             {!isAiMode ? (
               <motion.div
@@ -4236,276 +4333,6 @@ ${query}`;
         </AnimatePresence>
       </div>
 
-      {/* Favorites Management Modal */}
-      <AnimatePresence>
-        {isFavoritesManagerOpen && (
-          <>
-            {/* Backdrop overlay */}
-            <motion.div
-              key="favorites-manager-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => {
-                setIsFavoritesManagerOpen(false);
-                setFavoritesSearchQuery("");
-              }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150]"
-            />
-
-            {/* Modal Dialog */}
-            <motion.div
-              key="favorites-manager-modal"
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: "spring", duration: 0.5, bounce: 0.15 }}
-              className={cn(
-                "fixed inset-x-4 top-[10%] bottom-[10%] md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[600px] md:h-[550px] rounded-3xl border shadow-2xl flex flex-col overflow-hidden z-[160]",
-                theme === "dark"
-                  ? "bg-zinc-900/95 border-white/10 text-white shadow-black/80"
-                  : "bg-white border-slate-200 text-slate-900 shadow-slate-900/20",
-              )}
-            >
-              {/* Header */}
-              <div
-                className={cn(
-                  "p-5 border-b shrink-0 flex items-center justify-between",
-                  theme === "dark"
-                    ? "border-white/5 bg-white/[0.02]"
-                    : "border-slate-100 bg-slate-50",
-                )}
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <SharpStar className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                    <h3 className="text-sm font-bold tracking-tight">
-                      我的收藏藥物管理
-                    </h3>
-                  </div>
-                  <p
-                    className={cn(
-                      "text-[10px] mt-0.5",
-                      theme === "dark" ? "text-zinc-500" : "text-slate-400",
-                    )}
-                  >
-                    在此檢視、搜尋，或編輯收藏項目。點擊項目直接查看詳情。
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setIsFavoritesManagerOpen(false);
-                    setFavoritesSearchQuery("");
-                  }}
-                  className={cn(
-                    "p-1.5 rounded-full transition-colors",
-                    theme === "dark"
-                      ? "hover:bg-white/10 text-zinc-400 hover:text-white"
-                      : "hover:bg-slate-100 text-slate-500 hover:text-slate-800",
-                  )}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Search input inside favorites */}
-              {favorites.length > 0 && (
-                <div
-                  className={cn(
-                    "p-3 px-5 border-b shrink-0 flex items-center gap-2",
-                    theme === "dark"
-                      ? "bg-zinc-950/40 border-white/5"
-                      : "bg-slate-50/50 border-slate-100",
-                  )}
-                >
-                  <Search className="w-3.5 h-3.5 opacity-40 shrink-0" />
-                  <input
-                    type="text"
-                    placeholder="搜尋我的收藏 (成分、名稱、藥碼、適應症)..."
-                    value={favoritesSearchQuery}
-                    onChange={(e) => setFavoritesSearchQuery(e.target.value)}
-                    className="flex-1 bg-transparent border-none text-[11px] focus:outline-none focus:ring-0 placeholder:opacity-50"
-                  />
-                  {favoritesSearchQuery && (
-                    <button
-                      onClick={() => setFavoritesSearchQuery("")}
-                      className="px-2 py-1 rounded-md text-[9px] font-bold bg-zinc-500/10 hover:bg-zinc-500/20"
-                    >
-                      清除
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Scrollable list of favorites */}
-              <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
-                {favorites.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center py-12">
-                    <div
-                      className={cn(
-                        "p-4 rounded-full border mb-3",
-                        theme === "dark"
-                          ? "bg-white/[0.02] border-white/5 text-zinc-700"
-                          : "bg-slate-50 border-slate-100 text-slate-300",
-                      )}
-                    >
-                      <SharpStar className="w-6 h-6 text-amber-500/30" />
-                    </div>
-                    <h4
-                      className={cn(
-                        "text-xs font-bold",
-                        theme === "dark" ? "text-zinc-400" : "text-slate-600",
-                      )}
-                    >
-                      目前無任何收藏藥物
-                    </h4>
-                    <p className="text-[10px] opacity-40 mt-1 max-w-xs">
-                      在主畫面點擊藥物卡片旁的星星，即可將其加入此清單中。
-                    </p>
-                  </div>
-                ) : (
-                  (() => {
-                    const favoritedMeds = medications.filter((m) =>
-                      isFavorite(m.id),
-                    );
-                    const query = favoritesSearchQuery.toLowerCase().trim();
-                    const filtered = favoritedMeds.filter(
-                      (m) =>
-                        m.component.toLowerCase().includes(query) ||
-                        m.code.toLowerCase().includes(query) ||
-                        m.brandName.toLowerCase().includes(query) ||
-                        (m.chineseName &&
-                          m.chineseName.toLowerCase().includes(query)) ||
-                        (m.genericName &&
-                          m.genericName.toLowerCase().includes(query)) ||
-                        (m.indications &&
-                          m.indications.toLowerCase().includes(query)),
-                    );
-
-                    if (filtered.length === 0) {
-                      return (
-                        <div className="h-full flex flex-col items-center justify-center text-center py-12">
-                          <p className="text-xs font-medium opacity-50">
-                            查無符合關鍵字的收藏項目
-                          </p>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center text-[9px] font-mono opacity-50 px-1 mb-2">
-                          <span>
-                            顯示 {filtered.length} / 共 {favoritedMeds.length}{" "}
-                            個收藏項目
-                          </span>
-                          {favoritesSearchQuery && (
-                            <span className="text-violet-500 font-bold animate-pulse">
-                              搜尋中
-                            </span>
-                          )}
-                        </div>
-
-                        <AnimatePresence mode="popLayout">
-                          {filtered.map((med) => {
-                            const dosageStyle = getDosageColor(med.code);
-                            return (
-                              <motion.div
-                                key={`manage-fav-${med.id}`}
-                                layout
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                transition={{ duration: 0.2 }}
-                                onClick={() => {
-                                  setSelectedMed(med); setMobileExpanded(true);
-                                  setIsFavoritesManagerOpen(false);
-                                  setFavoritesSearchQuery("");
-                                }}
-                                className={cn(
-                                  "w-full text-left p-3.5 rounded-2xl border transition-all text-xs flex items-center justify-between group cursor-pointer",
-                                  theme === "dark"
-                                    ? "bg-white/5 border-white/5 hover:bg-white/10 hover:border-brand-accent/30"
-                                    : "bg-slate-50 border-slate-100 hover:bg-slate-100 hover:border-brand-accent/30",
-                                )}
-                              >
-                                <div className="flex items-center gap-3 min-w-0 flex-1">
-                                  <div
-                                    className={cn(
-                                      "px-2 py-[2px] rounded-lg text-[9px] font-black tracking-widest uppercase shrink-0 border",
-                                      theme === "dark"
-                                        ? "border-white/20"
-                                        : "border-slate-200",
-                                      dosageStyle.text,
-                                      dosageStyle.bg,
-                                    )}
-                                  >
-                                    {med.code}
-                                  </div>
-
-                                  <div className="min-w-0">
-                                    <p
-                                      className={cn(
-                                        "font-bold truncate text-xs",
-                                        theme === "dark"
-                                          ? "text-zinc-100"
-                                          : "text-slate-800",
-                                      )}
-                                    >
-                                      {med.component}
-                                    </p>
-                                    <p className="text-[10px] opacity-60 truncate mt-0.5">
-                                      {med.brandName}{" "}
-                                      {med.chineseName
-                                        ? `(${med.chineseName})`
-                                        : ""}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 shrink-0 ml-3">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleFavorite(med.id);
-                                    }}
-                                    className={cn(
-                                      "p-2 rounded-xl border transition-all active:scale-75 hover:bg-red-500/15 hover:border-red-500/30 text-zinc-500 hover:text-red-500",
-                                      theme === "dark"
-                                        ? "border-white/5 bg-white/[0.02]"
-                                        : "border-slate-200 bg-white",
-                                    )}
-                                    title="移出收藏"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <ChevronRight className="w-4 h-4 opacity-30 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-brand-secondary-accent" />
-                                </div>
-                              </motion.div>
-                            );
-                          })}
-                        </AnimatePresence>
-                      </div>
-                    );
-                  })()
-                )}
-              </div>
-
-              {/* Footer */}
-              {favorites.length > 0 && (
-                <div
-                  className={cn(
-                    "p-4 border-t font-mono text-[9px] opacity-40 text-center shrink-0",
-                    theme === "dark" ? "border-white/5" : "border-slate-100",
-                  )}
-                >
-                  Total {favorites.length} medicines pinned in local preferences
-                </div>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
       <ApiKeySetup
         open={isApiKeySetupOpen}

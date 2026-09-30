@@ -3,6 +3,7 @@
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { markEphemeralAccount, setDeviceRemembered } from "./device";
+import { normalizeFolders, type FavoriteFolders } from "./folders";
 
 export type { User };
 
@@ -59,18 +60,23 @@ export async function signOut(): Promise<void> {
 export interface RemoteUserData {
   favorites: string[];
   groqApiKey: string;
+  favoriteFolders: FavoriteFolders | null; // null＝帳號還沒存過資料夾（或資料表還沒加這個欄位）
 }
 
 /** 讀取帳號資料；尚無資料回傳 null。 */
 export async function fetchRemoteUserData(userId: string): Promise<RemoteUserData | null> {
   const { data, error } = await supabase
     .from("user_data")
-    .select("favorites, groq_api_key")
+    .select("*") // 用 * 而不指名 favorite_folders：還沒加欄位時也不會整個讀取失敗
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
   return data
-    ? { favorites: (data.favorites as string[]) || [], groqApiKey: (data.groq_api_key as string) || "" }
+    ? {
+        favorites: (data.favorites as string[]) || [],
+        groqApiKey: (data.groq_api_key as string) || "",
+        favoriteFolders: data.favorite_folders ? normalizeFolders(data.favorite_folders) : null,
+      }
     : null;
 }
 
@@ -83,6 +89,17 @@ export async function pushRemoteUserData(
   if (patch.favorites !== undefined) row.favorites = patch.favorites;
   if (patch.groqApiKey !== undefined) row.groq_api_key = patch.groqApiKey || null;
   const { error } = await supabase.from("user_data").upsert(row);
+  if (error) throw error;
+}
+
+/**
+ * 寫回收藏資料夾。單獨一次寫入：資料表還沒加 favorite_folders 欄位時只有這裡失敗，
+ * 不會連帶讓收藏和金鑰同步失敗。
+ */
+export async function pushRemoteFolders(userId: string, folders: FavoriteFolders): Promise<void> {
+  const { error } = await supabase
+    .from("user_data")
+    .upsert({ user_id: userId, favorite_folders: folders, updated_at: new Date().toISOString() });
   if (error) throw error;
 }
 
