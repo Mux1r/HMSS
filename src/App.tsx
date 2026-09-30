@@ -2404,19 +2404,18 @@ ${query}`;
               {/* Sliding background */}
               <motion.div
                 layoutId="activeTab"
-                className={cn(
-                  "absolute h-[calc(100%-8px)] rounded-lg shadow-lg z-0",
-                  isAiMode
-                    ? "bg-gradient-to-r from-violet-600 to-orange-500"
-                    : "bg-gradient-to-r from-teal-600 to-cyan-500",
-                )}
+                className="absolute h-[calc(100%-8px)] rounded-lg shadow-lg z-0 overflow-hidden"
                 initial={false}
                 animate={{
                   left: isAiMode ? "calc(50% + 2px)" : "4px",
                   width: "calc(50% - 6px)",
                 }}
                 transition={{ type: "spring", bounce: 0.1, duration: 0.6 }}
-              />
+              >
+                {/* 兩層顏色交叉淡入淡出，切換時顏色會慢慢變過去 */}
+                <span className={cn("absolute inset-0 bg-gradient-to-r from-teal-600 to-cyan-500 transition-opacity duration-500", isAiMode ? "opacity-0" : "opacity-100")} />
+                <span className={cn("absolute inset-0 bg-gradient-to-r from-violet-600 to-orange-500 transition-opacity duration-500", isAiMode ? "opacity-100" : "opacity-0")} />
+              </motion.div>
 
               <button
                 onClick={exitAiMode}
@@ -2499,14 +2498,28 @@ ${query}`;
                         if (input) input.blur();
                       }}
                       className={cn(
-                        "relative flex-1 group dropdown-container p-[1.5px] rounded-2xl transition-all shadow-2xl",
-                        isAiMode
-                          ? "bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 focus-within:from-blue-500 focus-within:via-purple-500 focus-within:to-orange-500 shadow-purple-500/20"
-                          : theme === "dark"
-                          ? "bg-gradient-to-r from-teal-600/60 to-cyan-500/60 focus-within:from-teal-600 focus-within:to-cyan-500 shadow-brand-accent/20"
-                          : "bg-gradient-to-r from-teal-600/40 to-cyan-500/40 focus-within:from-teal-605 focus-within:to-cyan-500/70 shadow-slate-200",
+                        "relative flex-1 group dropdown-container p-[1.5px] rounded-2xl transition-shadow duration-500 shadow-2xl",
+                        isAiMode ? "shadow-purple-500/20" : theme === "dark" ? "shadow-brand-accent/20" : "shadow-slate-200",
                       )}
                     >
+                      {/* 外框兩層漸層交叉淡入淡出：切換模式時框線顏色慢慢變過去 */}
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "absolute inset-0 rounded-2xl bg-gradient-to-r transition-opacity duration-500",
+                          theme === "dark"
+                            ? "from-teal-600/60 to-cyan-500/60 group-focus-within:from-teal-600 group-focus-within:to-cyan-500"
+                            : "from-teal-600/40 to-cyan-500/40 group-focus-within:to-cyan-500/70",
+                          isAiMode ? "opacity-0" : "opacity-100",
+                        )}
+                      />
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 group-focus-within:from-blue-500 group-focus-within:via-purple-500 group-focus-within:to-orange-500 transition-opacity duration-500",
+                          isAiMode ? "opacity-100" : "opacity-0",
+                        )}
+                      />
                       {isAiMode ? (
                         <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 z-10 text-purple-400" />
                       ) : (
@@ -2535,7 +2548,7 @@ ${query}`;
                           }
                         }}
                         className={cn(
-                          "w-full backdrop-blur-3xl border-none rounded-[15px] pl-11 py-3 text-sm focus:outline-none focus:ring-0 transition-all font-medium",
+                          "relative w-full backdrop-blur-3xl border-none rounded-[15px] pl-11 py-3 text-sm focus:outline-none focus:ring-0 transition-all font-medium",
                           (isAiMode ? aiQuery : searchQuery) ? "pr-20 md:pr-12" : "pr-4 md:pr-4",
                           theme === "dark"
                             ? "bg-black/90 text-white placeholder:text-zinc-600"
@@ -2571,12 +2584,14 @@ ${query}`;
                     <div className="relative filter-popover-container">
                       <button
                         data-tour="filter"
+                        aria-label="篩選"
+                        title="篩選"
                         onClick={(e) => {
                           e.stopPropagation();
                           setShowFilters(!showFilters);
                         }}
                         className={cn(
-                          "h-[46px] px-4 rounded-xl border transition-all flex items-center justify-center gap-2 shadow-sm font-bold text-xs uppercase tracking-widest",
+                          "relative h-[46px] w-[46px] rounded-full border transition-all flex items-center justify-center shadow-sm",
                           showFilters ||
                             selectedSystem !== "全部系統" ||
                             selectedClass !== "全部藥理" ||
@@ -2591,7 +2606,6 @@ ${query}`;
                         )}
                       >
                         <Filter className="w-4 h-4" />
-                        <span className="hidden sm:inline">篩選</span>
                         {(selectedSystem !== "全部系統" ||
                           selectedClass !== "全部藥理" ||
                           selectedDosageForms.length > 0 ||
@@ -2992,9 +3006,11 @@ ${query}`;
                         form="main-search-form"
                         disabled={isAiLoading || !aiQuery.trim()}
                         aria-label="送出"
-                        className="h-[46px] px-4 shrink-0 rounded-xl border border-transparent bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 text-white flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-widest shadow-lg shadow-purple-500/20 hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="h-[46px] w-[46px] shrink-0 rounded-full p-[1.5px] bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed group/send"
                       >
-                        {isAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}<span className="hidden sm:inline">送出</span>
+                        <span className={cn("w-full h-full rounded-full flex items-center justify-center text-purple-500 transition-colors", theme === "dark" ? "bg-zinc-950 group-hover/send:bg-zinc-900" : "bg-white group-hover/send:bg-purple-50")}>
+      {isAiLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
+    </span>
                       </button>
                     )}
                   </div>
