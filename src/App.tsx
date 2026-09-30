@@ -3428,17 +3428,17 @@ ${query}`;
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ ease: [0.2, 0.8, 0.2, 1], duration: 0.5 }}
-                className="flex-1 flex flex-col overflow-hidden px-4 md:px-8 pb-4 md:pb-8 pt-[72px] md:pt-[84px]"
+                className="flex-1 flex flex-col overflow-hidden pt-[72px] md:pt-[80px]"
               >
                 <div className="max-w-4xl mx-auto w-full flex flex-col h-full gap-6">
                   <div className="flex-1 min-h-0 flex flex-col relative">
-                    <div className="flex-1 p-[1px] rounded-[32px] bg-gradient-to-br from-blue-500/15 via-purple-500/15 to-orange-500/15 overflow-hidden shadow-2xl">
-                      <div className="h-full w-full bg-brand-bg/40 backdrop-blur-3xl rounded-[31px] overflow-hidden flex flex-col relative">
+                    <div className="flex-1 min-h-0 flex flex-col">
+                      <div className="h-full w-full flex flex-col relative">
 
                         {/* Content Area */}
                         <div
                           className={cn(
-                            "flex-1 overflow-y-auto custom-scrollbar pt-5 px-4 md:px-8 transition-all duration-500",
+                            "flex-1 overflow-y-auto custom-scrollbar pt-2 px-3 md:px-5 transition-all duration-500",
                             selectedMed ? "pb-[40vh] md:pb-8" : "pb-8",
                           )}
                         >
