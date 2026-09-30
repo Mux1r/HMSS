@@ -497,6 +497,22 @@ const [isSyncing, setIsSyncing] = useState(false);
 
   const isFavorite = (id: string) => !!authUser && favorites.includes(id);
 
+  // 「點星星收藏」提示：按過任何一次星星就記住，不再出現
+  const [favHintSeen, setFavHintSeen] = useState(() => {
+    try {
+      return localStorage.getItem("hmss_fav_hint_seen") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const markFavHintSeen = () => {
+    if (favHintSeen) return;
+    setFavHintSeen(true);
+    try {
+      localStorage.setItem("hmss_fav_hint_seen", "1");
+    } catch {}
+  };
+
   // --- Google 登入：收藏與 AI 金鑰綁定帳號 ---
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [accountSync, setAccountSync] = useState<"idle" | "syncing" | "synced" | "error">("idle");
@@ -3029,7 +3045,7 @@ ${query}`;
                   {displayedMedications.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3">
                       <AnimatePresence mode="popLayout" initial={false}>
-                        {displayedMedications.map((med) => {
+                        {displayedMedications.map((med, medIndex) => {
                           const dosageStyle = getDosageColor(med.code);
                           return (
                             <motion.div
@@ -3110,24 +3126,35 @@ ${query}`;
                                       </span>
                                     </div>
 
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleFavorite(med.id);
-                                      }}
-                                      className="p-1 -mr-1 group/fav cursor-pointer"
-                                    >
-                                      <SharpStar
-                                        className={cn(
-                                          "w-3.5 h-3.5 transition-colors",
-                                          isFavorite(med.id)
-                                            ? "fill-amber-400 text-amber-400"
-                                            : theme === "dark"
-                                              ? "text-zinc-800 group-hover/fav:text-amber-400/50"
-                                              : "text-slate-200 group-hover/fav:text-amber-400/50",
-                                        )}
-                                      />
-                                    </button>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      {/* 還沒按過星星的人：第一張卡片旁提示一次，按過任何星星就不再出現 */}
+                                      {medIndex === 0 && !favHintSeen && favorites.length === 0 && (
+                                        <span className="text-[11px] font-bold text-amber-500 animate-pulse whitespace-nowrap">
+                                          點星星收藏 →
+                                        </span>
+                                      )}
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          markFavHintSeen();
+                                          toggleFavorite(med.id);
+                                        }}
+                                        aria-label={isFavorite(med.id) ? `把 ${med.code} 移出收藏` : `把 ${med.code} 加入收藏`}
+                                        title={isFavorite(med.id) ? "移出收藏" : "加入收藏"}
+                                        className="p-1.5 -m-1 rounded-lg group/fav cursor-pointer hover:bg-amber-400/15 transition-colors"
+                                      >
+                                        <SharpStar
+                                          className={cn(
+                                            "w-5 h-5 transition-colors",
+                                            isFavorite(med.id)
+                                              ? "fill-amber-400 text-amber-400"
+                                              : theme === "dark"
+                                                ? "text-amber-400/60 group-hover/fav:text-amber-400"
+                                                : "text-amber-400/80 group-hover/fav:text-amber-500",
+                                          )}
+                                        />
+                                      </button>
+                                    </div>
                                   </div>
 
                                   <div className="flex items-center justify-between mb-0.5 gap-1.5">
