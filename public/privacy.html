@@ -27,7 +27,7 @@
   <p>HMSS（院內藥品查詢系統，網址 <a href="https://mux1r.github.io/HMSS/">https://mux1r.github.io/HMSS/</a>）是給醫療專業人員查詢院內藥品的工具。這一頁說明網站會收集哪些資料、存在哪裡、給誰用。網站沒有廣告，也沒有使用任何追蹤或分析工具，不會販售或分享你的資料給其他人做行銷。</p>
 
   <h2>不登入時</h2>
-  <p>AI 用藥建議的對話紀錄和外觀設定只存在你這台裝置的瀏覽器裡，不會傳到我們的伺服器，清除瀏覽器資料就會一起刪掉。收藏和自己的 AI 金鑰要登入後才能使用。</p>
+  <p>AI 建議的對話紀錄和外觀設定只存在你這台裝置的瀏覽器裡，不會傳到我們的伺服器，清除瀏覽器資料就會一起刪掉。收藏和自己的 AI 金鑰要登入後才能使用。</p>
 
   <h2>用 Google 登入時</h2>
   <ul>
@@ -42,8 +42,8 @@
   <ul>
     <li><strong>一般查藥</strong>：在你的瀏覽器裡比對，不會送出查詢內容。</li>
     <li><strong>AI 輔助查詢</strong>：查詢文字會送到我們在 Supabase 的服務，再交給 <a href="https://openrouter.ai/privacy">OpenRouter</a> 轉成向量後比對，不會記錄你是誰。</li>
-    <li><strong>AI 用藥建議（有自己的金鑰）</strong>：你輸入的病人狀況，會用你自己的 Groq 金鑰直接從瀏覽器送到 <a href="https://groq.com/privacy-policy/">Groq</a>，不經過我們的伺服器，適用 Groq 的隱私權政策。</li>
-    <li><strong>AI 用藥建議（訪客額度）</strong>：沒有自己的金鑰時，內容會先送到我們在 Supabase 的服務，再用網站的金鑰轉給 Groq。我們不儲存查詢內容，只記錄這台裝置的隨機代碼、使用類別和時間，用來計算每小時的次數。</li>
+    <li><strong>AI 建議（有自己的金鑰）</strong>：你輸入的病人狀況，會用你自己的 Groq 金鑰直接從瀏覽器送到 <a href="https://groq.com/privacy-policy/">Groq</a>，不經過我們的伺服器，適用 Groq 的隱私權政策。</li>
+    <li><strong>AI 建議（訪客額度）</strong>：沒有自己的金鑰時，內容會先送到我們在 Supabase 的服務，再用網站的金鑰轉給 Groq。我們不儲存查詢內容，只記錄這台裝置的隨機代碼、使用類別和時間，用來計算每小時的次數。</li>
   </ul>
   <p><strong>請不要輸入病人的姓名、病歷號、身分證字號等可以辨識個人的資料。</strong></p>
 

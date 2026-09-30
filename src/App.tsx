@@ -173,9 +173,9 @@ const normalizeRoute = (raw: string): string => {
 const TOUR_STEPS: TourStep[] = [
   { target: "search", title: "查藥", body: "打藥名、成分、代碼或症狀就能查。現在先幫你填了「頭痛」當例子。" },
   { target: "fav-star", title: "收藏", body: "點星星把常用的藥加入收藏（要先登入）。收藏可以在左上角 ☰ 的控制中心裡分資料夾整理。" },
-  { target: "kg", title: "AI 輔助查詢", body: "打的是症狀或病名時按這裡，AI 會依院內藥品的適應症找藥，連同義詞和更細的病名也會找到。不需要金鑰，也不佔 AI 用藥建議的次數。" },
+  { target: "kg", title: "AI 輔助查詢", body: "打的是症狀或病名時按這裡，AI 會依院內藥品的適應症找藥，連同義詞和更細的病名也會找到。不需要金鑰，也不佔 AI 建議的次數。" },
   { target: "filter", title: "篩選", body: "先選生理系統，再選藥理分類，也可以加上劑型，一起縮小範圍。" },
-  { target: "mode", title: "AI 用藥建議", body: "切到 AI 用藥建議，輸入病人狀況，會先整理問題、請你勾選症狀，再建議院內用藥。沒登入每小時可以用 3 次。" },
+  { target: "mode", title: "AI 建議", body: "切到 AI 建議，輸入病人狀況，會先整理問題、請你勾選症狀，再建議院內用藥。沒登入每小時可以用 3 次。" },
   { target: "menu", title: "控制中心", body: "登入、收藏、AI 金鑰、外觀、意見回報都在這裡。" },
   { target: "help", title: "幫助", body: "想再看一次這個教學，或查每個功能的說明，都在這裡。" },
 ];
@@ -188,7 +188,7 @@ const LOGIN_FOR_FAVORITES = {
 };
 const LOGIN_FOR_KEY = {
   title: "登入後才能設定 AI 金鑰",
-  body: "金鑰會存在你的帳號，不會留在這台電腦。沒登入也能用 AI 用藥建議，每小時可以用 3 次。",
+  body: "金鑰會存在你的帳號，不會留在這台電腦。沒登入也能用 AI 建議，每小時可以用 3 次。",
   dismiss: "先不要",
 };
 
@@ -289,9 +289,9 @@ const HELP_SECTIONS: { title: string; lines: string[] }[] = [
     ],
   },
   {
-    title: "AI 用藥建議",
+    title: "AI 建議",
     lines: [
-      "在最上方切到「AI 用藥建議」，輸入病人的狀況，例如「58 歲女性，飯後血糖高」。",
+      "在最上方切到「AI 建議」，輸入病人的狀況，例如「58 歲女性，飯後血糖高」。",
       "AI 會先整理出主要問題，並列出幾個可能的伴隨症狀，請勾選病人有的。這些是用來判斷病因的，不會因此多開藥。也可以填病人的族群、腎肝功能、過敏和目前用藥，AI 會避開禁忌。",
       "建議分成「首選」和「替代」，並對應到院內品項。標示「同類替代」或「依 ATC 比對」的不是 AI 原本建議的成分，使用前請自己確認。長按藥卡（電腦按右鍵）可以複製藥品碼。",
       "沒登入也能用：訪客每小時可以產生 3 次用藥建議（用網站提供的額度）。登入後可以設定自己的免費 Groq 金鑰，就不受次數限制，設定大約一分鐘，之後可以在控制中心修改。AI 建議僅供參考，處方前請依臨床判斷和仿單確認。",
@@ -961,7 +961,7 @@ const [isSyncing, setIsSyncing] = useState(false);
     }
   }, [selectedMed, isAiMode, isFavoritesManagerOpen]);
 
-  // 切到 AI 用藥建議就離開收藏頁（收藏頁蓋在主畫面上）
+  // 切到 AI 建議就離開收藏頁（收藏頁蓋在主畫面上）
   useEffect(() => {
     if (isAiMode) setIsFavoritesManagerOpen(false);
   }, [isAiMode]);
@@ -1055,7 +1055,7 @@ const [isSyncing, setIsSyncing] = useState(false);
       sessionStorage.setItem("hmss_guest_ai_notice", "1");
       setLoginPrompt({
         title: "你現在是訪客",
-        body: "AI 用藥建議可以先用網站提供的額度，每小時可以用 3 次。登入並設定自己的免費 Groq 金鑰，就不受次數限制。",
+        body: "AI 建議可以先用網站提供的額度，每小時可以用 3 次。登入並設定自己的免費 Groq 金鑰，就不受次數限制。",
         dismiss: "先用訪客額度",
       });
     }
@@ -2395,7 +2395,7 @@ ${query}`;
             <div
               data-tour="mode"
               className={cn(
-                "p-1 rounded-xl flex items-center gap-1 border relative w-[15rem] sm:w-72 transition-colors",
+                "p-1 rounded-xl flex items-center gap-1 border relative w-52 sm:w-64 transition-colors",
                 theme === "dark"
                   ? "bg-white/5 border-white/10"
                   : "bg-slate-100 border-slate-200",
@@ -2437,7 +2437,7 @@ ${query}`;
                   isAiMode ? "text-white" : "text-zinc-500 hover:text-zinc-300",
                 )}
               >
-                <span className="whitespace-nowrap">AI 用藥建議</span>
+                <span className="whitespace-nowrap">AI 建議</span>
               </button>
             </div>
 
@@ -2566,7 +2566,7 @@ ${query}`;
                     </form>
 
                     {/* Compact Filter Toggle */}
-                    {/* 右邊的位置固定：藥品查詢是「篩選」，AI 用藥建議換成同大小的「送出」 */}
+                    {/* 右邊的位置固定：藥品查詢是「篩選」，AI 建議換成同大小的「送出」 */}
                     {!isAiMode ? (
                     <div className="relative filter-popover-container">
                       <button
@@ -4454,7 +4454,7 @@ ${query}`;
                       "text-[10px] mt-0.5",
                       theme === "dark" ? "text-zinc-500" : "text-slate-400",
                     )}>
-                      查藥、用症狀找藥、AI 用藥建議、收藏與登入
+                      查藥、用症狀找藥、AI 建議、收藏與登入
                     </p>
                   </div>
                 </div>
