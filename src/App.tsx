@@ -1909,7 +1909,7 @@ ${query}`;
             exit={{ opacity: 0, y: 24 }}
             transition={{ type: "spring", damping: 32, stiffness: 300 }}
             className={cn(
-              "fixed inset-0 z-[110] flex flex-col backdrop-blur-md",
+              "fixed inset-0 z-[110] flex flex-col backdrop-blur-md pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
               theme === "dark" ? "bg-zinc-950/30 text-white" : "bg-white/30 text-slate-900",
             )}
           >
@@ -2282,7 +2282,7 @@ ${query}`;
       {/* Header */}
       <header
         className={cn(
-          "h-16 border-b flex items-center justify-between px-4 md:px-6 shrink-0 z-50 shadow-2xl transition-all duration-500",
+          "h-[calc(4rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] border-b flex items-center justify-between px-4 md:px-6 shrink-0 z-50 shadow-2xl transition-all duration-500",
           isAiMode
             ? "border-purple-500/20 bg-brand-header/40 backdrop-blur-3xl shadow-purple-500/5"
             : cn(
@@ -4165,7 +4165,7 @@ ${query}`;
                   "shadow-[0_-8px_50px_rgba(0,0,0,0.55)]",
                   mobileExpanded
                     ? "w-full rounded-t-3xl mb-0"
-                    : "rounded-full mb-5",
+                    : "rounded-full mb-[calc(1.25rem+env(safe-area-inset-bottom))]",
                   theme === "dark"
                     ? "border-white/[0.12]"
                     : mobileExpanded ? "bg-white border-slate-200" : "bg-white/95 border-slate-200",
@@ -4454,7 +4454,7 @@ ${query}`;
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -30, scale: 0.9 }}
             transition={{ type: "spring", damping: 25, stiffness: 350 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-xl backdrop-blur-md text-xs font-medium border select-none"
+            className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-xl backdrop-blur-md text-xs font-medium border select-none"
             style={{
               backgroundColor: theme === "dark" ? "rgba(24, 24, 27, 0.9)" : "rgba(255, 255, 255, 0.9)",
               borderColor: theme === "dark" ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.08)",
