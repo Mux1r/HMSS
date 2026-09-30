@@ -200,6 +200,7 @@ const HELP_SECTIONS: { title: string; lines: string[] }[] = [
       "Google 的登入畫面會寫「繼續前往 ○○○.supabase.co」，那是本站使用的登入服務，可以放心繼續。",
       "登出時，這台裝置上的收藏和金鑰會一起清掉，帳號裡的不受影響，所以在公用電腦上用完記得登出。",
       "網站管理者在後台看得到帳號裡的資料，包括存進去的 AI 金鑰；介意的話可以不登入，資料就只留在這台裝置上。",
+      "完整說明請見控制中心最下方的「隱私權政策」。",
     ],
   },
   {
@@ -1910,7 +1911,10 @@ ${query}`;
                 </div>
 
                 <p className={cn("text-center text-[10px] pt-1", muted)}>
-                  HMSS v{__APP_VERSION__} · 僅供醫療專業人員參考
+                  HMSS v{__APP_VERSION__} · 僅供醫療專業人員參考 ·{" "}
+                  <a href="./privacy.html" target="_blank" rel="noopener" className="underline underline-offset-2 hover:text-brand-accent">
+                    隱私權政策
+                  </a>
                 </p>
               </div>
             </div>
