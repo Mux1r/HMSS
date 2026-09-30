@@ -402,6 +402,8 @@ export default function App() {
   const [selectedMed, setSelectedMed] = useState<Medication | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 const [isSyncing, setIsSyncing] = useState(false);
+  // 本機藥品資料已確認與雲端一致（背景比對或同步成功後），按鈕改顯示「已更新」
+  const [isDataFresh, setIsDataFresh] = useState(false);
   const [isSystemOpen, setIsSystemOpen] = useState(false);
   const [isClassOpen, setIsClassOpen] = useState(false);
   const [isDosageFormOpen, setIsDosageFormOpen] = useState(false);
@@ -1049,6 +1051,7 @@ const [isSyncing, setIsSyncing] = useState(false);
       await localMedicationService.saveAll(meds, hash);
       setMedications(meds);
       setImportStatus(`同步成功！已更新 ${meds.length} 筆資料`);
+      setIsDataFresh(true);
     } catch (error) {
       setImportStatus("同步失敗，請檢查網路連線");
       console.error(error);
@@ -1063,7 +1066,9 @@ const [isSyncing, setIsSyncing] = useState(false);
       localMedicationService.fetchFromSupabase(),
       localMedicationService.getStoredHash(),
     ]);
-    if (meds.length === 0 || hash === oldHash) return;
+    if (meds.length === 0) return;
+    setIsDataFresh(true);
+    if (hash === oldHash) return;
     await localMedicationService.saveAll(meds, hash);
     setMedications(meds);
     const { added, changed, removed } = diffMedications(stored, meds);
@@ -1091,6 +1096,7 @@ const [isSyncing, setIsSyncing] = useState(false);
           const { meds, hash } = await localMedicationService.fetchFromSupabase();
           await localMedicationService.saveAll(meds, hash);
           setMedications(meds);
+          setIsDataFresh(true);
         }
       } catch (error) {
         console.error("Failed to load local database:", error);
@@ -1936,7 +1942,7 @@ ${query}`;
                     <div className="min-w-0">
                       <p className="text-sm font-bold">藥品資料</p>
                       <p className={cn("text-[11px] truncate", muted)}>
-                        {importStatus || `${medications.length} 筆，開網站時自動更新`}
+                        {importStatus || `${medications.length} 筆，${isDataFresh ? "已是最新" : "開網站時自動更新"}`}
                       </p>
                     </div>
                     <button
@@ -1947,8 +1953,14 @@ ${query}`;
                         theme === "dark" ? "bg-emerald-500/15 text-emerald-400" : "bg-emerald-500/10 text-emerald-600",
                       )}
                     >
-                      {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
-                      同步
+                      {isSyncing ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : isDataFresh ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : (
+                        <Database className="w-3.5 h-3.5" />
+                      )}
+                      {isSyncing ? "同步中" : isDataFresh ? "已更新" : "同步"}
                     </button>
                   </div>
 
@@ -2167,14 +2179,22 @@ ${query}`;
         <div className="flex items-center gap-4">
           <button
             onClick={() => setIsSettingsOpen(true)}
+            aria-label={authUser ? "控制中心" : "控制中心（尚未登入）"}
             className={cn(
-              "p-2 rounded-xl border transition-all duration-300",
+              "relative p-2 rounded-xl border transition-all duration-300",
               theme === "dark"
                 ? "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white"
                 : "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700",
             )}
           >
             <Menu className="w-5 h-5" />
+            {/* 沒登入：右上角閃爍的點，提醒可以登入 */}
+            {!authUser && (
+              <span className="absolute -top-1 -right-1 flex h-3 w-3" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75 animate-ping" />
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-500" />
+              </span>
+            )}
           </button>
 
           <div className="flex items-center gap-6">
