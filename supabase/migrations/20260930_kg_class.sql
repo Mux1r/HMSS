@@ -1,6 +1,6 @@
 -- 知識圖加入藥理機轉類別（ATC 4/5 碼，type = drug_class），藥以 in_class 連到所屬類別。
 -- kg_search 找藥時除了 treats 也走 in_class：查「COX-2」「質子幫浦抑制劑」會命中類別節點，再找到類別內的藥。
--- 其餘邏輯與 20260925000000_kg.sql 相同。
+-- 另外概念命中改成相對門檻（見 hits），其餘邏輯與 20260925000000_kg.sql 相同。
 create or replace function kg_search(query_embedding vector(4096), query_text text, match_count int default 12)
 returns jsonb
 language sql stable
@@ -14,8 +14,10 @@ with scored as materialized (
   from kg_nodes n
 ),
 hits as (
+  -- 只收跟第一名差距 0.35 以內的：第一名很明確時（如 COX-2 類別 0.82），後面 0.4 多的雜訊就不列
   select id, label, type, score from scored
-  where kind = 'concept' and score >= 0.25
+  where kind = 'concept'
+    and score >= greatest(0.25, (select max(score) from scored where kind = 'concept') - 0.35)
   order by score desc limit match_count
 ),
 kin as (

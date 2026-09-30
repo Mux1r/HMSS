@@ -1,5 +1,6 @@
 import { get, set } from 'idb-keyval';
 import { supabase } from '../lib/supabase';
+import { mechanismKey } from '../lib/medicalKeywords';
 
 const STORAGE_KEY = 'hosp_medications_v2';
 const HASH_KEY = 'hosp_medications_hash';
@@ -192,7 +193,10 @@ export interface KgResult {
 
 /** 知識圖向量搜尋（Edge Function kg-search）：症狀/白話 → 概念 → 適應症有寫到的院內藥品。 */
 export async function searchKg(q: string): Promise<KgResult> {
-  const { data, error } = await supabase.functions.invoke('kg-search', { body: { q } });
+  // 附上整理過的縮寫（「Cox 2」→「cox2」、「ACE inhibitor」→「acei」），讓圖上機轉類別的縮寫別名能字面命中
+  const key = mechanismKey(q);
+  const body = { q: key && key !== q.toLowerCase() ? `${q} ${key}` : q };
+  const { data, error } = await supabase.functions.invoke('kg-search', { body });
   if (error) throw new Error(`圖譜搜尋失敗: ${error.message}`);
   const hits: Record<string, number> = {};
   for (const { code, score } of [...(data?.links || []), ...(data?.drugs || [])]) {
