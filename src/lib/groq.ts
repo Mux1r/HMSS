@@ -1,7 +1,7 @@
 // Groq 呼叫：使用者自備的免費金鑰，瀏覽器直連 api.groq.com（官方允許 CORS）。
 // 金鑰依「記住這台裝置」存 localStorage 或 sessionStorage（見 device.ts）；登入 Google 時另存於帳號。
 // 沒登入又沒金鑰的訪客用 GUEST_KEY：改走 Edge Function ai-proxy，用網站的金鑰、限每小時次數。
-import { deviceStorage } from "./device.ts";
+import { deviceStorage, isDeviceRemembered } from "./device.ts";
 
 // llama-3.3-70b-versatile 已於 2026-08-16 被 Groq 下架，改用官方建議替代模型。
 // 用藥建議（準確度優先）用 120B；問題拆解等輕量任務用 20B。
@@ -38,6 +38,16 @@ export function parseRetryAfter(header: string | null, message: string): number 
 }
 
 export function loadGroqKey(): string {
+  // AI 金鑰改為登入後才能設定。沒被「記住」的裝置上若 localStorage 還有金鑰，
+  // 是舊版時訪客貼的（公用電腦上等於外流）→ 清掉；公用電腦登入中的金鑰在 sessionStorage，不受影響。
+  if (!isDeviceRemembered()) {
+    try {
+      localStorage.removeItem(KEY_STORAGE);
+      return sessionStorage.getItem(KEY_STORAGE) || "";
+    } catch {
+      return "";
+    }
+  }
   return deviceStorage.getItem(KEY_STORAGE) || "";
 }
 

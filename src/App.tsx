@@ -40,6 +40,7 @@ import {
   KeyRound,
   MessageSquareWarning,
   Monitor,
+  Lock,
 } from "lucide-react";
 import ApiKeySetup from "./components/ApiKeySetup";
 import Feedback from "./components/Feedback";
@@ -165,6 +166,18 @@ const normalizeRoute = (raw: string): string => {
 };
 
 
+// 需要登入時的提示文字
+const LOGIN_FOR_FAVORITES = {
+  title: "登入後才能收藏",
+  body: "收藏會存在你的帳號，換電腦登入也看得到；在公用電腦上也不會留給下一個人。",
+  dismiss: "先不要",
+};
+const LOGIN_FOR_KEY = {
+  title: "登入後才能設定 AI 金鑰",
+  body: "金鑰會存在你的帳號，不會留在這台電腦。沒登入也能用 AI 助理，每小時可以產生 3 次用藥建議。",
+  dismiss: "先不要",
+};
+
 function GoogleIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 48 48" className={className} aria-hidden="true">
@@ -228,13 +241,13 @@ const HELP_SECTIONS: { title: string; lines: string[] }[] = [
       "在最上方切到「AI 助理」，輸入病人的狀況，例如「58 歲女性，飯後血糖高」。",
       "AI 會先整理出主要問題，並列出幾個可能的伴隨症狀，請勾選病人有的。這些是用來判斷病因的，不會因此多開藥。也可以填病人的族群、腎肝功能、過敏和目前用藥，AI 會避開禁忌。",
       "建議分成「首選」和「替代」，並對應到院內品項。標示「同類替代」或「依 ATC 比對」的不是 AI 原本建議的成分，使用前請自己確認。長按藥卡（電腦按右鍵）可以複製藥品碼。",
-      "沒登入也能用：訪客每小時可以產生 3 次用藥建議（用網站提供的額度）。登入並設定自己的免費 Groq 金鑰就不受次數限制，設定大約一分鐘，之後可以在控制中心修改。AI 建議僅供參考，處方前請依臨床判斷和仿單確認。",
+      "沒登入也能用：訪客每小時可以產生 3 次用藥建議（用網站提供的額度）。登入後可以設定自己的免費 Groq 金鑰，就不受次數限制，設定大約一分鐘，之後可以在控制中心修改。AI 建議僅供參考，處方前請依臨床判斷和仿單確認。",
     ],
   },
   {
     title: "收藏",
     lines: [
-      "點藥品旁邊的星星就能收藏。左上角 ☰ 打開控制中心，按「收藏」可以查看和整理；篩選裡打開「僅顯示收藏」，列表就只顯示收藏的藥。",
+      "收藏要先登入。登入後點藥品旁邊的星星就能收藏；左上角 ☰ 打開控制中心，按「收藏」可以查看和整理；篩選裡打開「僅顯示收藏」，列表就只顯示收藏的藥。",
     ],
   },
   {
@@ -420,19 +433,20 @@ const [isSyncing, setIsSyncing] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-  const [isGuestNoticeOpen, setIsGuestNoticeOpen] = useState(false);
+  // 需要登入時跳出的提示（訪客切到 AI、點收藏、點 AI 金鑰）；null＝關閉
+  const [loginPrompt, setLoginPrompt] = useState<{ title: string; body: string; dismiss: string } | null>(null);
   // Esc 關掉最上層：先訪客提醒／回報視窗，再控制中心。
   useEffect(() => {
-    if (!isSettingsOpen && !isFeedbackOpen && !isGuestNoticeOpen) return;
+    if (!isSettingsOpen && !isFeedbackOpen && !loginPrompt) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (isGuestNoticeOpen) setIsGuestNoticeOpen(false);
+      if (loginPrompt) setLoginPrompt(null);
       else if (isFeedbackOpen) setIsFeedbackOpen(false);
       else setIsSettingsOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isSettingsOpen, isFeedbackOpen, isGuestNoticeOpen]);
+  }, [isSettingsOpen, isFeedbackOpen, loginPrompt]);
   const [groqApiKey, setGroqApiKey] = useState(loadGroqKey);
   const [isApiKeySetupOpen, setIsApiKeySetupOpen] = useState(false);
   // 免費額度暫滿時的自動重試倒數秒數（0＝未在等待）
@@ -452,12 +466,13 @@ const [isSyncing, setIsSyncing] = useState(false);
   }, [favorites]);
 
   const toggleFavorite = (id: string) => {
+    if (!authUser) return setLoginPrompt(LOGIN_FOR_FAVORITES);
     setFavorites((prev) =>
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
     );
   };
 
-  const isFavorite = (id: string) => favorites.includes(id);
+  const isFavorite = (id: string) => !!authUser && favorites.includes(id);
 
   // --- Google 登入：收藏與 AI 金鑰綁定帳號 ---
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -579,6 +594,7 @@ const [isSyncing, setIsSyncing] = useState(false);
     setFavorites([]);
     applyGroqKey("");
     setAiHistory([]); // 諮詢內容可能含病人資訊，登出時一併清掉
+    setOnlyFavorites(false);
     setToast({ message: reason || "已登出，收藏、AI 金鑰與諮詢紀錄已從這台裝置移除", type: "info", duration: 6000 });
   };
 
@@ -885,7 +901,11 @@ const [isSyncing, setIsSyncing] = useState(false);
     // 訪客：每個分頁提醒一次可以登入，不擋著用
     else if (sessionStorage.getItem("hmss_guest_ai_notice") !== "1") {
       sessionStorage.setItem("hmss_guest_ai_notice", "1");
-      setIsGuestNoticeOpen(true);
+      setLoginPrompt({
+        title: "你現在是訪客",
+        body: "AI 助理可以先用網站提供的額度，每小時可以產生 3 次用藥建議。登入並設定自己的免費 Groq 金鑰，就不受次數限制。",
+        dismiss: "先用訪客額度",
+      });
     }
   }, [isAiMode, groqApiKey, authUser]);
 
@@ -1869,24 +1889,41 @@ ${query}`;
 
                 {/* 收藏、AI 金鑰：兩張並排，用數字和狀態說話 */}
                 <div className="grid grid-cols-2 gap-3">
+                  {/* 沒登入：反灰加鎖頭，點了跳登入提示（不是點不動，免得以為壞了） */}
                   <button
-                    onClick={() => { setIsFavoritesManagerOpen(true); setIsSettingsOpen(false); }}
-                    className={cn("p-4 rounded-2xl border text-left transition-colors", glass, glassHover)}
+                    onClick={() =>
+                      authUser
+                        ? (setIsFavoritesManagerOpen(true), setIsSettingsOpen(false))
+                        : setLoginPrompt(LOGIN_FOR_FAVORITES)
+                    }
+                    className={cn("relative p-4 rounded-2xl border text-left transition-colors", glass, glassHover, !authUser && "opacity-55")}
                   >
-                    <SharpStar className={cn("w-4 h-4 text-amber-500", favorites.length > 0 && "fill-amber-500")} />
-                    <span className="block text-2xl font-bold mt-3 leading-none">{favorites.length}</span>
-                    <span className={cn("block text-[11px] mt-1", muted)}>收藏的藥品</span>
+                    {!authUser && <Lock className="absolute top-3 right-3 w-3.5 h-3.5 opacity-60" aria-hidden="true" />}
+                    <SharpStar className={cn("w-4 h-4 text-amber-500", authUser && favorites.length > 0 && "fill-amber-500")} />
+                    <span className="block text-2xl font-bold mt-3 leading-none">{authUser ? favorites.length : "—"}</span>
+                    <span className={cn("block text-[11px] mt-1", muted)}>{authUser ? "收藏的藥品" : "收藏：登入後可以使用"}</span>
                   </button>
                   <button
-                    onClick={() => { setIsApiKeySetupOpen(true); setIsSettingsOpen(false); }}
-                    className={cn("p-4 rounded-2xl border text-left transition-colors", glass, glassHover)}
+                    onClick={() =>
+                      authUser
+                        ? (setIsApiKeySetupOpen(true), setIsSettingsOpen(false))
+                        : setLoginPrompt(LOGIN_FOR_KEY)
+                    }
+                    className={cn("relative p-4 rounded-2xl border text-left transition-colors", glass, glassHover, !authUser && "opacity-55")}
                   >
+                    {!authUser && <Lock className="absolute top-3 right-3 w-3.5 h-3.5 opacity-60" aria-hidden="true" />}
                     <KeyRound className="w-4 h-4 text-violet-500" />
                     <span className="flex items-center gap-1.5 text-sm font-bold mt-3">
-                      <span className={cn("w-2 h-2 rounded-full", groqApiKey ? "bg-emerald-500" : "bg-rose-500")} />
-                      {groqApiKey ? "已設定" : "未設定"}
+                      {authUser ? (
+                        <>
+                          <span className={cn("w-2 h-2 rounded-full", groqApiKey ? "bg-emerald-500" : "bg-rose-500")} />
+                          {groqApiKey ? "已設定" : "未設定"}
+                        </>
+                      ) : (
+                        "訪客額度"
+                      )}
                     </span>
-                    <span className={cn("block text-[11px] mt-1", muted)}>AI 金鑰</span>
+                    <span className={cn("block text-[11px] mt-1", muted)}>{authUser ? "AI 金鑰" : "AI 金鑰：登入後可以設定"}</span>
                   </button>
                 </div>
 
@@ -2005,23 +2042,23 @@ ${query}`;
         )}
       </AnimatePresence>
 
-      {/* 訪客切到 AI 助理：提醒可以登入，但不擋著用 */}
+      {/* 需要登入的提示：訪客切到 AI、點收藏、點 AI 金鑰時跳出；不擋著用，可以按「先不要」 */}
       <AnimatePresence>
-        {isGuestNoticeOpen && (
+        {loginPrompt && (
           <>
             <motion.div
-              key="guest-backdrop"
+              key="login-prompt-backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsGuestNoticeOpen(false)}
+              onClick={() => setLoginPrompt(null)}
               className="fixed inset-0 bg-black/60 backdrop-blur-md z-[170]"
             />
             <motion.div
-              key="guest-modal"
+              key="login-prompt-modal"
               role="dialog"
               aria-modal="true"
-              aria-labelledby="guest-notice-title"
+              aria-labelledby="login-prompt-title"
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -2032,24 +2069,21 @@ ${query}`;
               )}
             >
               <div>
-                <h3 id="guest-notice-title" className="text-base font-bold">你現在是訪客</h3>
-                <p className={cn("text-xs leading-relaxed mt-1.5", muted)}>
-                  AI 助理可以先用網站提供的額度，每小時可以產生 <strong>3 次</strong>用藥建議。
-                  登入並設定自己的免費 Groq 金鑰，就不受次數限制。
-                </p>
+                <h3 id="login-prompt-title" className="text-base font-bold">{loginPrompt.title}</h3>
+                <p className={cn("text-xs leading-relaxed mt-1.5", muted)}>{loginPrompt.body}</p>
               </div>
               <LoginChoice
                 dark={theme === "dark"}
                 onPick={(remember) => {
-                  setIsGuestNoticeOpen(false);
+                  setLoginPrompt(null);
                   handleGoogleSignIn(remember);
                 }}
               />
               <button
-                onClick={() => setIsGuestNoticeOpen(false)}
+                onClick={() => setLoginPrompt(null)}
                 className={cn("w-full h-10 rounded-full border text-xs font-bold", glass, glassHover)}
               >
-                先用訪客額度
+                {loginPrompt.dismiss}
               </button>
             </motion.div>
           </>
@@ -2452,9 +2486,11 @@ ${query}`;
                               <div className="space-y-3">
                                 {/* Compact Favorites Toggle */}
                                 <div
-                                  className="flex items-center justify-between p-2 pl-3 rounded-lg border transition-colors group cursor-pointer"
+                                  className={cn("flex items-center justify-between p-2 pl-3 rounded-lg border transition-colors group cursor-pointer", !authUser && "opacity-55")}
                                   onClick={() =>
-                                    setOnlyFavorites(!onlyFavorites)
+                                    authUser
+                                      ? setOnlyFavorites(!onlyFavorites)
+                                      : setLoginPrompt(LOGIN_FOR_FAVORITES)
                                   }
                                   style={{
                                     backgroundColor:
@@ -2486,7 +2522,7 @@ ${query}`;
                                           : "text-slate-700",
                                       )}
                                     >
-                                      僅顯示收藏
+                                      {authUser ? "僅顯示收藏" : "僅顯示收藏（登入後可用）"}
                                     </span>
                                   </div>
                                   <div
