@@ -2262,20 +2262,33 @@ ${query}`;
       {/* Enhanced Background Glows for Glass Visibility */}
       <div
         className={cn(
-          "absolute top-[-5%] right-[-5%] w-[50%] h-[50%] blur-[140px] rounded-full pointer-events-none z-0 animate-pulse",
-          theme === "dark" ? "bg-brand-accent/10" : "bg-brand-accent/5",
+          "absolute top-[-5%] right-[-5%] w-[50%] h-[50%] blur-[140px] rounded-full pointer-events-none z-0 animate-pulse transition-colors duration-700",
+          isAiMode
+            ? theme === "dark" ? "bg-violet-500/15" : "bg-violet-500/10"
+            : theme === "dark" ? "bg-brand-accent/10" : "bg-brand-accent/5",
         )}
       ></div>
       <div
         className={cn(
-          "absolute bottom-[10%] left-[-10%] w-[45%] h-[45%] blur-[120px] rounded-full pointer-events-none z-0",
-          theme === "dark" ? "bg-brand-secondary-accent/5" : "bg-brand-secondary-accent/3",
+          "absolute bottom-[10%] left-[-10%] w-[45%] h-[45%] blur-[120px] rounded-full pointer-events-none z-0 transition-colors duration-700",
+          isAiMode
+            ? theme === "dark" ? "bg-orange-500/10" : "bg-orange-400/10"
+            : theme === "dark" ? "bg-brand-secondary-accent/5" : "bg-brand-secondary-accent/3",
         )}
       ></div>
       <div
         className={cn(
-          "absolute top-[30%] left-[20%] w-[30%] h-[30%] blur-[100px] rounded-full pointer-events-none z-0",
-          theme === "dark" ? "bg-blue-500/5" : "bg-blue-500/3",
+          "absolute top-[30%] left-[20%] w-[30%] h-[30%] blur-[100px] rounded-full pointer-events-none z-0 transition-colors duration-700",
+          isAiMode
+            ? theme === "dark" ? "bg-blue-500/10" : "bg-blue-500/8"
+            : theme === "dark" ? "bg-blue-500/5" : "bg-blue-500/3",
+        )}
+      ></div>
+      {/* AI 建議模式的整體色調：淡淡的紫橘，切換時淡入淡出 */}
+      <div
+        className={cn(
+          "absolute inset-0 pointer-events-none z-0 bg-gradient-to-br from-violet-500/[0.07] via-transparent to-orange-500/[0.07] transition-opacity duration-700",
+          isAiMode ? "opacity-100" : "opacity-0",
         )}
       ></div>
 
@@ -2498,7 +2511,7 @@ ${query}`;
                         if (input) input.blur();
                       }}
                       className={cn(
-                        "relative flex-1 group dropdown-container p-[1.5px] rounded-2xl transition-shadow duration-500 shadow-2xl",
+                        "relative flex-1 group dropdown-container p-[2px] rounded-2xl transition-shadow duration-500 shadow-2xl",
                         isAiMode ? "shadow-purple-500/20" : theme === "dark" ? "shadow-brand-accent/20" : "shadow-slate-200",
                       )}
                     >
@@ -2548,7 +2561,7 @@ ${query}`;
                           }
                         }}
                         className={cn(
-                          "relative w-full backdrop-blur-3xl border-none rounded-[15px] pl-11 py-3 text-sm focus:outline-none focus:ring-0 transition-all font-medium",
+                          "relative w-full backdrop-blur-3xl border-none rounded-[14px] pl-11 py-3 text-sm focus:outline-none focus:ring-0 transition-all font-medium",
                           (isAiMode ? aiQuery : searchQuery) ? "pr-20 md:pr-12" : "pr-4 md:pr-4",
                           theme === "dark"
                             ? "bg-black/90 text-white placeholder:text-zinc-600"
@@ -3006,7 +3019,7 @@ ${query}`;
                         form="main-search-form"
                         disabled={isAiLoading || !aiQuery.trim()}
                         aria-label="送出"
-                        className="h-[46px] w-[46px] shrink-0 rounded-full p-[1.5px] bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed group/send"
+                        className="h-[46px] w-[46px] shrink-0 rounded-full p-[2px] bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed group/send"
                       >
                         <span className={cn("w-full h-full rounded-full flex items-center justify-center text-purple-500 transition-colors", theme === "dark" ? "bg-zinc-950 group-hover/send:bg-zinc-900" : "bg-white group-hover/send:bg-purple-50")}>
       {isAiLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
