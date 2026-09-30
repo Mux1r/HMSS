@@ -2427,12 +2427,6 @@ ${query}`;
                     : "text-zinc-500 hover:text-zinc-300",
                 )}
               >
-                <Pill
-                  className={cn(
-                    "w-4 h-4 transition-colors",
-                    !isAiMode ? "text-white" : "text-zinc-500",
-                  )}
-                />
                 <span className="whitespace-nowrap">藥品查詢</span>
               </button>
 
@@ -2443,12 +2437,6 @@ ${query}`;
                   isAiMode ? "text-white" : "text-zinc-500 hover:text-zinc-300",
                 )}
               >
-                <Sparkles
-                  className={cn(
-                    "w-4 h-4 transition-colors",
-                    isAiMode ? "text-white" : "text-zinc-500",
-                  )}
-                />
                 <span className="whitespace-nowrap">AI 用藥建議</span>
               </button>
             </div>
@@ -2498,33 +2486,30 @@ ${query}`;
               codeStyle={getDosageColor}
             />
           )}
-          <AnimatePresence mode="popLayout" initial={false}>
-            {!isAiMode ? (
-              <motion.div
-                key="standard-mode"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ ease: [0.2, 0.8, 0.2, 1], duration: 0.5 }}
-                className="flex-1 flex flex-col overflow-hidden"
-              >
-                {/* Top Search & Filter Toolbar */}
+                {/* 共用搜尋列：兩個模式位置不變，只換顏色、提示字和右邊的按鈕 */}
                 <div className="absolute top-0 left-0 right-0 z-40 bg-transparent p-3 md:p-4 pointer-events-none">
                   <div className="flex items-center gap-3 pointer-events-auto">
                     {/* Global Search */}
                     <form data-tour="search"
+                      id="main-search-form"
                       onSubmit={(e) => {
+                        if (isAiMode) return handleAiSearch(e);
                         e.preventDefault();
                         const input = e.currentTarget.querySelector("input");
                         if (input) input.blur();
                       }}
                       className={cn(
                         "relative flex-1 group dropdown-container p-[1.5px] rounded-2xl transition-all shadow-2xl",
-                        theme === "dark"
+                        isAiMode
+                          ? "bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 focus-within:from-blue-500 focus-within:via-purple-500 focus-within:to-orange-500 shadow-purple-500/20"
+                          : theme === "dark"
                           ? "bg-gradient-to-r from-teal-600/60 to-cyan-500/60 focus-within:from-teal-600 focus-within:to-cyan-500 shadow-brand-accent/20"
                           : "bg-gradient-to-r from-teal-600/40 to-cyan-500/40 focus-within:from-teal-605 focus-within:to-cyan-500/70 shadow-slate-200",
                       )}
                     >
+                      {isAiMode ? (
+                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 z-10 text-purple-400" />
+                      ) : (
                       <Search
                         className={cn(
                           "absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 z-10 transition-colors",
@@ -2533,23 +2518,25 @@ ${query}`;
                             : "text-slate-400 group-focus-within:text-brand-accent",
                         )}
                       />
+                      )}
                       <input
                         ref={searchInputRef}
                         type="text"
-                        enterKeyHint="search"
-                        placeholder="搜尋藥名、成分、代碼或症狀"
-                        value={searchQuery}
+                        enterKeyHint={isAiMode ? "send" : "search"}
+                        placeholder={isAiMode ? "例如：58 歲女性，飯後血糖高" : "搜尋藥名、成分、代碼或症狀"}
+                        value={isAiMode ? aiQuery : searchQuery}
                         onChange={(e) => {
-                          setSearchQuery(e.target.value);
+                          if (isAiMode) setAiQuery(e.target.value);
+                          else setSearchQuery(e.target.value);
                         }}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") {
+                          if (e.key === "Enter" && !isAiMode) {
                             (e.target as HTMLInputElement).blur();
                           }
                         }}
                         className={cn(
                           "w-full backdrop-blur-3xl border-none rounded-[15px] pl-11 py-3 text-sm focus:outline-none focus:ring-0 transition-all font-medium",
-                          searchQuery ? "pr-20 md:pr-12" : "pr-4 md:pr-4",
+                          (isAiMode ? aiQuery : searchQuery) ? "pr-20 md:pr-12" : "pr-4 md:pr-4",
                           theme === "dark"
                             ? "bg-black/90 text-white placeholder:text-zinc-600"
                             : "bg-white/90 text-slate-800 placeholder:text-slate-400",
@@ -2557,16 +2544,17 @@ ${query}`;
                       />
 
                       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                        {searchQuery && (
+                        {(isAiMode ? aiQuery : searchQuery) && (
                           <button
                             type="button"
-                            onClick={() => setSearchQuery("")}
+                            aria-label="清除"
+                            onClick={() => (isAiMode ? setAiQuery("") : setSearchQuery(""))}
                             className="p-1.5 text-zinc-500 hover:text-white transition-colors"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         )}
-                        {searchQuery && (
+                        {searchQuery && !isAiMode && (
                           <button
                             type="submit"
                             className="md:hidden p-1.5 text-brand-accent hover:text-brand-secondary-accent transition-colors"
@@ -2578,6 +2566,8 @@ ${query}`;
                     </form>
 
                     {/* Compact Filter Toggle */}
+                    {/* 右邊的位置固定：藥品查詢是「篩選」，AI 用藥建議換成同大小的「送出」 */}
+                    {!isAiMode ? (
                     <div className="relative filter-popover-container">
                       <button
                         data-tour="filter"
@@ -2996,8 +2986,29 @@ ${query}`;
                         )}
                       </AnimatePresence>
                     </div>
+                    ) : (
+                      <button
+                        type="submit"
+                        form="main-search-form"
+                        disabled={isAiLoading || !aiQuery.trim()}
+                        aria-label="送出"
+                        className="h-[46px] px-4 shrink-0 rounded-xl border border-transparent bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 text-white flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-widest shadow-lg shadow-purple-500/20 hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {isAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}<span className="hidden sm:inline">送出</span>
+                      </button>
+                    )}
                   </div>
                 </div>
+          <AnimatePresence mode="popLayout" initial={false}>
+            {!isAiMode ? (
+              <motion.div
+                key="standard-mode"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ ease: [0.2, 0.8, 0.2, 1], duration: 0.5 }}
+                className="flex-1 flex flex-col overflow-hidden"
+              >
 
                 <div
                   ref={scrollContainerRef}
@@ -3388,48 +3399,17 @@ ${query}`;
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ ease: [0.2, 0.8, 0.2, 1], duration: 0.5 }}
-                className="flex-1 flex flex-col overflow-hidden p-4 md:p-8"
+                className="flex-1 flex flex-col overflow-hidden px-4 md:px-8 pb-4 md:pb-8 pt-[72px] md:pt-[84px]"
               >
                 <div className="max-w-4xl mx-auto w-full flex flex-col h-full gap-6">
                   <div className="flex-1 min-h-0 flex flex-col relative">
                     <div className="flex-1 p-[1px] rounded-[32px] bg-gradient-to-br from-blue-500/15 via-purple-500/15 to-orange-500/15 overflow-hidden shadow-2xl">
                       <div className="h-full w-full bg-brand-bg/40 backdrop-blur-3xl rounded-[31px] overflow-hidden flex flex-col relative">
-                        {/* Floating Search Bar Overlay */}
-                        <div className="absolute top-0 left-0 right-0 z-40 p-2 md:p-3 bg-transparent pointer-events-none">
-                          <form
-                            onSubmit={handleAiSearch}
-                            className="relative group p-[1.5px] rounded-2xl bg-gradient-to-r from-blue-500/60 via-purple-500/60 to-orange-500/60 focus-within:from-blue-500 focus-within:via-purple-500 focus-within:to-orange-500 transition-all shadow-2xl pointer-events-auto"
-                          >
-                            <input
-                              type="text"
-                              placeholder="例如：58 歲女性，飯後血糖高"
-                              value={aiQuery}
-                              onChange={(e) => setAiQuery(e.target.value)}
-                              className={cn(
-                                "w-full backdrop-blur-xl border-none rounded-[15px] pl-5 pr-14 py-3 text-sm md:text-base focus:outline-none focus:ring-0 transition-all font-medium shadow-2xl",
-                                theme === "dark"
-                                  ? "bg-black/80 text-white placeholder:text-zinc-500"
-                                  : "bg-white/95 text-slate-800 placeholder:text-slate-400",
-                              )}
-                            />
-                            <button
-                              type="submit"
-                              disabled={isAiLoading || !aiQuery.trim()}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-gradient-to-r from-blue-400 via-purple-500 to-orange-500 text-white flex items-center justify-center hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl active:scale-95"
-                            >
-                              {isAiLoading ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <ArrowRight className="w-4 h-4" />
-                              )}
-                            </button>
-                          </form>
-                        </div>
 
                         {/* Content Area */}
                         <div
                           className={cn(
-                            "flex-1 overflow-y-auto custom-scrollbar pt-[62px] md:pt-[70px] px-4 md:px-8 transition-all duration-500",
+                            "flex-1 overflow-y-auto custom-scrollbar pt-5 px-4 md:px-8 transition-all duration-500",
                             selectedMed ? "pb-[40vh] md:pb-8" : "pb-8",
                           )}
                         >
