@@ -39,6 +39,7 @@ import {
   HelpCircle,
   KeyRound,
   MessageSquareWarning,
+  Monitor,
 } from "lucide-react";
 import ApiKeySetup from "./components/ApiKeySetup";
 import Feedback from "./components/Feedback";
@@ -47,6 +48,7 @@ import {
   GROQ_MODEL_FAST,
   GroqKeyError,
   GroqRateLimitError,
+  GUEST_KEY,
   clearGroqKey,
   groqChat,
   groqChatStream,
@@ -163,6 +165,48 @@ const normalizeRoute = (raw: string): string => {
 };
 
 
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+    </svg>
+  );
+}
+
+// 登入二選一：刻意沒有預設、兩個按鈕一樣大，一定要選「公用電腦」或「個人裝置」才能登入，不會被略過。
+function LoginChoice({ dark, onPick }: { dark: boolean; onPick: (remember: boolean) => void }) {
+  const option = (remember: boolean, icon: ReactNode, title: string, desc: string) => (
+    <button
+      onClick={() => onPick(remember)}
+      className={cn(
+        "flex-1 min-w-0 flex flex-col items-start gap-1 p-3 rounded-2xl border-2 text-left transition-colors",
+        dark ? "border-white/15 bg-white/5 hover:border-brand-accent" : "border-slate-200 bg-white/70 hover:border-brand-accent",
+      )}
+    >
+      <span className="flex items-center gap-1.5 text-sm font-bold">
+        {icon}
+        {title}
+      </span>
+      <span className={cn("text-[11px] leading-snug", dark ? "text-zinc-400" : "text-slate-500")}>{desc}</span>
+    </button>
+  );
+  return (
+    <div className="space-y-2">
+      <p className="flex items-center gap-2 text-sm font-bold">
+        <GoogleIcon className="w-5 h-5 shrink-0" />
+        用 Google 登入，先選這是哪種電腦
+      </p>
+      <div className="flex gap-2">
+        {option(false, <Monitor className="w-4 h-4 text-amber-500 shrink-0" />, "公用電腦", "關掉分頁或閒置 30 分鐘就自動登出，不留資料")}
+        {option(true, <Smartphone className="w-4 h-4 text-brand-accent shrink-0" />, "我的個人裝置", "保持登入，下次打開不用再登入")}
+      </div>
+    </div>
+  );
+}
+
 // 幫助視窗內容。寫法原則：講「在哪裡、按什麼、會發生什麼」，不寫宣傳詞。
 const HELP_SECTIONS: { title: string; lines: string[] }[] = [
   {
@@ -184,7 +228,7 @@ const HELP_SECTIONS: { title: string; lines: string[] }[] = [
       "在最上方切到「AI 助理」，輸入病人的狀況，例如「58 歲女性，飯後血糖高」。",
       "AI 會先整理出主要問題，並列出幾個可能的伴隨症狀，請勾選病人有的。這些是用來判斷病因的，不會因此多開藥。也可以填病人的族群、腎肝功能、過敏和目前用藥，AI 會避開禁忌。",
       "建議分成「首選」和「替代」，並對應到院內品項。標示「同類替代」或「依 ATC 比對」的不是 AI 原本建議的成分，使用前請自己確認。長按藥卡（電腦按右鍵）可以複製藥品碼。",
-      "第一次使用要設定免費的 Groq 金鑰，進入 AI 助理時會帶你一步一步做，大約一分鐘；之後可以在控制中心修改。AI 建議僅供參考，處方前請依臨床判斷和仿單確認。",
+      "沒登入也能用：訪客每小時可以產生 3 次用藥建議（用網站提供的額度）。登入並設定自己的免費 Groq 金鑰就不受次數限制，設定大約一分鐘，之後可以在控制中心修改。AI 建議僅供參考，處方前請依臨床判斷和仿單確認。",
     ],
   },
   {
@@ -196,9 +240,9 @@ const HELP_SECTIONS: { title: string; lines: string[] }[] = [
   {
     title: "Google 登入",
     lines: [
-      "在控制中心按「Google 登入」。登入後，收藏和 AI 金鑰會存到你的帳號，換手機或電腦登入同一個帳號就會自動帶過來。",
+      "在控制中心先選「公用電腦」或「我的個人裝置」再登入。選公用電腦的話，關掉分頁或閒置 30 分鐘就會自動登出；選個人裝置會一直保持登入。登入後，收藏和 AI 金鑰會存到你的帳號，換手機或電腦登入同一個帳號就會自動帶過來。",
       "Google 的登入畫面會寫「繼續前往 ○○○.supabase.co」，那是本站使用的登入服務，可以放心繼續。",
-      "登出時，這台裝置上的收藏和金鑰會一起清掉，帳號裡的不受影響，所以在公用電腦上用完記得登出。",
+      "登出時，這台裝置上的收藏、金鑰和 AI 諮詢紀錄會一起清掉，帳號裡的不受影響。",
       "網站管理者在後台看得到帳號裡的資料，包括存進去的 AI 金鑰；介意的話可以不登入，資料就只留在這台裝置上。",
       "完整說明請見控制中心最下方的「隱私權政策」。",
     ],
@@ -242,6 +286,10 @@ import {
   KgResult,
 } from "./services/medicationService";
 import { consumeJustUpdated } from "./lib/appUpdate";
+import { consumeStaleEphemeral, isDeviceRemembered } from "./lib/device";
+
+// 開啟時判斷一次：上一位在公用電腦沒登出（關分頁／關瀏覽器）→ 不載入他留下的收藏與 AI 紀錄。
+const STALE_EPHEMERAL = consumeStaleEphemeral();
 import { cn } from "./lib/utils";
 import { MEDICAL_ALIASES, MECHANISM_ATC, mechanismKey } from "./lib/medicalKeywords";
 import {
@@ -370,17 +418,19 @@ const [isSyncing, setIsSyncing] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-  // Esc 關掉最上層：先回報視窗，再控制中心。
+  const [isGuestNoticeOpen, setIsGuestNoticeOpen] = useState(false);
+  // Esc 關掉最上層：先訪客提醒／回報視窗，再控制中心。
   useEffect(() => {
-    if (!isSettingsOpen && !isFeedbackOpen) return;
+    if (!isSettingsOpen && !isFeedbackOpen && !isGuestNoticeOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (isFeedbackOpen) setIsFeedbackOpen(false);
+      if (isGuestNoticeOpen) setIsGuestNoticeOpen(false);
+      else if (isFeedbackOpen) setIsFeedbackOpen(false);
       else setIsSettingsOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isSettingsOpen, isFeedbackOpen]);
+  }, [isSettingsOpen, isFeedbackOpen, isGuestNoticeOpen]);
   const [groqApiKey, setGroqApiKey] = useState(loadGroqKey);
   const [isApiKeySetupOpen, setIsApiKeySetupOpen] = useState(false);
   // 免費額度暫滿時的自動重試倒數秒數（0＝未在等待）
@@ -388,7 +438,7 @@ const [isSyncing, setIsSyncing] = useState(false);
   const [favoritesSearchQuery, setFavoritesSearchQuery] = useState("");
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [favorites, setFavorites] = useState<string[]>(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && !STALE_EPHEMERAL) {
       const saved = localStorage.getItem("favorites");
       return saved ? JSON.parse(saved) : [];
     }
@@ -512,22 +562,40 @@ const [isSyncing, setIsSyncing] = useState(false);
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (remember: boolean) => {
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(remember);
     } catch (error: any) {
       setToast({ message: error?.message || "Google 登入失敗，請稍後再試", type: "error" });
     }
   };
 
   // 登出：收藏與 AI 金鑰綁定帳號，一併從這台裝置移除（公用電腦不留資料）。
-  const handleSignOut = async () => {
+  const handleSignOut = async (reason?: string) => {
     lastSyncedFavRef.current = null; // 先停止推送，避免清空的收藏被寫回帳號
     await signOut();
     setFavorites([]);
     applyGroqKey("");
-    setToast({ message: "已登出，收藏與 AI 金鑰已從這台裝置移除", type: "info" });
+    setAiHistory([]); // 諮詢內容可能含病人資訊，登出時一併清掉
+    setToast({ message: reason || "已登出，收藏、AI 金鑰與諮詢紀錄已從這台裝置移除", type: "info", duration: 6000 });
   };
+
+  // 公用電腦模式：閒置 30 分鐘自動登出（補「還原分頁」可能把登入狀態帶回來的漏洞）
+  useEffect(() => {
+    if (!authUser || isDeviceRemembered()) return;
+    const IDLE_MS = 30 * 60 * 1000;
+    let timer = window.setTimeout(() => handleSignOut("閒置 30 分鐘，已自動登出"), IDLE_MS);
+    const reset = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => handleSignOut("閒置 30 分鐘，已自動登出"), IDLE_MS);
+    };
+    const events = ["pointerdown", "keydown", "scroll", "touchstart"] as const;
+    events.forEach((e) => window.addEventListener(e, reset, { passive: true }));
+    return () => {
+      clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, reset));
+    };
+  }, [authUser]);
 
   const isStandalone = useMemo(() => {
     if (typeof window === "undefined") return false;
@@ -649,6 +717,12 @@ const [isSyncing, setIsSyncing] = useState(false);
   // 諮詢紀錄存於 IndexedDB：啟動時載入（中斷的請求退回可重送的狀態），之後每次變動即儲存。
   const aiHistoryLoadedRef = useRef(false);
   useEffect(() => {
+    if (STALE_EPHEMERAL) {
+      // 上一位在公用電腦沒登出：不載入他的諮詢紀錄，直接清空
+      aiHistoryLoadedRef.current = true;
+      saveAiHistory([]);
+      return;
+    }
     loadAiHistory<AiHistoryItem>().then((stored) => {
       const restored = stored
         .filter((it) => it.phase !== "decomposing")
@@ -769,13 +843,15 @@ const [isSyncing, setIsSyncing] = useState(false);
   // 免費額度暫滿（429）→ 依 Groq 建議秒數倒數後自動重試，最多 2 次；需等太久則直接告知。
   // 傳入 onText 時改用串流，每收到內容就回呼目前全文。
   const RATE_LIMIT_MAX_WAIT = 90;
+  // 沒登入又沒自己的金鑰 → 用訪客額度（ai-proxy，每台裝置每小時限次）；登入了就要用自己的金鑰
+  const aiKey = groqApiKey || (authUser ? "" : GUEST_KEY);
   const callGroq = useCallback(
     async (body: Record<string, any>, onText?: (full: string) => void): Promise<any> => {
       for (let attempt = 0; ; attempt++) {
         try {
           return onText
-            ? await groqChatStream(groqApiKey, body, onText)
-            : await groqChat(groqApiKey, body);
+            ? await groqChatStream(aiKey, body, onText)
+            : await groqChat(aiKey, body);
         } catch (error) {
           if (error instanceof GroqKeyError) setIsApiKeySetupOpen(true);
           if (!(error instanceof GroqRateLimitError)) throw error;
@@ -797,13 +873,19 @@ const [isSyncing, setIsSyncing] = useState(false);
         }
       }
     },
-    [groqApiKey],
+    [aiKey],
   );
 
   // 進入 AI 模式但尚未設定金鑰 → 直接帶出設定引導。
   useEffect(() => {
-    if (isAiMode && !groqApiKey) setIsApiKeySetupOpen(true);
-  }, [isAiMode, groqApiKey]);
+    if (!isAiMode || groqApiKey) return;
+    if (authUser) setIsApiKeySetupOpen(true);
+    // 訪客：每個分頁提醒一次可以登入，不擋著用
+    else if (sessionStorage.getItem("hmss_guest_ai_notice") !== "1") {
+      sessionStorage.setItem("hmss_guest_ai_notice", "1");
+      setIsGuestNoticeOpen(true);
+    }
+  }, [isAiMode, groqApiKey, authUser]);
 
   // 依成分名與 ATC 碼比對院內藥庫（不使用模糊相似度，避免配到名稱相近的別種藥）。
   // 每筆結果標示比對依據：
@@ -1761,31 +1843,20 @@ ${query}`;
                           {accountSync === "error" ? "同步失敗，請檢查網路" : accountSync === "syncing" ? "同步中…" : "收藏與 AI 金鑰已存到帳號"}
                         </p>
                       </div>
-                      <button onClick={handleSignOut} className="text-xs font-bold text-rose-500 hover:underline shrink-0">
+                      <button onClick={() => handleSignOut()} className="text-xs font-bold text-rose-500 hover:underline shrink-0">
                         登出
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={handleGoogleSignIn}
-                      className={cn("w-full flex items-center gap-3 px-4 py-3 rounded-2xl border text-left transition-colors", glass, glassHover)}
-                    >
-                      <svg viewBox="0 0 48 48" className="w-6 h-6 shrink-0" aria-hidden="true">
-                        <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
-                        <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
-                        <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
-                        <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
-                      </svg>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-bold">Google 登入</span>
-                        <span className={cn("block text-[11px]", muted)}>收藏和 AI 金鑰會跟著帳號走，換裝置也能用</span>
-                      </span>
-                      <ChevronRight className="w-4 h-4 opacity-40 shrink-0" />
-                    </button>
+                    <div className={cn("px-4 py-3 rounded-2xl border", glass)}>
+                      <LoginChoice dark={theme === "dark"} onPick={handleGoogleSignIn} />
+                    </div>
                   )}
                   <p className={cn("text-[10px] leading-relaxed px-1", muted)}>
                     {authUser
-                      ? "登出會清掉這台裝置上的收藏和 AI 金鑰，帳號裡的不受影響。"
+                      ? isDeviceRemembered()
+                        ? "個人裝置：會一直保持登入。登出會清掉這台裝置上的收藏、AI 金鑰和諮詢紀錄，帳號裡的不受影響。"
+                        : "公用電腦：關掉分頁或閒置 30 分鐘會自動登出，收藏、AI 金鑰和諮詢紀錄都不會留在這台電腦。"
                       : `Google 登入畫面會寫「繼續前往 ${new URL(import.meta.env.VITE_SUPABASE_URL).host}」，這是本站使用的登入服務，可以放心繼續。`}
                   </p>
                 </div>
@@ -1919,6 +1990,57 @@ ${query}`;
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 訪客切到 AI 助理：提醒可以登入，但不擋著用 */}
+      <AnimatePresence>
+        {isGuestNoticeOpen && (
+          <>
+            <motion.div
+              key="guest-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsGuestNoticeOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-md z-[170]"
+            />
+            <motion.div
+              key="guest-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="guest-notice-title"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", duration: 0.45, bounce: 0.15 }}
+              className={cn(
+                "fixed inset-x-4 top-[12%] md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[440px] rounded-3xl border shadow-2xl p-5 space-y-4 z-[180]",
+                theme === "dark" ? "bg-zinc-900/95 border-white/10 text-white" : "bg-white border-slate-200 text-slate-900",
+              )}
+            >
+              <div>
+                <h3 id="guest-notice-title" className="text-base font-bold">你現在是訪客</h3>
+                <p className={cn("text-xs leading-relaxed mt-1.5", muted)}>
+                  AI 助理可以先用網站提供的額度，每小時可以產生 <strong>3 次</strong>用藥建議。
+                  登入並設定自己的免費 Groq 金鑰，就不受次數限制。
+                </p>
+              </div>
+              <LoginChoice
+                dark={theme === "dark"}
+                onPick={(remember) => {
+                  setIsGuestNoticeOpen(false);
+                  handleGoogleSignIn(remember);
+                }}
+              />
+              <button
+                onClick={() => setIsGuestNoticeOpen(false)}
+                className={cn("w-full h-10 rounded-full border text-xs font-bold", glass, glassHover)}
+              >
+                先用訪客額度
+              </button>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

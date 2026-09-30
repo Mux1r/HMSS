@@ -1,5 +1,7 @@
 // Groq 呼叫：使用者自備的免費金鑰，瀏覽器直連 api.groq.com（官方允許 CORS）。
-// 金鑰存於本機 localStorage；登入 Google 時另存於帳號（見 account.ts），呼叫 Groq 不經任何後端。
+// 金鑰依「記住這台裝置」存 localStorage 或 sessionStorage（見 device.ts）；登入 Google 時另存於帳號。
+// 沒登入又沒金鑰的訪客用 GUEST_KEY：改走 Edge Function ai-proxy，用網站的金鑰、限每小時次數。
+import { deviceStorage } from "./device.ts";
 
 // llama-3.3-70b-versatile 已於 2026-08-16 被 Groq 下架，改用官方建議替代模型。
 // 用藥建議（準確度優先）用 120B；問題拆解等輕量任務用 20B。
@@ -36,23 +38,31 @@ export function parseRetryAfter(header: string | null, message: string): number 
 }
 
 export function loadGroqKey(): string {
-  try {
-    return localStorage.getItem(KEY_STORAGE) || "";
-  } catch {
-    return "";
-  }
+  return deviceStorage.getItem(KEY_STORAGE) || "";
 }
 
 export function saveGroqKey(key: string) {
-  try {
-    localStorage.setItem(KEY_STORAGE, key);
-  } catch {}
+  deviceStorage.setItem(KEY_STORAGE, key);
 }
 
 export function clearGroqKey() {
+  deviceStorage.removeItem(KEY_STORAGE);
+}
+
+// 訪客：不帶金鑰，改打 ai-proxy（網站金鑰、每台裝置每小時限次）
+export const GUEST_KEY = "__guest__";
+
+// 訪客額度用完（ai-proxy 回 429 且 guest_quota）；message 是給使用者看的中文說明。
+export class GuestQuotaError extends Error {}
+
+function deviceId(): string {
   try {
-    localStorage.removeItem(KEY_STORAGE);
-  } catch {}
+    let id = localStorage.getItem("hmss_device_id");
+    if (!id) localStorage.setItem("hmss_device_id", (id = crypto.randomUUID()));
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
 }
 
 async function readError(res: Response): Promise<string> {
@@ -66,14 +76,24 @@ async function readError(res: Response): Promise<string> {
 
 async function request(key: string, path: string, init: RequestInit = {}): Promise<Response> {
   if (!key) throw new GroqKeyError("尚未設定 AI 金鑰");
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      ...init.headers,
+  const guest = key === GUEST_KEY;
+  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+  const res = await fetch(
+    guest ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-proxy${path}` : `${API_BASE}${path}`,
+    {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${guest ? anon : key}`,
+        "Content-Type": "application/json",
+        ...(guest ? { apikey: anon, "x-device-id": deviceId() } : {}),
+        ...init.headers,
+      },
     },
-  });
+  );
+  if (guest && res.status === 429) {
+    const data = await res.clone().json().catch(() => null);
+    if (data?.guest_quota) throw new GuestQuotaError(data.error?.message || "訪客額度已用完");
+  }
   if (res.status === 401 || res.status === 403) {
     throw new GroqKeyError("AI 金鑰無效或已被刪除，請重新設定");
   }

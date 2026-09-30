@@ -22,18 +22,19 @@
 <body>
 <main>
   <h1>HMSS 隱私權政策</h1>
-  <p class="date">最後更新：2026 年 9 月 30 日</p>
+  <p class="date">最後更新：2026 年 9 月 30 日（加入公用電腦登入與訪客 AI 額度）</p>
 
   <p>HMSS（院內藥品查詢系統，網址 <a href="https://mux1r.github.io/HMSS/">https://mux1r.github.io/HMSS/</a>）是給醫療專業人員查詢院內藥品的工具。這一頁說明網站會收集哪些資料、存在哪裡、給誰用。網站沒有廣告，也沒有使用任何追蹤或分析工具，不會販售或分享你的資料給其他人做行銷。</p>
 
   <h2>不登入時</h2>
-  <p>收藏、AI 金鑰、AI 助理的對話紀錄和外觀設定，都只存在你這台裝置的瀏覽器裡，不會傳到我們的伺服器。清除瀏覽器資料就會一起刪掉。</p>
+  <p>收藏、AI 助理的對話紀錄和外觀設定，都只存在你這台裝置的瀏覽器裡，不會傳到我們的伺服器。清除瀏覽器資料就會一起刪掉。沒登入時自己貼上的 AI 金鑰只存在目前的分頁，關掉就會消失。</p>
 
   <h2>用 Google 登入時</h2>
   <ul>
     <li><strong>從 Google 取得的資料</strong>：只有 email、名字和大頭貼，用來辨識你是誰。我們拿不到你的 Google 密碼，也不會讀取你的信件、雲端硬碟或其他 Google 資料。</li>
     <li><strong>存到帳號的資料</strong>：你的收藏清單和 Groq AI 金鑰，讓你換裝置登入也能用。</li>
-    <li><strong>登出</strong>：這台裝置上的收藏和 AI 金鑰會一起清掉，帳號裡的資料不受影響。</li>
+    <li><strong>公用電腦或個人裝置</strong>：登入前要先選。選公用電腦時，登入狀態只存在目前的分頁，關掉分頁或閒置 30 分鐘就自動登出；下次有人打開網站時，上一位沒登出留下的收藏和 AI 紀錄也會被清掉。選個人裝置則會一直保持登入。</li>
+    <li><strong>登出</strong>：這台裝置上的收藏、AI 金鑰和 AI 諮詢紀錄會一起清掉，帳號裡的資料不受影響。</li>
   </ul>
   <p>登入與帳號資料由 <a href="https://supabase.com/privacy">Supabase</a> 保管，所以 Google 登入畫面會顯示「繼續前往 ○○○.supabase.co」。每個人只能讀寫自己的資料；網站管理者在後台看得到帳號資料，包括存進去的 AI 金鑰。介意的話可以不登入，資料就只留在你的裝置上。</p>
 
@@ -41,7 +42,8 @@
   <ul>
     <li><strong>一般查藥</strong>：在你的瀏覽器裡比對，不會送出查詢內容。</li>
     <li><strong>適應症圖譜查詢</strong>：查詢文字會送到我們在 Supabase 的服務，再交給 <a href="https://openrouter.ai/privacy">OpenRouter</a> 轉成向量後比對，不會記錄你是誰。</li>
-    <li><strong>AI 助理</strong>：你輸入的病人狀況，會用你自己的 Groq 金鑰直接從瀏覽器送到 <a href="https://groq.com/privacy-policy/">Groq</a>，不經過我們的伺服器，適用 Groq 的隱私權政策。</li>
+    <li><strong>AI 助理（有自己的金鑰）</strong>：你輸入的病人狀況，會用你自己的 Groq 金鑰直接從瀏覽器送到 <a href="https://groq.com/privacy-policy/">Groq</a>，不經過我們的伺服器，適用 Groq 的隱私權政策。</li>
+    <li><strong>AI 助理（訪客額度）</strong>：沒有自己的金鑰時，內容會先送到我們在 Supabase 的服務，再用網站的金鑰轉給 Groq。我們不儲存查詢內容，只記錄這台裝置的隨機代碼、使用類別和時間，用來計算每小時的次數。</li>
   </ul>
   <p><strong>請不要輸入病人的姓名、病歷號、身分證字號等可以辨識個人的資料。</strong></p>
 

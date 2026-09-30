@@ -2,6 +2,7 @@
 
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { markEphemeralAccount, setDeviceRemembered } from "./device";
 
 export type { User };
 
@@ -32,11 +33,17 @@ async function isGoogleEnabled(): Promise<boolean> {
   }
 }
 
-/** 導向 Google 登入，完成後回到目前頁面。 */
-export async function signInWithGoogle(): Promise<void> {
+/**
+ * 導向 Google 登入，完成後回到目前頁面。
+ * remember：true＝個人裝置（一直保持登入）；false＝公用電腦（關分頁或閒置即登出，不留資料）。
+ * 必須在導向前寫入，回來時 Supabase 才會把登入狀態存到對的地方。
+ */
+export async function signInWithGoogle(remember: boolean): Promise<void> {
   if (!(await isGoogleEnabled())) {
     throw new Error("Google 登入尚未啟用，請管理員於 Supabase 開啟 Google 登入");
   }
+  setDeviceRemembered(remember);
+  markEphemeralAccount(!remember);
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: window.location.origin + window.location.pathname },
@@ -45,6 +52,7 @@ export async function signInWithGoogle(): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  markEphemeralAccount(false);
   await supabase.auth.signOut();
 }
 
