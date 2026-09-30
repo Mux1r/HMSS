@@ -45,6 +45,7 @@ import {
 import ApiKeySetup from "./components/ApiKeySetup";
 import Feedback from "./components/Feedback";
 import FavoritesPage from "./components/FavoritesPage";
+import Tour, { type TourStep } from "./components/Tour";
 import { EMPTY_FOLDERS, mergeFolders, normalizeFolders, type FavoriteFolders } from "./lib/folders";
 import {
   GROQ_MODEL,
@@ -167,6 +168,17 @@ const normalizeRoute = (raw: string): string => {
   return "";
 };
 
+
+// 引導教學的步驟（target 對應畫面元素的 data-tour）
+const TOUR_STEPS: TourStep[] = [
+  { target: "search", title: "查藥", body: "打藥名、成分、代碼或症狀就能查。現在先幫你填了「頭痛」當例子。" },
+  { target: "fav-star", title: "收藏", body: "點星星把常用的藥加入收藏（要先登入）。收藏可以在左上角 ☰ 的控制中心裡分資料夾整理。" },
+  { target: "kg", title: "適應症圖譜查詢", body: "打的是症狀或病名時按這裡，會依院內藥品的適應症找藥，連同義詞和更細的病名也會找到。" },
+  { target: "filter", title: "篩選", body: "先選生理系統，再選藥理分類，也可以加上劑型，一起縮小範圍。" },
+  { target: "mode", title: "AI 助理", body: "切到 AI 助理，輸入病人狀況，會先整理問題、請你勾選症狀，再建議院內用藥。沒登入每小時可以用 3 次。" },
+  { target: "menu", title: "控制中心", body: "登入、收藏、AI 金鑰、外觀、意見回報都在這裡。" },
+  { target: "help", title: "幫助", body: "想再看一次這個教學，或查每個功能的說明，都在這裡。" },
+];
 
 // 需要登入時的提示文字
 const LOGIN_FOR_FAVORITES = {
@@ -435,6 +447,8 @@ const [isSyncing, setIsSyncing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFavoritesManagerOpen, setIsFavoritesManagerOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isTourOpen, setIsTourOpen] = useState(false);
+  const tourPrevQueryRef = useRef("");
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   // 需要登入時跳出的提示（訪客切到 AI、點收藏、點 AI 金鑰）；null＝關閉
   const [loginPrompt, setLoginPrompt] = useState<{ title: string; body: string; dismiss: string } | null>(null);
@@ -496,22 +510,6 @@ const [isSyncing, setIsSyncing] = useState(false);
   };
 
   const isFavorite = (id: string) => !!authUser && favorites.includes(id);
-
-  // 「點星星收藏」提示：按過任何一次星星就記住，不再出現
-  const [favHintSeen, setFavHintSeen] = useState(() => {
-    try {
-      return localStorage.getItem("hmss_fav_hint_seen") === "1";
-    } catch {
-      return false;
-    }
-  });
-  const markFavHintSeen = () => {
-    if (favHintSeen) return;
-    setFavHintSeen(true);
-    try {
-      localStorage.setItem("hmss_fav_hint_seen", "1");
-    } catch {}
-  };
 
   // --- Google 登入：收藏與 AI 金鑰綁定帳號 ---
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -945,6 +943,22 @@ const [isSyncing, setIsSyncing] = useState(false);
     setMobileExpanded(false);
   };
   const exitAiMode = () => setIsAiMode(false);
+
+  // 引導教學：先填入範例「頭痛」讓畫面上有藥品卡片和圖譜按鈕可以介紹，結束後還原原本的搜尋
+  const startTour = () => {
+    setIsHelpOpen(false);
+    setIsAiMode(false);
+    setIsFavoritesManagerOpen(false);
+    setShowFilters(false);
+    setSelectedMed(null);
+    tourPrevQueryRef.current = searchQuery;
+    setSearchQuery("頭痛");
+    setTimeout(() => setIsTourOpen(true), 600); // 等搜尋結果畫出來
+  };
+  const endTour = () => {
+    setIsTourOpen(false);
+    setSearchQuery(tourPrevQueryRef.current);
+  };
   // -----------------------------------
 
   useEffect(() => {
@@ -1906,6 +1920,10 @@ ${query}`;
     );
   }
 
+  // 圖譜查詢按鈕：實心、白字，比一般結果更顯眼
+  const kgButtonClass =
+    "w-full mb-3.5 px-4 py-3 rounded-2xl flex items-center gap-3 text-white shadow-lg shadow-brand-accent/20 bg-gradient-to-r from-brand-accent to-teal-500 hover:brightness-110 active:scale-[0.99] transition-all";
+
   // 控制中心的玻璃材質（半透明 + 背後模糊由外層提供）
   const glass = theme === "dark" ? "bg-white/5 border-white/10" : "bg-white/60 border-slate-200";
   const glassHover = theme === "dark" ? "hover:bg-white/10" : "hover:bg-white/80";
@@ -2189,6 +2207,8 @@ ${query}`;
         )}
       </AnimatePresence>
 
+      {isTourOpen && <Tour steps={TOUR_STEPS} theme={theme} onClose={endTour} />}
+
       <Feedback
         open={isFeedbackOpen}
         theme={theme}
@@ -2311,6 +2331,7 @@ ${query}`;
       >
         <div className="flex items-center gap-4">
           <button
+            data-tour="menu"
             onClick={() => setIsSettingsOpen(true)}
             aria-label={authUser ? "控制中心" : "控制中心（尚未登入）"}
             className={cn(
@@ -2333,6 +2354,7 @@ ${query}`;
           <div className="flex items-center gap-6">
             {/* Segmented Tab Switcher */}
             <div
+              data-tour="mode"
               className={cn(
                 "p-1 rounded-xl flex items-center gap-1 border relative w-48 sm:w-64 transition-colors",
                 theme === "dark"
@@ -2409,6 +2431,7 @@ ${query}`;
           )}
 
           <button
+            data-tour="help"
             id="help-button"
             onClick={() => setIsHelpOpen(true)}
             className={cn(
@@ -2456,7 +2479,7 @@ ${query}`;
                 <div className="absolute top-0 left-0 right-0 z-40 bg-transparent p-3 md:p-4 pointer-events-none">
                   <div className="flex items-center gap-3 pointer-events-auto">
                     {/* Global Search */}
-                    <form
+                    <form data-tour="search"
                       onSubmit={(e) => {
                         e.preventDefault();
                         const input = e.currentTarget.querySelector("input");
@@ -2524,6 +2547,7 @@ ${query}`;
                     {/* Compact Filter Toggle */}
                     <div className="relative filter-popover-container">
                       <button
+                        data-tour="filter"
                         onClick={(e) => {
                           e.stopPropagation();
                           setShowFilters(!showFilters);
@@ -2963,27 +2987,21 @@ ${query}`;
                   }}
                 >
                   {/* 症狀查詢按鈕（由使用者點選開啟，只走知識圖譜） */}
-                  {isQueryValidForAi && !isAiSymptomRequested && (
+                  {isQueryValidForAi && !isAiSymptomRequested && filteredMedications.length > 0 && (
                     <motion.button
                       id="ai-symptom-trigger-btn"
+                      data-tour="kg"
                       onClick={() => setIsAiSymptomRequested(true)}
                       initial={{ opacity: 0, y: -6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className={cn(
-                        "w-full mb-3.5 px-3.5 py-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs shadow-sm transition-all duration-300",
-                        theme === "dark"
-                          ? "bg-brand-accent/[0.03] hover:bg-brand-accent/[0.08] border-brand-accent/20 hover:border-brand-accent/40 text-brand-accent"
-                          : "bg-brand-accent/[0.015] hover:bg-brand-accent/[0.04] border-brand-accent/15 hover:border-brand-accent/30 text-brand-accent",
-                      )}
+                      className={kgButtonClass}
                     >
-                      <div className="flex items-center gap-1.5 font-bold">
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>適應症圖譜查詢</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-[10px] font-medium opacity-80 shrink-0">
-                        <span>查詢</span>
-                        <ChevronRight className="w-3 h-3" />
-                      </div>
+                      <Sparkles className="w-5 h-5 shrink-0" />
+                      <span className="flex-1 min-w-0 text-left">
+                        <span className="block text-sm font-bold">適應症圖譜查詢</span>
+                        <span className="block text-[11px] opacity-90 truncate">打的是症狀或病名？依院內藥品的適應症找藥</span>
+                      </span>
+                      <ChevronRight className="w-5 h-5 shrink-0" />
                     </motion.button>
                   )}
 
@@ -3127,16 +3145,10 @@ ${query}`;
                                     </div>
 
                                     <div className="flex items-center gap-1 shrink-0">
-                                      {/* 還沒按過星星的人：第一張卡片旁提示一次，按過任何星星就不再出現 */}
-                                      {medIndex === 0 && !favHintSeen && favorites.length === 0 && (
-                                        <span className="text-[11px] font-bold text-amber-500 animate-pulse whitespace-nowrap">
-                                          點星星收藏 →
-                                        </span>
-                                      )}
                                       <button
+                                        data-tour={medIndex === 0 ? "fav-star" : undefined}
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          markFavHintSeen();
                                           toggleFavorite(med.id);
                                         }}
                                         aria-label={isFavorite(med.id) ? `把 ${med.code} 移出收藏` : `把 ${med.code} 加入收藏`}
@@ -3219,9 +3231,29 @@ ${query}`;
                       >
                         找不到相符的藥
                       </h3>
-                      <p className="text-brand-muted text-sm mb-8">
-                        換個說法試試，例如成分學名或商品名；症狀可按「適應症圖譜查詢」
-                      </p>
+                      {isQueryValidForAi && !isAiSymptomRequested ? (
+                        <>
+                          <p className="text-brand-muted text-sm mb-5 max-w-sm">
+                            一般搜尋沒有找到。如果你打的是症狀或病名，可以改用圖譜，依院內藥品的適應症來找。
+                          </p>
+                          <button
+                            data-tour="kg"
+                            onClick={() => setIsAiSymptomRequested(true)}
+                            className={cn(kgButtonClass, "max-w-sm")}
+                          >
+                            <Sparkles className="w-5 h-5 shrink-0" />
+                            <span className="flex-1 min-w-0 text-left">
+                              <span className="block text-sm font-bold">改用適應症圖譜查詢</span>
+                              <span className="block text-[11px] opacity-90">查「{searchQuery.trim()}」相關的院內藥品</span>
+                            </span>
+                            <ChevronRight className="w-5 h-5 shrink-0" />
+                          </button>
+                        </>
+                      ) : (
+                        <p className="text-brand-muted text-sm mb-8">
+                          {isKgSearching ? "圖譜查詢中…" : "換個說法試試，例如成分學名或商品名"}
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-center py-12 md:py-20 px-4 max-w-xl mx-auto">
@@ -4442,6 +4474,14 @@ ${query}`;
 
               {/* Scrollable Content */}
               <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar text-xs">
+                <button onClick={startTour} className={cn(kgButtonClass, "mb-1")}>
+                  <Sparkles className="w-5 h-5 shrink-0" />
+                  <span className="flex-1 min-w-0 text-left">
+                    <span className="block text-sm font-bold">開始引導教學</span>
+                    <span className="block text-[11px] opacity-90">一步一步帶你看畫面上每個功能在哪裡，約 1 分鐘</span>
+                  </span>
+                  <ChevronRight className="w-5 h-5 shrink-0" />
+                </button>
                 {HELP_SECTIONS.map(({ title, lines }) => (
                   <div key={title} className="space-y-1">
                     <h4 className="font-bold text-brand-accent">{title}</h4>
