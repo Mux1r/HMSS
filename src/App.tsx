@@ -192,6 +192,67 @@ const LOGIN_FOR_KEY = {
   dismiss: "先不要",
 };
 
+// 兩個模式還沒開始時的介紹：同一套排版（圖示、標題、一句說明、範例、三步驟），只換內容與顏色
+function ModeIntro({ dark, ai, title, desc, examples, onExample, steps, note }: {
+  dark: boolean;
+  ai: boolean;
+  title: string;
+  desc: string;
+  examples: string[];
+  onExample: (text: string) => void;
+  steps: { title: string; desc: string }[];
+  note?: string;
+}) {
+  const accent = ai ? "from-violet-600 to-orange-500" : "from-teal-600 to-cyan-500";
+  const muted = dark ? "text-zinc-400" : "text-slate-500";
+  return (
+    <div className="min-h-full flex flex-col items-center justify-center text-center px-2 py-8 max-w-lg mx-auto">
+      <span className={cn("w-14 h-14 rounded-2xl bg-gradient-to-br text-white flex items-center justify-center shadow-lg mb-4", accent)}>
+        {ai ? <Sparkles className="w-7 h-7" /> : <Pill className="w-7 h-7" />}
+      </span>
+      <h3 className={cn("text-xl font-bold", dark ? "text-white" : "text-slate-800")}>{title}</h3>
+      <p className={cn("text-sm leading-relaxed mt-1.5", muted)}>{desc}</p>
+
+      <div className="w-full mt-6">
+        <p className={cn("text-[11px] font-bold mb-2", muted)}>試試看</p>
+        <div className="flex flex-wrap justify-center gap-2">
+          {examples.map((ex) => (
+            <button
+              key={ex}
+              onClick={() => onExample(ex)}
+              className={cn(
+                "px-3.5 h-8 rounded-full border text-xs font-bold transition-colors",
+                ai
+                  ? dark ? "border-violet-400/40 text-violet-300 hover:bg-violet-500/15" : "border-violet-300 text-violet-600 hover:bg-violet-50"
+                  : dark ? "border-brand-accent/40 text-brand-accent hover:bg-brand-accent/15" : "border-brand-accent/40 text-brand-accent hover:bg-brand-accent/10",
+              )}
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <ol className="w-full grid grid-cols-3 gap-2 mt-8">
+        {steps.map((st, i) => (
+          <li
+            key={st.title}
+            className={cn("p-3 rounded-2xl border text-left", dark ? "bg-white/5 border-white/10" : "bg-white/70 border-slate-200")}
+          >
+            <span className={cn("w-6 h-6 rounded-full bg-gradient-to-br text-white text-[11px] font-bold flex items-center justify-center", accent)}>
+              {i + 1}
+            </span>
+            <p className={cn("text-xs font-bold mt-2", dark ? "text-zinc-100" : "text-slate-800")}>{st.title}</p>
+            <p className={cn("text-[11px] leading-snug mt-0.5", muted)}>{st.desc}</p>
+          </li>
+        ))}
+      </ol>
+
+      {note && <p className={cn("text-[11px] mt-5", muted)}>{note}</p>}
+    </div>
+  );
+}
+
 // AI 輔助查詢按鈕：做成「用另一種方式查剛剛打的字」的搜尋建議樣式，標題直接帶出查詢字
 function AiSearchButton({ query, dark, onClick, className }: {
   query: string;
@@ -3314,109 +3375,20 @@ ${query}`;
                       )}
                     </div>
                   ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-center py-12 md:py-20 px-4 max-w-xl mx-auto">
-                      <div
-                        className={cn(
-                          "w-16 h-16 rounded-3xl flex items-center justify-center border mb-6 shadow-lg",
-                          theme === "dark"
-                            ? "bg-brand-accent/10 border-brand-accent/20 text-brand-accent shadow-brand-accent/5"
-                            : "bg-brand-accent/10 border-brand-accent/20 text-brand-accent shadow-brand-accent/10",
-                        )}
-                      >
-                        <Pill className="w-8 h-8 stroke-[1.25]" />
-                      </div>
-                      <h3
-                        className={cn(
-                          "text-lg md:text-xl font-bold tracking-tight mb-2.5",
-                          theme === "dark" ? "text-white" : "text-slate-800",
-                        )}
-                      >
-                        院內藥物查詢系統
-                      </h3>
-                      <p
-                        className={cn(
-                          "text-xs md:text-sm max-w-sm mb-8 leading-relaxed",
-                          theme === "dark" ? "text-zinc-500" : "text-slate-500",
-                        )}
-                      >
-                        輸入藥名、成分、代碼或症狀開始查，也可以用「篩選」依系統、藥理或劑型找藥。
-                      </p>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
-                        <div
-                          onClick={() => {
-                            searchInputRef.current?.focus();
-                          }}
-                          className={cn(
-                            "p-4 rounded-2xl border transition-all hover:scale-[1.01] cursor-pointer",
-                            theme === "dark"
-                              ? "bg-white/[0.02] border-white/5 hover:border-brand-accent/40 hover:bg-brand-accent/[0.03]"
-                              : "bg-slate-50/50 border-slate-200/60 hover:border-brand-accent/30 hover:bg-brand-accent/[0.02] shadow-sm shadow-slate-100",
-                          )}
-                        >
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <Search className="w-4 h-4 text-brand-accent" />
-                            <h4
-                              className={cn(
-                                "text-xs font-bold",
-                                theme === "dark"
-                                  ? "text-zinc-300"
-                                  : "text-slate-700",
-                              )}
-                            >
-                              打字就能查
-                            </h4>
-                          </div>
-                          <p
-                            className={cn(
-                              "text-[11px] leading-relaxed",
-                              theme === "dark"
-                                ? "text-zinc-500"
-                                : "text-slate-400",
-                            )}
-                          >
-                            成分、商品名、中文名、縮寫（如 NS）或代碼都可以；打症狀可用「AI 輔助查詢」。
-                          </p>
-                        </div>
-
-                        <div
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowFilters(true);
-                          }}
-                          className={cn(
-                            "p-4 rounded-2xl border transition-all hover:scale-[1.01] cursor-pointer",
-                            theme === "dark"
-                              ? "bg-white/[0.02] border-white/5 hover:border-brand-accent/40 hover:bg-brand-accent/[0.03]"
-                              : "bg-slate-50/50 border-slate-200/60 hover:border-brand-accent/30 hover:bg-brand-accent/[0.02] shadow-sm shadow-slate-100",
-                          )}
-                        >
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <Filter className="w-4 h-4 text-brand-accent" />
-                            <h4
-                              className={cn(
-                                "text-xs font-bold",
-                                theme === "dark"
-                                  ? "text-zinc-300"
-                                  : "text-slate-700",
-                              )}
-                            >
-                              用篩選縮小範圍
-                            </h4>
-                          </div>
-                          <p
-                            className={cn(
-                              "text-[11px] leading-relaxed",
-                              theme === "dark"
-                                ? "text-zinc-500"
-                                : "text-slate-400",
-                            )}
-                          >
-                            按搜尋框右邊的「篩選」，依系統、藥理和劑型組合篩選。
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                    <ModeIntro
+                      dark={theme === "dark"}
+                      ai={false}
+                      title="藥品查詢"
+                      desc="查院內藥品：打藥名、成分或代碼，也可以打症狀、病名或藥理分類。"
+                      examples={["Panadol", "頭痛", "PPI"]}
+                      onExample={(ex) => setSearchQuery(ex)}
+                      steps={[
+                        { title: "打字查藥", desc: "藥名、成分、代碼都可以" },
+                        { title: "篩選", desc: "依系統、藥理、劑型縮小範圍" },
+                        { title: "AI 輔助查詢", desc: "打症狀時，依適應症找藥" },
+                      ]}
+                      note="點藥品看詳情，點星星可以收藏。"
+                    />
                   )}
                 </div>
               </motion.div>
@@ -3443,12 +3415,24 @@ ${query}`;
                           )}
                         >
                           {aiHistory.length === 0 && !isAiLoading && (
-                            <div className="h-full flex flex-col items-center justify-center text-center opacity-30 py-20">
-                              <Database className="w-12 h-12 mb-4 stroke-1" />
-                              <p className="text-zinc-400 font-medium tracking-wide">
-                                輸入病人狀況，AI 會先整理問題、請你勾選症狀，再建議用藥
-                              </p>
-                            </div>
+                            <ModeIntro
+                              dark={theme === "dark"}
+                              ai
+                              title="AI 建議"
+                              desc="輸入病人狀況，AI 會整理問題、請你確認症狀，再建議院內用藥。"
+                              examples={["58 歲女性，飯後血糖高", "3 歲男童發燒咳嗽"]}
+                              onExample={(ex) => {
+                                // 只帶入文字不自動送出，免得一點就用掉次數
+                                setAiQuery(ex);
+                                searchInputRef.current?.focus();
+                              }}
+                              steps={[
+                                { title: "描述病人", desc: "年齡、性別、主要症狀" },
+                                { title: "勾選症狀", desc: "協助判斷可能的病因" },
+                                { title: "看建議", desc: "首選與替代，對應院內品項" },
+                              ]}
+                              note="AI 建議僅供醫療專業人員參考。沒登入每小時可以用 3 次。"
+                            />
                           )}
 
                           <div className="space-y-12">
