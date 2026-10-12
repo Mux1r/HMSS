@@ -114,8 +114,8 @@ export const MEDICAL_ALIASES: Record<string, string[]> = {
   'copd': ['chronic obstructive pulmonary disease', '肺阻塞'],
 };
 
-// 症狀/病名詞：查詢含其中任一詞 → 一定跑知識圖譜查詢（App.tsx 查詢分流），
-// 即使剛好也出現在某顆藥的名稱裡（如「感冒」之於感冒糖漿）。藥名命中照常排在前面，圖譜結果補在其後。
+// 症狀/病名詞：查詢含其中任一詞 → 視為症狀查詢，AI 輔助查詢按鈕改為醒目樣式（App.tsx 查詢分流），
+// 即使剛好也出現在某顆藥的名稱裡（如「感冒」之於感冒糖漿）。
 // 只放中文：較長的詞用「包含」比對，「偏頭痛」「我喉嚨痛」都會命中「頭痛」「喉嚨痛」。
 export const SYMPTOM_TERMS: string[] = [
   // 全身
@@ -143,7 +143,7 @@ export const SYMPTOM_TERMS: string[] = [
   '感染', '發炎', '細菌感染', '黴菌感染', '病毒感染', '帶狀皰疹', '皰疹', '蜂窩性組織炎',
 ];
 
-/** 查詢含任一症狀/病名詞即為症狀查詢（一定走圖譜）。 */
+/** 查詢含任一症狀/病名詞即為症狀查詢。 */
 export function isSymptomQuery(query: string): boolean {
   const q = query.trim();
   return q.length >= 2 && SYMPTOM_TERMS.some((t) => q.includes(t));

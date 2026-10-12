@@ -137,9 +137,6 @@ const SYSTEMIC_FORM_LETTERS = new Set([
 // 劑型常用度分數：體現臨床「全身性給藥(口服/針劑)優先於其他局部劑型」原則。
 // 口服固體(錠/膜衣/腸溶/膠囊) > 口服液體(顆粒/粉末/藥水/糖漿) ≈ 針劑 > 外用/眼用/吸入等。
 // 用於搜尋排序與「AI 未指定途徑」時的劑型挑選。
-// 症狀/病名查詢自動跑圖譜前的停手等待（毫秒）
-const KG_AUTO_DELAY_MS = 500;
-
 const FORM_PREFERENCE_SCORE: Record<string, number> = {
   T: 400, A: 400, F: 400, G: 400, B: 400, H: 400, // 口服固體
   C: 250, D: 250, L: 250, Y: 250,                 // 口服液體/顆粒/粉末
@@ -176,7 +173,7 @@ const normalizeRoute = (raw: string): string => {
 const TOUR_STEPS: TourStep[] = [
   { target: "search", title: "查藥", body: "打藥名、成分、代碼或症狀就能查。現在先幫你填了「頭痛」當例子。" },
   { target: "fav-star", title: "收藏", body: "點星星把常用的藥加入收藏（要先登入）。收藏可以在左上角 ☰ 的控制中心裡分資料夾整理。" },
-  { target: "kg", title: "AI 輔助查詢", body: "打的是症狀或病名時會自動啟動，AI 依院內藥品的適應症找藥，連同義詞和更細的病名也會找到。打藥名時不會啟動，需要時可按「AI 輔助查詢」。不需要金鑰，也不佔 AI 建議的次數。" },
+  { target: "kg", title: "AI 輔助查詢", body: "打的是症狀或病名時按這裡（這時按鈕會變醒目），AI 會依院內藥品的適應症找藥，連同義詞和更細的病名也會找到。不需要金鑰，也不佔 AI 建議的次數。" },
   { target: "filter", title: "篩選", body: "先選生理系統，再選藥理分類，也可以加上劑型，一起縮小範圍。" },
   { target: "mode", title: "AI 建議", body: "切到 AI 建議，輸入病人狀況，會先整理問題、請你勾選症狀，再建議院內用藥。沒登入每小時可以用 3 次。" },
   { target: "menu", title: "控制中心", body: "登入、收藏、AI 金鑰、外觀、意見回報都在這裡。" },
@@ -252,37 +249,57 @@ function ModeIntro({ dark, ai, title, desc, examples, onExample, steps, note }: 
 }
 
 // AI 輔助查詢按鈕：做成「用另一種方式查剛剛打的字」的搜尋建議樣式，標題直接帶出查詢字
-function AiSearchButton({ query, dark, onClick, className }: {
+// highlight：查詢看起來是症狀或病名時改用實心醒目樣式並說明原因，仍需使用者按下才查詢
+function AiSearchButton({ query, dark, onClick, className, highlight = false }: {
   query: string;
   dark: boolean;
   onClick: () => void;
   className?: string;
+  highlight?: boolean;
 }) {
   return (
     <button
       data-tour="kg"
       onClick={onClick}
       className={cn(
-        "group w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-colors",
-        dark
-          ? "border-brand-accent/50 bg-brand-accent/10 hover:bg-brand-accent/20"
-          : "border-brand-accent/40 bg-white hover:bg-brand-accent/5",
+        "group w-full flex items-center gap-3 rounded-2xl border-2 text-left transition-colors",
+        highlight
+          ? "p-3.5 border-brand-accent bg-brand-accent text-white shadow-lg shadow-brand-accent/25 hover:brightness-110"
+          : dark
+            ? "p-3 border-brand-accent/50 bg-brand-accent/10 hover:bg-brand-accent/20"
+            : "p-3 border-brand-accent/40 bg-white hover:bg-brand-accent/5",
         className,
       )}
     >
-      <span className="relative w-10 h-10 rounded-full bg-brand-accent text-white flex items-center justify-center shrink-0">
-        <Search className="w-5 h-5" />
+      <span
+        className={cn(
+          "relative rounded-full flex items-center justify-center shrink-0",
+          highlight ? "w-11 h-11 bg-white text-brand-accent" : "w-10 h-10 bg-brand-accent text-white",
+        )}
+      >
+        {highlight && <span className="absolute inset-0 rounded-full bg-white/60 animate-ping" aria-hidden="true" />}
+        <Search className="relative w-5 h-5" />
         <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-amber-400 fill-amber-300" />
       </span>
       <span className="flex-1 min-w-0">
-        <span className="block text-sm font-bold truncate">
-          AI 輔助查詢「<span className="text-brand-accent">{query}</span>」
+        <span className={cn("block font-bold truncate", highlight ? "text-[15px]" : "text-sm")}>
+          AI 輔助查詢「<span className={highlight ? "underline underline-offset-2" : "text-brand-accent"}>{query}</span>」
         </span>
-        <span className={cn("block text-[11px] truncate", dark ? "text-zinc-400" : "text-slate-500")}>
-          依院內藥品的適應症，找出相關用藥
+        <span
+          className={cn(
+            "block text-[11px] truncate",
+            highlight ? "text-white/85" : dark ? "text-zinc-400" : "text-slate-500",
+          )}
+        >
+          {highlight ? "看起來是症狀或病名，建議用 AI 依院內藥品適應症找藥" : "依院內藥品的適應症，找出相關用藥"}
         </span>
       </span>
-      <span className="flex items-center gap-0.5 px-3 h-8 rounded-full bg-brand-accent text-white text-xs font-bold shrink-0 group-hover:brightness-110">
+      <span
+        className={cn(
+          "flex items-center gap-0.5 px-3 h-8 rounded-full text-xs font-bold shrink-0",
+          highlight ? "bg-white text-brand-accent" : "bg-brand-accent text-white group-hover:brightness-110",
+        )}
+      >
         查詢
         <ChevronRight className="w-4 h-4" />
       </span>
@@ -343,7 +360,7 @@ const HELP_SECTIONS: { title: string; lines: string[] }[] = [
   {
     title: "用症狀找藥",
     lines: [
-      "打症狀或病名（例如「偏頭痛」、「胃酸過多」）會自動啟動 AI 輔助查詢，找出院內藥品資料中適應症有寫到的藥，同義詞和更細的病名也算，例如查頭痛也會找到偏頭痛用藥，找到的藥會排到前面。也可以打藥理分類，例如「PPI」「COX-2」。",
+      "打症狀或病名（例如「偏頭痛」、「胃酸過多」），列表上方的「AI 輔助查詢」會變醒目。按下去會找出院內藥品資料中適應症有寫到的藥，同義詞和更細的病名也算，例如查頭痛也會找到偏頭痛用藥，找到的藥會排到前面。也可以打藥理分類，例如「PPI」「COX-2」。",
       "這個功能不需要 AI 金鑰。",
     ],
   },
@@ -1224,9 +1241,9 @@ const [isSyncing, setIsSyncing] = useState(false);
     return !medicationCodeSet.has(query.toUpperCase());
   }, [searchQuery, medicationCodeSet]);
 
-  // 查詢分流：含症狀/病名詞（SYMPTOM_TERMS）→ 一定跑圖譜；
-  // 否則藥名/成分/代碼/機轉縮寫查得到 → 藥名查詢，走一般搜尋；
-  // 藥名欄位都查不到 → 視為症狀或病名，自動跑圖譜（不必再按 AI 輔助查詢）。
+  // 查詢分流（只決定 AI 輔助查詢按鈕是否醒目，不自動查詢）：
+  // 含症狀/病名詞（SYMPTOM_TERMS）→ 症狀查詢；否則藥名/成分/代碼/機轉縮寫查得到 → 藥名查詢；
+  // 都查不到 → 也視為症狀或病名。
   const isNameQuery = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
@@ -1240,8 +1257,7 @@ const [isSyncing, setIsSyncing] = useState(false);
       }),
     );
   }, [searchQuery, medications]);
-  const isKgAuto = isQueryValidForAi && !isNameQuery;
-  const isKgActive = isAiSymptomRequested || isKgAuto;
+  const isSymptomLike = isQueryValidForAi && !isNameQuery;
 
   // Reset AI request when search query changes
   useEffect(() => {
@@ -1252,7 +1268,7 @@ const [isSyncing, setIsSyncing] = useState(false);
     const query = searchQuery.trim();
     setKgResult(null);
     setKgError(null);
-    if (!isKgActive || query.length < 2 || medicationCodeSet.has(query.toUpperCase())) {
+    if (!isAiSymptomRequested || query.length < 2 || medicationCodeSet.has(query.toUpperCase())) {
       setIsKgSearching(false);
       return;
     }
@@ -1262,21 +1278,17 @@ const [isSyncing, setIsSyncing] = useState(false);
     }
     let cancelled = false;
     setIsKgSearching(true);
-    // 自動查詢等使用者停手再送，避免每打一個字就算一次向量；手動按鈕立即送出
-    const timer = setTimeout(() => {
-      searchKg(query)
-        .then((r) => {
-          kgCacheRef.current[query] = r;
-          if (!cancelled) setKgResult(r);
-        })
-        .catch((e) => !cancelled && setKgError(e?.message || "AI 輔助查詢失敗"))
-        .finally(() => !cancelled && setIsKgSearching(false));
-    }, isAiSymptomRequested ? 0 : KG_AUTO_DELAY_MS);
+    searchKg(query)
+      .then((r) => {
+        kgCacheRef.current[query] = r;
+        if (!cancelled) setKgResult(r);
+      })
+      .catch((e) => !cancelled && setKgError(e?.message || "AI 輔助查詢失敗"))
+      .finally(() => !cancelled && setIsKgSearching(false));
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
-  }, [isKgActive, isAiSymptomRequested, searchQuery, medicationCodeSet]);
+  }, [isAiSymptomRequested, searchQuery, medicationCodeSet]);
 
   // Remove global click listener in favor of local onBlur for better focus management
   useEffect(() => {
@@ -3141,19 +3153,19 @@ ${query}`;
                   }}
                 >
                   {/* 症狀查詢按鈕（由使用者點選開啟，只走知識圖譜） */}
-                  {isQueryValidForAi && !isKgActive && filteredMedications.length > 0 && (
+                  {isQueryValidForAi && !isAiSymptomRequested && filteredMedications.length > 0 && (
                     <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mb-3.5">
                       <AiSearchButton
                         query={searchQuery.trim()}
                         dark={theme === "dark"}
+                        highlight={isSymptomLike}
                         onClick={() => setIsAiSymptomRequested(true)}
                       />
                     </motion.div>
                   )}
 
-                  {isKgActive && (isKgSearching || kgResult || kgError) && (
+                  {isAiSymptomRequested && (isKgSearching || kgResult || kgError) && (
                     <div
-                      data-tour="kg"
                       className={cn(
                         "mb-3.5 px-3.5 py-2.5 rounded-xl border flex flex-wrap items-center gap-2 text-xs",
                         theme === "dark"
@@ -3378,7 +3390,7 @@ ${query}`;
                       >
                         找不到相符的藥
                       </h3>
-                      {isQueryValidForAi && !isKgActive ? (
+                      {isQueryValidForAi && !isAiSymptomRequested ? (
                         <>
                           <p className="text-brand-muted text-sm mb-5 max-w-sm">
                             一般搜尋沒有找到。如果你打的是症狀或病名，可以試試 AI 輔助查詢。
@@ -3386,6 +3398,7 @@ ${query}`;
                           <AiSearchButton
                             query={searchQuery.trim()}
                             dark={theme === "dark"}
+                            highlight={isSymptomLike}
                             onClick={() => setIsAiSymptomRequested(true)}
                             className="max-w-sm"
                           />
