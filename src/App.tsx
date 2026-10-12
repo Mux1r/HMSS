@@ -1970,16 +1970,20 @@ ${query}`;
         const isCommonComponent = GENERAL_COMMON_INGREDIENTS.some((gci) => {
           return componentLower.includes(gci) || genericLower.includes(gci);
         });
+        // 圖譜命中的藥照圖譜分數排：常用成分與劑型只拿來打破同分（/1000 後不到 1 分），
+        // 否則 +500、+400 會壓過圖譜分數 0.1 的差距（=200），變成按劑型排。
+        const kg = kgScoreOf(m);
+        const tieOnly = kg > 0 ? 1000 : 1;
         if (isCommonComponent) {
-          score += 500;
+          score += 500 / tieOnly;
         }
 
         // 4.5 圖譜分數（約 0.3–1.1）：同層內語意越貼近越前面，量級與適應症字面命中(+2000)相當
-        score += Math.round(kgScoreOf(m) * 2000);
+        score += Math.round(kg * 2000);
 
         // 5. 劑型常用度微調：全身性(口服/針劑)優先於局部劑型，口服固體又優先於液體。
         //    分數刻意小，僅打破同分，不影響臨床匹配大權重。
-        score += formPrefScore(m.code);
+        score += formPrefScore(m.code) / tieOnly;
 
         return score;
       };
