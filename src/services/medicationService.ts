@@ -186,6 +186,9 @@ const mapSupabaseRow = (row: any): Medication => {
   };
 };
 
+// 無圖譜連結時，直接向量比對只收與第一名差距在此以內的藥（同 kg_search 概念命中的相對門檻精神）
+const KG_DIRECT_MARGIN = 0.1;
+
 export interface KgResult {
   concepts: { label: string; score: number; via: string | null }[];
   hits: Record<string, number>; // 藥品編碼（大寫）→ 圖譜分數，同一顆藥取最高分
@@ -198,8 +201,15 @@ export async function searchKg(q: string): Promise<KgResult> {
   const body = { q: key && key !== q.toLowerCase() ? `${q} ${key}` : q };
   const { data, error } = await supabase.functions.invoke('kg-search', { body });
   if (error) throw new Error(`AI 輔助查詢失敗: ${error.message}`);
+  // 圖譜連結（概念 →treats/in_class→ 藥）有適應症依據，為主要結果。
+  // drugs 是藥品節點直接向量比對，門檻低且固定取滿 12 筆，多為雜訊（查「喉嚨痛」會撈到疫苗、Salagen）：
+  // 有連結時不採用；完全沒連結才退而取用，且只收與第一名差距 KG_DIRECT_MARGIN 以內者。
+  const links: { code: string; score: number }[] = data?.links || [];
+  const direct: { code: string; score: number }[] = data?.drugs || [];
+  const top = Math.max(0, ...direct.map((d) => d.score));
+  const picked = links.length > 0 ? links : direct.filter((d) => d.score >= top - KG_DIRECT_MARGIN);
   const hits: Record<string, number> = {};
-  for (const { code, score } of [...(data?.links || []), ...(data?.drugs || [])]) {
+  for (const { code, score } of picked) {
     const key = String(code || '').trim().toUpperCase();
     if (key && !(hits[key] >= score)) hits[key] = score;
   }

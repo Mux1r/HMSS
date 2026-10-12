@@ -173,7 +173,7 @@ const normalizeRoute = (raw: string): string => {
 const TOUR_STEPS: TourStep[] = [
   { target: "search", title: "查藥", body: "打藥名、成分、代碼或症狀就能查。現在先幫你填了「頭痛」當例子。" },
   { target: "fav-star", title: "收藏", body: "點星星把常用的藥加入收藏（要先登入）。收藏可以在左上角 ☰ 的控制中心裡分資料夾整理。" },
-  { target: "kg", title: "AI 輔助查詢", body: "打的是症狀或病名時按這裡，AI 會依院內藥品的適應症找藥，連同義詞和更細的病名也會找到。不需要金鑰，也不佔 AI 建議的次數。" },
+  { target: "kg", title: "AI 輔助查詢", body: "打的是症狀或病名時按這裡（這時按鈕會變醒目），AI 會依院內藥品的適應症找藥，連同義詞和更細的病名也會找到。不需要金鑰，也不佔 AI 建議的次數。" },
   { target: "filter", title: "篩選", body: "先選生理系統，再選藥理分類，也可以加上劑型，一起縮小範圍。" },
   { target: "mode", title: "AI 建議", body: "切到 AI 建議，輸入病人狀況，會先整理問題、請你勾選症狀，再建議院內用藥。沒登入每小時可以用 3 次。" },
   { target: "menu", title: "控制中心", body: "登入、收藏、AI 金鑰、外觀、意見回報都在這裡。" },
@@ -249,37 +249,57 @@ function ModeIntro({ dark, ai, title, desc, examples, onExample, steps, note }: 
 }
 
 // AI 輔助查詢按鈕：做成「用另一種方式查剛剛打的字」的搜尋建議樣式，標題直接帶出查詢字
-function AiSearchButton({ query, dark, onClick, className }: {
+// highlight：查詢看起來是症狀或病名時改用實心醒目樣式並說明原因，仍需使用者按下才查詢
+function AiSearchButton({ query, dark, onClick, className, highlight = false }: {
   query: string;
   dark: boolean;
   onClick: () => void;
   className?: string;
+  highlight?: boolean;
 }) {
   return (
     <button
       data-tour="kg"
       onClick={onClick}
       className={cn(
-        "group w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-colors",
-        dark
-          ? "border-brand-accent/50 bg-brand-accent/10 hover:bg-brand-accent/20"
-          : "border-brand-accent/40 bg-white hover:bg-brand-accent/5",
+        "group w-full flex items-center gap-3 rounded-2xl border-2 text-left transition-colors",
+        highlight
+          ? "p-3.5 border-brand-accent bg-brand-accent text-white shadow-lg shadow-brand-accent/25 hover:brightness-110"
+          : dark
+            ? "p-3 border-brand-accent/50 bg-brand-accent/10 hover:bg-brand-accent/20"
+            : "p-3 border-brand-accent/40 bg-white hover:bg-brand-accent/5",
         className,
       )}
     >
-      <span className="relative w-10 h-10 rounded-full bg-brand-accent text-white flex items-center justify-center shrink-0">
-        <Search className="w-5 h-5" />
+      <span
+        className={cn(
+          "relative rounded-full flex items-center justify-center shrink-0",
+          highlight ? "w-11 h-11 bg-white text-brand-accent" : "w-10 h-10 bg-brand-accent text-white",
+        )}
+      >
+        {highlight && <span className="absolute inset-0 rounded-full bg-white/60 animate-ping" aria-hidden="true" />}
+        <Search className="relative w-5 h-5" />
         <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-amber-400 fill-amber-300" />
       </span>
       <span className="flex-1 min-w-0">
-        <span className="block text-sm font-bold truncate">
-          AI 輔助查詢「<span className="text-brand-accent">{query}</span>」
+        <span className={cn("block font-bold truncate", highlight ? "text-[15px]" : "text-sm")}>
+          AI 輔助查詢「<span className={highlight ? "underline underline-offset-2" : "text-brand-accent"}>{query}</span>」
         </span>
-        <span className={cn("block text-[11px] truncate", dark ? "text-zinc-400" : "text-slate-500")}>
-          依院內藥品的適應症，找出相關用藥
+        <span
+          className={cn(
+            "block text-[11px] truncate",
+            highlight ? "text-white/85" : dark ? "text-zinc-400" : "text-slate-500",
+          )}
+        >
+          {highlight ? "看起來是症狀或病名，建議用 AI 依院內藥品適應症找藥" : "依院內藥品的適應症，找出相關用藥"}
         </span>
       </span>
-      <span className="flex items-center gap-0.5 px-3 h-8 rounded-full bg-brand-accent text-white text-xs font-bold shrink-0 group-hover:brightness-110">
+      <span
+        className={cn(
+          "flex items-center gap-0.5 px-3 h-8 rounded-full text-xs font-bold shrink-0",
+          highlight ? "bg-white text-brand-accent" : "bg-brand-accent text-white group-hover:brightness-110",
+        )}
+      >
         查詢
         <ChevronRight className="w-4 h-4" />
       </span>
@@ -340,7 +360,7 @@ const HELP_SECTIONS: { title: string; lines: string[] }[] = [
   {
     title: "用症狀找藥",
     lines: [
-      "打症狀或病名（例如「偏頭痛」、「胃酸過多」），列表上方會出現「AI 輔助查詢」。按下去會找出院內藥品資料中適應症有寫到的藥，同義詞和更細的病名也算，例如查頭痛也會找到偏頭痛用藥，找到的藥會排到前面。也可以打藥理分類，例如「PPI」「COX-2」。",
+      "打症狀或病名（例如「偏頭痛」、「胃酸過多」），列表上方的「AI 輔助查詢」會變醒目。按下去會找出院內藥品資料中適應症有寫到的藥，同義詞和更細的病名也算，例如查頭痛也會找到偏頭痛用藥，找到的藥會排到前面。也可以打藥理分類，例如「PPI」「COX-2」。",
       "這個功能不需要 AI 金鑰。",
     ],
   },
@@ -413,7 +433,7 @@ import { consumeStaleEphemeral, isDeviceRemembered } from "./lib/device";
 // 開啟時判斷一次：上一位在公用電腦沒登出（關分頁／關瀏覽器）→ 不載入他留下的收藏與 AI 紀錄。
 const STALE_EPHEMERAL = consumeStaleEphemeral();
 import { cn } from "./lib/utils";
-import { MEDICAL_ALIASES, MECHANISM_ATC, mechanismKey } from "./lib/medicalKeywords";
+import { MEDICAL_ALIASES, MECHANISM_ATC, isSymptomQuery, mechanismKey } from "./lib/medicalKeywords";
 import {
   atcMatches,
   diffMedications,
@@ -1220,6 +1240,24 @@ const [isSyncing, setIsSyncing] = useState(false);
     // 完全吻合已知藥品碼 → 不顯示 AI 按鈕；其他一律顯示
     return !medicationCodeSet.has(query.toUpperCase());
   }, [searchQuery, medicationCodeSet]);
+
+  // 查詢分流（只決定 AI 輔助查詢按鈕是否醒目，不自動查詢）：
+  // 含症狀/病名詞（SYMPTOM_TERMS）→ 症狀查詢；否則藥名/成分/代碼/機轉縮寫查得到 → 藥名查詢；
+  // 都查不到 → 也視為症狀或病名。
+  const isNameQuery = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    if (isSymptomQuery(query)) return false;
+    if (MECHANISM_ATC[query] || MECHANISM_ATC[mechanismKey(query)]) return true;
+    const terms = [query, ...(MEDICAL_ALIASES[query] || []).map((s) => s.toLowerCase())];
+    return medications.some((m) =>
+      [m.code, m.component, m.brandName, m.genericName, m.chineseName, m.bagLabelName].some((f) => {
+        const v = (f || "").toLowerCase();
+        return v && terms.some((t) => v.includes(t));
+      }),
+    );
+  }, [searchQuery, medications]);
+  const isSymptomLike = isQueryValidForAi && !isNameQuery;
 
   // Reset AI request when search query changes
   useEffect(() => {
@@ -3120,6 +3158,7 @@ ${query}`;
                       <AiSearchButton
                         query={searchQuery.trim()}
                         dark={theme === "dark"}
+                        highlight={isSymptomLike}
                         onClick={() => setIsAiSymptomRequested(true)}
                       />
                     </motion.div>
@@ -3359,6 +3398,7 @@ ${query}`;
                           <AiSearchButton
                             query={searchQuery.trim()}
                             dark={theme === "dark"}
+                            highlight={isSymptomLike}
                             onClick={() => setIsAiSymptomRequested(true)}
                             className="max-w-sm"
                           />
