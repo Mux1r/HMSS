@@ -3,7 +3,7 @@
  * 守住 ATC 前綴表的格式，避免空字串前綴（會 startsWith 命中全部藥）或小寫/畸形碼悄悄失效。
  */
 import assert from "node:assert";
-import { MECHANISM_ATC, MEDICAL_ALIASES, SYMPTOM_TERMS, isSymptomQuery, mechanismKey } from "./medicalKeywords.ts";
+import { MECHANISM_ATC, MEDICAL_ALIASES, SYMPTOM_TERMS, isOppositeLevel, isSymptomQuery, kgQueryText, mechanismKey } from "./medicalKeywords.ts";
 
 const ATC_PREFIX = /^[A-Z]\d{2}[A-Z]{0,2}\d{0,2}$/; // 例 C09A, C10AA, C09DX04
 
@@ -35,5 +35,17 @@ assert.equal(new Set(SYMPTOM_TERMS).size, SYMPTOM_TERMS.length, "SYMPTOM_TERMS �
 for (const t of SYMPTOM_TERMS) assert.ok(t.trim().length >= 2, `症狀詞「${t}」過短`);
 for (const q of ["喉嚨痛", "偏頭痛", "我頭痛", "拉肚子", "感冒"]) assert.ok(isSymptomQuery(q), `「${q}」應為症狀查詢`);
 for (const q of ["Panadol", "PPI", "普拿疼", "痛", ""]) assert.ok(!isSymptomQuery(q), `「${q}」不應為症狀查詢`);
+
+// 症狀 → 適應症用詞
+assert.equal(kgQueryText("抽搐"), "抽搐 癲癇");
+assert.equal(kgQueryText("病人發燒咳嗽"), "病人發燒咳嗽 解熱 退燒 鎮咳");
+assert.equal(kgQueryText("喉嚨痛"), "喉嚨痛");
+// 高低方向
+assert.ok(isOppositeLevel("低血鉀", "高血鉀症"));
+assert.ok(isOppositeLevel("高血鉀", "低鉀血症"));
+assert.ok(isOppositeLevel("低血糖", "高血糖"));
+assert.ok(!isOppositeLevel("低血鉀", "鉀缺乏症"));
+assert.ok(!isOppositeLevel("降低血壓", "高血壓"), "降低血壓要的是高血壓藥");
+assert.ok(!isOppositeLevel("喉嚨痛", "高血壓"));
 
 console.log("medicalKeywords data: all assertions passed ✓");
