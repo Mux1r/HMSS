@@ -3,7 +3,7 @@
  * 守住 ATC 前綴表的格式，避免空字串前綴（會 startsWith 命中全部藥）或小寫/畸形碼悄悄失效。
  */
 import assert from "node:assert";
-import { MECHANISM_ATC, MEDICAL_ALIASES, mechanismKey } from "./medicalKeywords.ts";
+import { MECHANISM_ATC, MEDICAL_ALIASES, SYMPTOM_TERMS, isSymptomQuery, mechanismKey } from "./medicalKeywords.ts";
 
 const ATC_PREFIX = /^[A-Z]\d{2}[A-Z]{0,2}\d{0,2}$/; // 例 C09A, C10AA, C09DX04
 
@@ -29,5 +29,11 @@ for (const [q, key] of [["5-ARI", "5ari"], ["PDE5 inhibitor", "pde5i"], ["P2Y12 
   assert.equal(mechanismKey(q), key, `「${q}」應整理成 ${key}`);
   assert.ok(MECHANISM_ATC[key], `${key} 應在縮寫表內`);
 }
+
+// 症狀詞表：不可有空字串（會命中所有查詢）、單字（太廣）或重複
+assert.equal(new Set(SYMPTOM_TERMS).size, SYMPTOM_TERMS.length, "SYMPTOM_TERMS 有重複詞");
+for (const t of SYMPTOM_TERMS) assert.ok(t.trim().length >= 2, `症狀詞「${t}」過短`);
+for (const q of ["喉嚨痛", "偏頭痛", "我頭痛", "拉肚子", "感冒"]) assert.ok(isSymptomQuery(q), `「${q}」應為症狀查詢`);
+for (const q of ["Panadol", "PPI", "普拿疼", "痛", ""]) assert.ok(!isSymptomQuery(q), `「${q}」不應為症狀查詢`);
 
 console.log("medicalKeywords data: all assertions passed ✓");

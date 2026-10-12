@@ -416,7 +416,7 @@ import { consumeStaleEphemeral, isDeviceRemembered } from "./lib/device";
 // 開啟時判斷一次：上一位在公用電腦沒登出（關分頁／關瀏覽器）→ 不載入他留下的收藏與 AI 紀錄。
 const STALE_EPHEMERAL = consumeStaleEphemeral();
 import { cn } from "./lib/utils";
-import { MEDICAL_ALIASES, MECHANISM_ATC, mechanismKey } from "./lib/medicalKeywords";
+import { MEDICAL_ALIASES, MECHANISM_ATC, isSymptomQuery, mechanismKey } from "./lib/medicalKeywords";
 import {
   atcMatches,
   diffMedications,
@@ -1224,11 +1224,13 @@ const [isSyncing, setIsSyncing] = useState(false);
     return !medicationCodeSet.has(query.toUpperCase());
   }, [searchQuery, medicationCodeSet]);
 
-  // 查詢分流：藥名/成分/代碼/機轉縮寫查得到 → 藥名查詢，走一般搜尋；
+  // 查詢分流：含症狀/病名詞（SYMPTOM_TERMS）→ 一定跑圖譜；
+  // 否則藥名/成分/代碼/機轉縮寫查得到 → 藥名查詢，走一般搜尋；
   // 藥名欄位都查不到 → 視為症狀或病名，自動跑圖譜（不必再按 AI 輔助查詢）。
   const isNameQuery = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
+    if (isSymptomQuery(query)) return false;
     if (MECHANISM_ATC[query] || MECHANISM_ATC[mechanismKey(query)]) return true;
     const terms = [query, ...(MEDICAL_ALIASES[query] || []).map((s) => s.toLowerCase())];
     return medications.some((m) =>
