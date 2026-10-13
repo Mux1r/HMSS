@@ -172,6 +172,14 @@ export function kgQueryText(query: string): string {
   return [query, ...new Set(extra)].join(' ');
 }
 
+/** 實際送給 kg-search 的字串（App 與 scripts/kg-eval.ts 共用）：
+ *  適應症用詞之外，再附上整理過的機轉縮寫（「Cox 2」→「cox2」），讓圖上機轉類別的縮寫別名能字面命中。 */
+export function kgRequestText(query: string): string {
+  const key = mechanismKey(query);
+  const text = kgQueryText(query);
+  return key && key !== query.toLowerCase() ? `${text} ${key}` : text;
+}
+
 // 高低方向相反的概念：向量比對分不太出「低血鉀」和「高血鉀症」，查低的要把高的濾掉，反之亦然。
 // 「降低血壓」「升高血糖」是動詞不是狀態，排除（降低血壓要的正是高血壓藥）。
 const LEVEL_TARGETS = ['鉀', '鈉', '鈣', '鎂', '磷', '糖', '壓'];

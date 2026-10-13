@@ -1,6 +1,6 @@
 import { get, set } from 'idb-keyval';
 import { supabase } from '../lib/supabase';
-import { isOppositeLevel, kgQueryText, mechanismKey } from '../lib/medicalKeywords';
+import { isOppositeLevel, kgRequestText } from '../lib/medicalKeywords';
 
 const STORAGE_KEY = 'hosp_medications_v2';
 const HASH_KEY = 'hosp_medications_hash';
@@ -196,11 +196,7 @@ export interface KgResult {
 
 /** 知識圖向量搜尋（Edge Function kg-search）：症狀/白話 → 概念 → 適應症有寫到的院內藥品。 */
 export async function searchKg(q: string): Promise<KgResult> {
-  // 附上整理過的縮寫（「Cox 2」→「cox2」、「ACE inhibitor」→「acei」），讓圖上機轉類別的縮寫別名能字面命中
-  // 再附上症狀對應的適應症用詞（「抽搐」→「癲癇」），見 SYMPTOM_INDICATIONS
-  const key = mechanismKey(q);
-  const text = kgQueryText(q);
-  const body = { q: key && key !== q.toLowerCase() ? `${text} ${key}` : text };
+  const body = { q: kgRequestText(q) };
   const { data, error } = await supabase.functions.invoke('kg-search', { body });
   if (error) throw new Error(`AI 輔助查詢失敗: ${error.message}`);
   // 圖譜連結（概念 →treats/in_class→ 藥）有適應症依據，為主要結果。
